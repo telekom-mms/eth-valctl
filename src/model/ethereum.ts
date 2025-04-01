@@ -1,4 +1,4 @@
-import { JsonRpcProvider, NonceManager } from 'ethers';
+import { JsonRpcProvider, NonceManager, TransactionResponse } from 'ethers';
 
 export interface EthereumConnection {
   wallet: NonceManager;
@@ -24,4 +24,15 @@ export interface ValidatorResponse {
       withdrawal_credentials: string;
     };
   };
+}
+
+/**
+ * Interface for tracking pending transactions
+ */
+export interface PendingTransaction {
+  hash: string;
+  nonce: number;
+  data: string;
+  response: TransactionResponse;
+  isConfirmed: boolean;
 }
