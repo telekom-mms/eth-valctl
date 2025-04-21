@@ -4,7 +4,7 @@ import { JsonRpcProvider, NonceManager } from 'ethers';
 import * as logging from '../../constants/logging';
 import { PendingTransaction } from '../../model/ethereum';
 import { calculateCurrentRequiredFee, createElTransaction } from './ethereum';
-import { TransactionMonitor } from './transaction-monitor';
+import { TransactionMonitor } from './transaction-monitor-2';
 
 /**
  * Send execution layer requests via json rpc connection with dynamic fee adjustment
