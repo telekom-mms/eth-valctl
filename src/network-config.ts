@@ -2,7 +2,7 @@ import {
   CONSOLIDATION_CONTRACT_ADDRESS,
   WITHDRAWAL_CONTRACT_ADDRESS
 } from './constants/application';
-import { NetworkConfig } from './model/ethereum';
+import type { NetworkConfig } from './model/ethereum';
 
 export const networkConfig: Record<string, NetworkConfig> = {
   mainnet: {

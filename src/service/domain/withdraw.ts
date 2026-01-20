@@ -1,7 +1,7 @@
 import { parseUnits } from 'ethers';
 
 import { PREFIX_0x } from '../../constants/application';
-import { GlobalCliOptions } from '../../model/commander';
+import type { GlobalCliOptions } from '../../model/commander';
 import { networkConfig } from '../../network-config';
 import { checkWithdrawalCredentialType } from '../validation/pre-request';
 import { createEthereumConnection } from './ethereum';
@@ -28,7 +28,7 @@ export async function withdraw(
     withdrawalRequestData.push(createWithdrawRequestData(validator, amount));
   }
   await sendExecutionLayerRequests(
-    networkConfig[globalOptions.network].withdrawalContractAddress,
+    networkConfig[globalOptions.network]!.withdrawalContractAddress,
     ethereumConnection.provider,
     ethereumConnection.wallet,
     withdrawalRequestData,

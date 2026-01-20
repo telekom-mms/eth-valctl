@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 
-import { GlobalCliOptions, ValidatorOption } from '../model/commander';
+import type { GlobalCliOptions, ValidatorOption } from '../model/commander';
 import { switchWithdrawalCredentialType } from '../service/domain/switch';
 import { parseAndValidateValidatorPubKeys } from '../service/validation/cli';
 

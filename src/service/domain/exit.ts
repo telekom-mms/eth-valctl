@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 
 import * as logging from '../../constants/logging';
-import { GlobalCliOptions } from '../../model/commander';
+import type { GlobalCliOptions } from '../../model/commander';
 import { withdraw } from './withdraw';
 
 /**

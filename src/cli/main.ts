@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import { Command, Option } from 'commander';
 
 import { DISCLAIMER_INFO } from '../constants/logging';
-import { GlobalCliOptions } from '../model/commander';
+import type { GlobalCliOptions } from '../model/commander';
 import {
   parseAndValidateMaxNumberOfRequestsPerBlock,
   parseAndValidateNodeUrl,
@@ -22,7 +22,7 @@ const beaconApiOptionName = 'beacon-api-url';
 const maxRequestsPerBlockOptionName = 'max-requests-per-block';
 
 program
-  .name('eth-validator-cli')
+  .name('eth-valctl')
   .description(`CLI tool for managing Ethereum validators.\n${chalk.yellow(DISCLAIMER_INFO)}`)
   .version('0.4.0')
   .addOption(
@@ -52,7 +52,7 @@ program
     parseAndValidateMaxNumberOfRequestsPerBlock,
     10
   )
-  .hook('preSubcommand', (thisCommand) => {
+  .hook('preAction', (thisCommand) => {
     console.log(chalk.yellow(DISCLAIMER_INFO));
     const globalOptions: GlobalCliOptions = thisCommand.opts();
     validateNetwork(globalOptions.jsonRpcUrl, globalOptions.network);

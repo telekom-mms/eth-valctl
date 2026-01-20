@@ -33,7 +33,7 @@ export const BROADCASTING_EL_REQUEST_INFO = 'Broadcasting execution layer reques
 export const MINED_EL_REQUEST_INFO = 'Mined execution layer request:';
 export const PROMPT_PRIVATE_KEY_INFO = 'Private key for 0x01 or 0x02 withdrawal credentials:';
 export const DISCLAIMER_INFO =
-  'The eth-validator-cli is in active development and currently missing most pre-transaction checks (see here: https://github.com/TobiWo/eth-validator-cli/issues/14). Please double-check your inputs before executing a command.';
+  'The eth-valctl is in active development and currently missing most pre-transaction checks (see here: https://github.com/TobiWo/eth-valctl/issues/14). Please double-check your inputs before executing a command.';
 
 // Warnings
 export const WITHDRAWAL_CREDENTIAL_WARNING =

@@ -9,7 +9,7 @@ import {
   WITHDRAWAL_CREDENTIALS_0x02
 } from '../../constants/application';
 import * as logging from '../../constants/logging';
-import { ValidatorResponse } from '../../model/ethereum';
+import type { ValidatorResponse } from '../../model/ethereum';
 
 /**
  * Check if the provided validator withdrawal credentials are of type compounding

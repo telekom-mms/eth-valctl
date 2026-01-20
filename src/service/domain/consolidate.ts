@@ -2,7 +2,7 @@ import chalk from 'chalk';
 
 import { PREFIX_0x } from '../../constants/application';
 import * as logging from '../../constants/logging';
-import { GlobalCliOptions } from '../../model/commander';
+import type { GlobalCliOptions } from '../../model/commander';
 import { networkConfig } from '../../network-config';
 import { checkWithdrawalCredentialType } from '../validation/pre-request';
 import { createEthereumConnection } from './ethereum';
@@ -31,7 +31,7 @@ export async function consolidate(
     consolidationRequestData.push(request);
   }
   await sendExecutionLayerRequests(
-    networkConfig[globalOptions.network].consolidationContractAddress,
+    networkConfig[globalOptions.network]!.consolidationContractAddress,
     ethereumConnection.provider,
     ethereumConnection.wallet,
     consolidationRequestData,

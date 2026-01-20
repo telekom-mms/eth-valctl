@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 
-import { GlobalCliOptions, WithdrawOptions } from '../model/commander';
+import type { GlobalCliOptions, WithdrawOptions } from '../model/commander';
 import { withdraw } from '../service/domain/withdraw';
 import {
   parseAndValidateValidatorPubKeys,

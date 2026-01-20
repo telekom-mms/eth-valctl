@@ -3,7 +3,7 @@ import { JsonRpcProvider, NonceManager, Wallet } from 'ethers';
 
 import * as serviceConstants from '../../constants/application';
 import * as logging from '../../constants/logging';
-import { EthereumConnection } from '../../model/ethereum';
+import type { EthereumConnection } from '../../model/ethereum';
 import { promptSecret } from '../prompt';
 
 /**

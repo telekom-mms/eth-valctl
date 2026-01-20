@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 
-import { ConsolidationOptions, GlobalCliOptions } from '../model/commander';
+import type { ConsolidationOptions, GlobalCliOptions } from '../model/commander';
 import { consolidate } from '../service/domain/consolidate';
 import {
   parseAndValidateValidatorPubKey,

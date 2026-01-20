@@ -89,9 +89,14 @@ export function parseAndValidateValidatorPubKeys(
  */
 export async function validateNetwork(jsonRpcUrl: string, network: string): Promise<void> {
   try {
+    const config = networkConfig[network];
+    if (!config) {
+      console.error(chalk.red(`Invalid network: ${network}`));
+      exit(1);
+    }
     const jsonRpcProvider = new JsonRpcProvider(jsonRpcUrl);
     const connectedNetwork = await jsonRpcProvider.getNetwork();
-    if (connectedNetwork.chainId != networkConfig[network].chainId) {
+    if (connectedNetwork.chainId != config.chainId) {
       console.error(
         chalk.red(
           format(

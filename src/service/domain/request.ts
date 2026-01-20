@@ -5,7 +5,7 @@ import { exit } from 'process';
 
 import * as serviceConstants from '../../constants/application';
 import * as logging from '../../constants/logging';
-import { ExecutionLayerRequestTransaction } from '../../model/ethereum';
+import type { ExecutionLayerRequestTransaction } from '../../model/ethereum';
 import { getRequiredFee } from './ethereum';
 
 /**
