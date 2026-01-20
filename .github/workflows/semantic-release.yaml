@@ -1,0 +1,56 @@
+---
+name: "Create release tag"
+
+# yamllint disable-line rule:truthy
+on:
+  push:
+    branches:
+      - "main"
+
+jobs:
+  semantic-release:
+    name: "Create and push tag"
+    runs-on: "ubuntu-latest"
+    permissions:
+      contents: "write"
+      issues: "write"
+      pull-requests: "write"
+    steps:
+      - name: "Checkout repository"
+        uses: "actions/checkout@v6"
+        with:
+          token: "${{ secrets.PERSONAL_ACCESS_TOKEN }}"
+          fetch-depth: 0
+
+      - name: "Configure Git"
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: "Setup Bun"
+        uses: "oven-sh/setup-bun@v2"
+        with:
+          bun-version: "latest"
+
+      - name: "Install semantic-release and plugins"
+        run: |
+          bun add semantic-release \
+            conventional-changelog-conventionalcommits \
+            @semantic-release/exec \
+            @semantic-release/git
+
+      - name: "Show current version"
+        run: |
+          echo "Current version in package.json:"
+          grep -E '"version":' package.json || echo "Version line not found"
+
+      - name: "Run Semantic Release"
+        env:
+          GITHUB_TOKEN: "${{ secrets.PERSONAL_ACCESS_TOKEN }}"
+        run: "bunx semantic-release"
+
+      - name: "Verify version update"
+        run: |
+          echo "Updated version in package.json:"
+          grep -E '"version":' package.json || echo "Version line not found"
+...
