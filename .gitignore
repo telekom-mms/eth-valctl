@@ -130,3 +130,7 @@ dist
 .pnp.*
 
 bin
+
+# claude
+.claude/tsc-cache/**/*
+dev

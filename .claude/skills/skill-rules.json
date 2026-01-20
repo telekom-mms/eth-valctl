@@ -1,0 +1,260 @@
+{
+  "description": "Skill activation triggers for Claude Code. Controls when skills automatically suggest or block actions. Configured for Bun CLI and Ethereum development.",
+  "notes": {
+    "customization": {
+      "intentPatterns": "Use regex for flexible user intent matching",
+      "keywords": "Add domain-specific terms relevant to your project",
+      "pathPatterns": "Adjust to match your project structure"
+    },
+    "enforcement_types": {
+      "block": "Requires skill to be used before proceeding (guardrail)",
+      "suggest": "Skill suggestion appears but doesn't block execution",
+      "warn": "Shows warning but allows proceeding"
+    },
+    "priority_levels": {
+      "critical": "Highest - Always trigger when matched",
+      "high": "Important - Trigger for most matches",
+      "low": "Optional - Trigger only for explicit matches",
+      "medium": "Moderate - Trigger for clear matches"
+    }
+  },
+  "skills": {
+    "bun-cli-development": {
+      "description": "Bun runtime and CLI development patterns",
+      "enforcement": "suggest",
+      "fileTriggers": {
+        "contentPatterns": [
+          "from 'commander'",
+          "from 'chalk'",
+          "from 'prompts'",
+          "Bun\\.",
+          "process\\.exit",
+          "process\\.argv",
+          "bun build --compile"
+        ],
+        "pathExclusions": [
+          "**/*.test.ts",
+          "**/*.spec.ts",
+          "**/node_modules/**"
+        ],
+        "pathPatterns": [
+          "src/cli/**/*.ts",
+          "src/**/*.ts",
+          "*.ts"
+        ]
+      },
+      "priority": "high",
+      "promptTriggers": {
+        "intentPatterns": [
+          "(create|add|implement|build).*?(command|cli|option|flag)",
+          "(how to|best practice).*?(cli|bun|typescript)",
+          "(test|testing).*?(cli|command)",
+          "(build|compile|package).*?(binary|executable)",
+          "(setup|configure|init).*?(project|bun|typescript)"
+        ],
+        "keywords": [
+          "bun",
+          "cli",
+          "commander",
+          "typescript",
+          "build",
+          "package",
+          "binary",
+          "compile",
+          "native binary",
+          "bun:test",
+          "prompts",
+          "chalk",
+          "exit code",
+          "command line",
+          "setup",
+          "project setup",
+          "tsconfig",
+          "bunfig",
+          "directory structure",
+          "project structure"
+        ]
+      },
+      "type": "domain"
+    },
+    "clean-code": {
+      "description": "Clean code principles and code quality guidelines",
+      "enforcement": "suggest",
+      "fileTriggers": {
+        "pathExclusions": [
+          "**/*.test.ts",
+          "**/*.spec.ts",
+          "**/node_modules/**"
+        ],
+        "pathPatterns": [
+          "src/**/*.ts"
+        ]
+      },
+      "priority": "high",
+      "promptTriggers": {
+        "intentPatterns": [
+          "(implement|write|create|build|add).*?(feature|function|class|component|service)",
+          "(refactor|improve|clean up|optimize).*?code",
+          "(fix|resolve|debug).*?(bug|issue|error)",
+          "apply.*?(clean code|solid|dry|kiss)"
+        ],
+        "keywords": [
+          "implement",
+          "refactor",
+          "write code",
+          "create function",
+          "add feature",
+          "fix bug",
+          "clean code",
+          "code quality",
+          "DRY",
+          "SOLID",
+          "KISS"
+        ]
+      },
+      "type": "domain"
+    },
+    "ethereum-development": {
+      "description": "Ethereum validator management and blockchain development",
+      "enforcement": "suggest",
+      "fileTriggers": {
+        "contentPatterns": [
+          "ethers\\.",
+          "beacon",
+          "validator",
+          "withdrawal",
+          "consolidat",
+          "pubkey",
+          "Gwei",
+          "Wei",
+          "@chainsafe/blst"
+        ],
+        "pathExclusions": [
+          "**/*.test.ts",
+          "**/*.spec.ts"
+        ],
+        "pathPatterns": [
+          "src/service/domain/**/*.ts",
+          "src/service/validation/**/*.ts",
+          "src/model/ethereum.ts",
+          "src/network-config.ts",
+          "src/constants/application.ts"
+        ]
+      },
+      "priority": "high",
+      "promptTriggers": {
+        "intentPatterns": [
+          "(create|add|implement|build).*?(validator|ethereum|beacon|withdrawal)",
+          "(query|fetch|get).*?(validator|beacon|state)",
+          "(submit|send|broadcast).*?(transaction|request)",
+          "(validate|check).*?(pubkey|credentials|balance)",
+          "(consolidate|merge|combine).*?validator",
+          "(withdraw|exit).*?validator"
+        ],
+        "keywords": [
+          "ethereum",
+          "validator",
+          "beacon",
+          "withdrawal",
+          "consolidate",
+          "consolidation",
+          "exit",
+          "pubkey",
+          "rpc",
+          "json-rpc",
+          "beacon api",
+          "execution layer",
+          "consensus layer",
+          "pectra",
+          "EIP-7251",
+          "EIP-7002",
+          "BLS",
+          "signature",
+          "credentials",
+          "0x01",
+          "0x02",
+          "gwei",
+          "wei"
+        ]
+      },
+      "type": "domain"
+    },
+    "github-workflows": {
+      "description": "GitHub Actions workflows, CI/CD pipelines, automated testing, release automation",
+      "enforcement": "suggest",
+      "fileTriggers": {
+        "contentPatterns": [
+          "runs-on:",
+          "uses:",
+          "actions/checkout",
+          "actions/setup-node",
+          "on:\\s*\\n\\s*(push|pull_request)",
+          "jobs:",
+          "steps:",
+          "github\\.event",
+          "secrets\\."
+        ],
+        "pathPatterns": [
+          ".github/workflows/*.yaml",
+          ".github/workflows/*.yml",
+          ".github/actions/**/*",
+          ".releaserc.json",
+          ".releaserc",
+          ".releaserc.js"
+        ]
+      },
+      "priority": "high",
+      "promptTriggers": {
+        "intentPatterns": [
+          "(create|add|modify|update).*?(workflow|pipeline|ci|cd)",
+          "(setup|configure).*?(github actions|ci/cd|automation)",
+          "(automate|trigger).*?(build|test|release|deploy)",
+          "(fix|debug).*?(workflow|pipeline|action)",
+          "workflow.*?(fail|error|issue)"
+        ],
+        "keywords": [
+          "workflow",
+          "github actions",
+          "ci",
+          "cd",
+          "ci/cd",
+          "pipeline",
+          "release",
+          "semantic-release",
+          "pre-commit",
+          "matrix build",
+          "artifact",
+          "deployment",
+          "actions",
+          "runner",
+          "yaml workflow"
+        ]
+      },
+      "type": "domain"
+    },
+    "skill-developer": {
+      "description": "Meta-skill for creating and managing Claude Code skills",
+      "enforcement": "suggest",
+      "priority": "high",
+      "promptTriggers": {
+        "intentPatterns": [
+          "(how do|how does|explain).*?skill",
+          "(create|add|modify|build).*?skill",
+          "skill.*?(work|trigger|activate|system)"
+        ],
+        "keywords": [
+          "skill system",
+          "create skill",
+          "add skill",
+          "skill triggers",
+          "skill rules",
+          "hook system",
+          "skill development",
+          "skill-rules.json"
+        ]
+      },
+      "type": "domain"
+    }
+  },
+  "version": "1.0"
+}
