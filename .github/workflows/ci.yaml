@@ -44,10 +44,8 @@ jobs:
       - name: "Lint"
         run: "bun run lint"
 
-  # yamllint disable-line rule:comments-indentation
-      # Uncomment when tests are implemented
-      # - name: "Run tests"
-      #   run: "bun test"
+      - name: "Run tests"
+        run: "bun test"
 
   build-test:
     name: "Test Binary Build"

@@ -1,3 +1,9 @@
+/**
+ * CLI command for validator balance consolidation
+ *
+ * Creates execution layer consolidation requests (EIP-7251) to merge balances
+ * from source validators into a single target validator.
+ */
 import { Command } from 'commander';
 
 import type { ConsolidationOptions, GlobalCliOptions } from '../model/commander';
