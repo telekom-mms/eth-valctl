@@ -37,6 +37,8 @@ repos:
         args: ["--branch", "main"]
       - id: "requirements-txt-fixer"
         description: "Sorts entries in requirements.txt"
+      - id: "trailing-whitespace"
+        description: "Trims trailing whitespace"
   - repo: "https://github.com/adrienverge/yamllint.git"
     rev: "v1.38.0"
     hooks:

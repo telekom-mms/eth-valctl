@@ -20,14 +20,12 @@ participants:
     el_image: "nethermind/nethermind:${NETHERMIND_IMAGE_TAG}"
     cl_type: "nimbus"
     cl_image: "statusim/nimbus-eth2:${NIMBUS_IMAGE_TAG}"
-    validator_count: 6
   - el_type: "besu"
     el_image: "hyperledger/besu:${BESU_IMAGE_TAG}"
     cl_type: "teku"
     cl_image: "consensys/teku:${TEKU_IMAGE_TAG}"
-    validator_count: 10
 network_params:
-  num_validator_keys_per_node: 200
+  num_validator_keys_per_node: 300
   min_validator_withdrawability_delay: 1
   shard_committee_period: 1
   churn_limit_quotient: 16
