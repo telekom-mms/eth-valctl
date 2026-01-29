@@ -29,6 +29,7 @@ const networkOptionName = 'network';
 const jsonRpcOptionName = 'json-rpc-url';
 const beaconApiOptionName = 'beacon-api-url';
 const maxRequestsPerBlockOptionName = 'max-requests-per-block';
+const ledgerOptionName = 'ledger';
 
 program
   .name('eth-valctl')
@@ -60,6 +61,11 @@ program
     'Max. number of sent execution layer requests per block',
     parseAndValidateMaxNumberOfRequestsPerBlock,
     10
+  )
+  .option(
+    `-l, --${ledgerOptionName}`,
+    'Use Ledger hardware wallet for transaction signing (requires device connection)',
+    false
   )
   .hook('preAction', (thisCommand) => {
     console.log(chalk.yellow(DISCLAIMER_INFO));

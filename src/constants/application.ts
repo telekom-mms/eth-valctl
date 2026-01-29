@@ -41,9 +41,25 @@ export const WITHDRAWAL_CREDENTIALS_0x02 = '0x02';
 
 /** Beacon API endpoints */
 export const VALIDATOR_STATE_BEACON_API_ENDPOINT = '/eth/v1/beacon/states/head/validators/';
+export const GENESIS_BEACON_API_ENDPOINT = '/eth/v1/beacon/genesis';
+
+/** Beacon chain timing constants */
+export const SECONDS_PER_SLOT = 12;
+export const SLOT_BOUNDARY_THRESHOLD = 10;
+
+/**
+ * Buffer time in milliseconds after slot boundary to account for network propagation
+ */
+export const SLOT_BOUNDARY_BUFFER_MS = 500;
+
+/** Validator pubkey constants */
+export const VALIDATOR_PUBKEY_HEX_LENGTH = 98;
 
 /** General */
 export const PREFIX_0x = '0x';
+
+/** Time conversion */
+export const MS_PER_SECOND = 1000;
 
 /** System contract addresses */
 export const CONSOLIDATION_CONTRACT_ADDRESS = '0x0000BBdDc7CE488642fb579F8B00f3a590007251';

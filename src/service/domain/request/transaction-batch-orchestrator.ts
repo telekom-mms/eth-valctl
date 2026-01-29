@@ -8,6 +8,7 @@ import type {
   TransactionRetryResult
 } from '../../../model/ethereum';
 import { BlockchainStateError } from '../../../model/ethereum';
+import { extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
 import { EthereumStateService } from './ethereum-state-service';
 import { TransactionBroadcaster } from './transaction-broadcaster';
 import { TransactionMonitor } from './transaction-monitor';
@@ -106,7 +107,7 @@ export class TransactionBatchOrchestrator {
     if (exhaustedTransactions.length > 0) {
       this.logger.logMaxRetriesExceeded(exhaustedTransactions);
       const exhaustedRetryPubkeys = exhaustedTransactions.map((tx) =>
-        this.extractSourceValidatorPubkey(tx.data)
+        extractValidatorPubkey(tx.data)
       );
       return [...failedValidatorPubkeys, ...exhaustedRetryPubkeys];
     }
@@ -331,15 +332,4 @@ export class TransactionBatchOrchestrator {
     );
   }
 
-  /**
-   * Extract source validator pubkey from execution layer request data
-   *
-   * Request data format: 0x + source_pubkey (96 hex chars) + optional target_pubkey (96 hex chars)
-   *
-   * @param encodedRequestData - Encoded execution layer request data
-   * @returns Source validator public key with 0x prefix
-   */
-  private extractSourceValidatorPubkey(encodedRequestData: string): string {
-    return encodedRequestData.slice(0, 98);
-  }
 }

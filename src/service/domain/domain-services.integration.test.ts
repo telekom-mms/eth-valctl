@@ -1,14 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
-import type { JsonRpcProvider, NonceManager } from 'ethers';
+import type { JsonRpcProvider } from 'ethers';
 
 import { CONSOLIDATION_CONTRACT_ADDRESS, WITHDRAWAL_CONTRACT_ADDRESS } from '../../constants/application';
 import type { GlobalCliOptions } from '../../model/commander';
+import type { ISigner } from './signer';
 
 const mockProvider = {} as JsonRpcProvider;
-const mockWallet = {} as NonceManager;
+const mockSigner = {
+  capabilities: { supportsParallelSigning: true, requiresUserInteraction: false, signerType: 'wallet' },
+  address: '0xMockAddress',
+  sendTransaction: mock(() => Promise.resolve({ hash: '0xhash', nonce: 1 })),
+  sendTransactionWithNonce: mock(() => Promise.resolve({ hash: '0xhash', nonce: 1 })),
+  getCurrentNonce: mock(() => Promise.resolve(0)),
+  incrementNonce: mock(),
+  dispose: mock(() => Promise.resolve())
+} as unknown as ISigner;
 
 const mockCreateEthereumConnection = mock(() =>
-  Promise.resolve({ provider: mockProvider, wallet: mockWallet })
+  Promise.resolve({ provider: mockProvider, signer: mockSigner })
 );
 
 const mockSendExecutionLayerRequests = mock(() => Promise.resolve());
@@ -36,6 +45,7 @@ const createGlobalOptions = (overrides?: Partial<GlobalCliOptions>): GlobalCliOp
   jsonRpcUrl: 'http://localhost:8545',
   beaconApiUrl: 'http://localhost:5052',
   maxRequestsPerBlock: 10,
+  ledger: false,
   ...overrides
 });
 
@@ -65,7 +75,7 @@ describe('Domain Services Integration Tests', () => {
 
       await consolidate(options, [VALID_PUBKEY], VALID_TARGET_PUBKEY);
 
-      expect(mockCreateEthereumConnection).toHaveBeenCalledWith('http://custom:8545');
+      expect(mockCreateEthereumConnection).toHaveBeenCalledWith('http://custom:8545', 'wallet');
     });
 
     it('checks withdrawal credential type for target validator when provided', async () => {
@@ -95,9 +105,10 @@ describe('Domain Services Integration Tests', () => {
       expect(mockSendExecutionLayerRequests).toHaveBeenCalledWith(
         CONSOLIDATION_CONTRACT_ADDRESS,
         mockProvider,
-        mockWallet,
+        mockSigner,
         expect.any(Array),
-        options.maxRequestsPerBlock
+        options.maxRequestsPerBlock,
+        options.beaconApiUrl
       );
     });
 
@@ -112,7 +123,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         expect.anything(),
         [expectedData],
-        expect.any(Number)
+        expect.any(Number),
+        expect.any(String)
       );
     });
 
@@ -127,7 +139,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         expect.anything(),
         [expectedData],
-        expect.any(Number)
+        expect.any(Number),
+        expect.any(String)
       );
     });
 
@@ -144,7 +157,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         expect.anything(),
         [expectedData1, expectedData2],
-        expect.any(Number)
+        expect.any(Number),
+        expect.any(String)
       );
     });
 
@@ -158,7 +172,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         expect.anything(),
         expect.any(Array),
-        5
+        5,
+        expect.any(String)
       );
     });
   });
@@ -169,7 +184,7 @@ describe('Domain Services Integration Tests', () => {
 
       await withdraw(options, [VALID_PUBKEY], 1);
 
-      expect(mockCreateEthereumConnection).toHaveBeenCalledWith('http://custom:8545');
+      expect(mockCreateEthereumConnection).toHaveBeenCalledWith('http://custom:8545', 'wallet');
     });
 
     it('checks withdrawal credential type when amount is positive', async () => {
@@ -199,9 +214,10 @@ describe('Domain Services Integration Tests', () => {
       expect(mockSendExecutionLayerRequests).toHaveBeenCalledWith(
         WITHDRAWAL_CONTRACT_ADDRESS,
         mockProvider,
-        mockWallet,
+        mockSigner,
         expect.any(Array),
-        options.maxRequestsPerBlock
+        options.maxRequestsPerBlock,
+        options.beaconApiUrl
       );
     });
 
@@ -217,7 +233,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         expect.anything(),
         [expectedData],
-        expect.any(Number)
+        expect.any(Number),
+        expect.any(String)
       );
     });
 
@@ -232,7 +249,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         expect.anything(),
         [expectedData],
-        expect.any(Number)
+        expect.any(Number),
+        expect.any(String)
       );
     });
 
@@ -248,7 +266,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         expect.anything(),
         [expectedData],
-        expect.any(Number)
+        expect.any(Number),
+        expect.any(String)
       );
     });
 
@@ -263,7 +282,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         expect.anything(),
         expect.arrayContaining([expect.stringContaining('ab'.repeat(48)), expect.stringContaining('ef'.repeat(48))]),
-        expect.any(Number)
+        expect.any(Number),
+        expect.any(String)
       );
     });
   });
@@ -288,7 +308,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         expect.anything(),
         [expectedData],
-        expect.any(Number)
+        expect.any(Number),
+        expect.any(String)
       );
     });
 
@@ -314,7 +335,8 @@ describe('Domain Services Integration Tests', () => {
           expect.stringContaining('ab'.repeat(48)),
           expect.stringContaining('ef'.repeat(48))
         ]),
-        expect.any(Number)
+        expect.any(Number),
+        expect.any(String)
       );
     });
   });
@@ -331,7 +353,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         expect.anything(),
         [expectedData],
-        expect.any(Number)
+        expect.any(Number),
+        expect.any(String)
       );
     });
 
@@ -356,7 +379,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         expect.anything(),
         [expectedData1, expectedData2],
-        expect.any(Number)
+        expect.any(Number),
+        expect.any(String)
       );
     });
   });
@@ -375,7 +399,8 @@ describe('Domain Services Integration Tests', () => {
           expect.anything(),
           expect.anything(),
           expect.any(Array),
-          expect.any(Number)
+          expect.any(Number),
+          expect.any(String)
         );
       });
     }
