@@ -45,6 +45,12 @@ export const FAILED_TO_FETCH_NETWORK_FEES_FOR_LOG_ERROR =
 /** Info logs */
 export const BROADCASTING_EL_REQUEST_INFO = 'Broadcasting execution layer request:';
 export const MINED_EL_REQUEST_INFO = 'Mined execution layer request:';
+export const MINED_EL_REQUEST_WITH_BLOCK_INFO = (hash: string, blockNumber: number): string =>
+  `Mined execution layer request: ${hash} in block ${blockNumber}`;
+export const BROADCAST_START_SEQUENTIAL_INFO = (count: number, maxFeePerGasGwei: string): string =>
+  `📤 Broadcasting ${count} execution layer request${count > 1 ? 's' : ''} sequentially (max fee per gas: ${maxFeePerGasGwei} Gwei)...`;
+export const SLOT_BOUNDARY_WAIT_INFO = (secondsUntilNextSlot: number): string =>
+  `⏳ Near slot boundary, waiting ${secondsUntilNextSlot}s for next slot...`;
 export const PROMPT_PRIVATE_KEY_INFO = 'Private key for 0x01 or 0x02 withdrawal credentials:';
 export const DISCLAIMER_INFO =
   'The eth-valctl is in active development and currently missing most pre-transaction checks (see here: https://github.com/TobiWo/eth-valctl/issues/14). Please double-check your inputs before executing a command.';
@@ -94,3 +100,18 @@ export const WRONG_WITHDRAWAL_CREDENTIALS_0x00_ERROR = `You cannot directly chan
 Please follow the instructions here: https://github.com/ethereum/staking-deposit-cli?tab=readme-ov-file#generate-bls-to-execution-change-arguments or other respective documentation.`;
 export const WRONG_WITHDRAWAL_CREDENTIALS_0X01_ERROR =
   "You can change the withdrawal credential type from 0x01 to 0x02 while using the 'switch' subcommand.";
+
+/** Ledger hardware wallet messages */
+export const LEDGER_CONNECTING_INFO = 'Connecting to Ledger device...';
+export const LEDGER_CONNECTED_INFO = (address: string): string =>
+  `Ledger connected. Using address: ${address}`;
+export const LEDGER_DISCONNECTED_INFO = 'Ledger device disconnected.';
+export const LEDGER_CONNECTION_ERROR =
+  'Failed to connect to Ledger device. Ensure the device is connected and the Ethereum app is open.';
+export const LEDGER_SIGN_PROMPT = (
+  currentIndex: number,
+  totalCount: number,
+  validatorPubkey: string
+): string =>
+  `[${currentIndex}/${totalCount}] Please confirm transaction on Ledger for validator ${validatorPubkey.slice(0, 10)}...${validatorPubkey.slice(-8)}`;
+export const LEDGER_SIGN_GENERIC_PROMPT = 'Please confirm transaction on Ledger device...';

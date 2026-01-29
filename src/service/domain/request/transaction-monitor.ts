@@ -137,7 +137,14 @@ export class TransactionMonitor {
    */
   private shouldRetryTransaction(result: ReceiptCheckResult): boolean {
     if (result.status.type === TransactionStatusType.MINED) {
-      console.log(chalk.green(logging.MINED_EL_REQUEST_INFO, result.status.receipt.hash));
+      console.log(
+        chalk.green(
+          logging.MINED_EL_REQUEST_WITH_BLOCK_INFO(
+            result.status.receipt.hash,
+            result.status.receipt.blockNumber
+          )
+        )
+      );
       return false;
     }
     if (result.status.type === TransactionStatusType.REVERTED) {

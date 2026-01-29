@@ -22,7 +22,8 @@ export async function withdraw(
   if (amount > 0) {
     checkWithdrawalCredentialType(globalOptions.beaconApiUrl, validatorPubkeys);
   }
-  const ethereumConnection = await createEthereumConnection(globalOptions.jsonRpcUrl);
+  const signerType = globalOptions.ledger ? 'ledger' : 'wallet';
+  const ethereumConnection = await createEthereumConnection(globalOptions.jsonRpcUrl, signerType);
   const withdrawalRequestData: string[] = [];
   for (const validator of validatorPubkeys) {
     withdrawalRequestData.push(createWithdrawRequestData(validator, amount));
@@ -30,9 +31,10 @@ export async function withdraw(
   await sendExecutionLayerRequests(
     networkConfig[globalOptions.network]!.withdrawalContractAddress,
     ethereumConnection.provider,
-    ethereumConnection.wallet,
+    ethereumConnection.signer,
     withdrawalRequestData,
-    globalOptions.maxRequestsPerBlock
+    globalOptions.maxRequestsPerBlock,
+    globalOptions.beaconApiUrl
   );
 }
 

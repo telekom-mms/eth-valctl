@@ -1,5 +1,5 @@
-import { afterEach,beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
-import type { NonceManager, TransactionResponse, Wallet } from 'ethers';
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import type { TransactionResponse } from 'ethers';
 
 import {
   NONCE_EXPIRED_ERROR_CODE,
@@ -12,6 +12,7 @@ import type {
   TransactionStatus
 } from '../../../model/ethereum';
 import { TransactionStatusType } from '../../../model/ethereum';
+import type { ISigner } from '../signer';
 import type { EthereumStateService } from './ethereum-state-service';
 import type { TransactionBroadcaster } from './transaction-broadcaster';
 import type { TransactionMonitor } from './transaction-monitor';
@@ -20,8 +21,14 @@ import { TransactionReplacer } from './transaction-replacer';
 
 const createMockSigner = (overrides?: {
   sendTransaction?: ReturnType<typeof mock>;
-}): Wallet => {
+  sendTransactionWithNonce?: ReturnType<typeof mock>;
+}): ISigner => {
   return {
+    capabilities: {
+      supportsParallelSigning: true,
+      requiresUserInteraction: false,
+      signerType: 'wallet'
+    },
     address: '0xWalletAddress',
     sendTransaction:
       overrides?.sendTransaction ??
@@ -30,25 +37,19 @@ const createMockSigner = (overrides?: {
           hash: '0xnewhash',
           nonce: 1
         } as TransactionResponse)
-      )
-  } as unknown as Wallet;
-};
-
-const createMockWallet = (overrides?: {
-  signer?: Wallet;
-  sendTransaction?: ReturnType<typeof mock>;
-}): NonceManager => {
-  return {
-    signer: overrides?.signer ?? createMockSigner(),
-    sendTransaction:
-      overrides?.sendTransaction ??
+      ),
+    sendTransactionWithNonce:
+      overrides?.sendTransactionWithNonce ??
       mock(() =>
         Promise.resolve({
           hash: '0xnewhash',
           nonce: 1
         } as TransactionResponse)
-      )
-  } as unknown as NonceManager;
+      ),
+    getCurrentNonce: mock(() => Promise.resolve(0)),
+    incrementNonce: mock(),
+    dispose: mock(() => Promise.resolve())
+  } as unknown as ISigner;
 };
 
 const createMockBlockchainStateService = (
@@ -140,7 +141,7 @@ describe('TransactionReplacer', () => {
 
         const mockLogger = createMockLogger();
         const replacer = new TransactionReplacer(
-          createMockWallet(),
+          createMockSigner(),
           createMockBlockchainStateService(),
           createMockTransactionBroadcaster(),
           createMockTransactionMonitor(statusMap),
@@ -162,13 +163,13 @@ describe('TransactionReplacer', () => {
         statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
 
         const mockSigner = createMockSigner({
-          sendTransaction: mock(() =>
+          sendTransactionWithNonce: mock(() =>
             Promise.reject({ code: REPLACEMENT_UNDERPRICED_ERROR_CODE })
           )
         });
         const mockLogger = createMockLogger();
         const replacer = new TransactionReplacer(
-          createMockWallet({ signer: mockSigner }),
+          mockSigner,
           createMockBlockchainStateService(),
           createMockTransactionBroadcaster(),
           createMockTransactionMonitor(statusMap),
@@ -189,11 +190,11 @@ describe('TransactionReplacer', () => {
         statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
 
         const mockSigner = createMockSigner({
-          sendTransaction: mock(() => Promise.reject(new Error('Unknown error')))
+          sendTransactionWithNonce: mock(() => Promise.reject(new Error('Unknown error')))
         });
         const mockLogger = createMockLogger();
         const replacer = new TransactionReplacer(
-          createMockWallet({ signer: mockSigner }),
+          mockSigner,
           createMockBlockchainStateService(),
           createMockTransactionBroadcaster(),
           createMockTransactionMonitor(statusMap),
@@ -218,7 +219,7 @@ describe('TransactionReplacer', () => {
 
         const mockLogger = createMockLogger();
         const replacer = new TransactionReplacer(
-          createMockWallet(),
+          createMockSigner(),
           createMockBlockchainStateService(),
           createMockTransactionBroadcaster(),
           createMockTransactionMonitor(statusMap),
@@ -240,9 +241,14 @@ describe('TransactionReplacer', () => {
         const statusMap = new Map<string, TransactionStatus>();
         statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
 
-        const mockSigner = createMockSigner();
+        const mockSendTransactionWithNonce = mock(() =>
+          Promise.resolve({ hash: '0xnewhash', nonce: 1 } as TransactionResponse)
+        );
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mockSendTransactionWithNonce
+        });
         const replacer = new TransactionReplacer(
-          createMockWallet({ signer: mockSigner }),
+          mockSigner,
           createMockBlockchainStateService({ maxFeePerGas: 500n, maxPriorityFeePerGas: 50n }),
           createMockTransactionBroadcaster(),
           createMockTransactionMonitor(statusMap),
@@ -253,11 +259,13 @@ describe('TransactionReplacer', () => {
 
         await replacer.replaceTransactions([tx], 1n, 101);
 
-        expect(mockSigner.sendTransaction).toHaveBeenCalledWith(
+        expect(mockSendTransactionWithNonce).toHaveBeenCalledWith(
           expect.objectContaining({
             maxFeePerGas: 1120n,
             maxPriorityFeePerGas: 112n
-          })
+          }),
+          1,
+          undefined
         );
       });
 
@@ -265,9 +273,14 @@ describe('TransactionReplacer', () => {
         const statusMap = new Map<string, TransactionStatus>();
         statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
 
-        const mockSigner = createMockSigner();
+        const mockSendTransactionWithNonce = mock(() =>
+          Promise.resolve({ hash: '0xnewhash', nonce: 1 } as TransactionResponse)
+        );
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mockSendTransactionWithNonce
+        });
         const replacer = new TransactionReplacer(
-          createMockWallet({ signer: mockSigner }),
+          mockSigner,
           createMockBlockchainStateService({ maxFeePerGas: 1000n, maxPriorityFeePerGas: 100n }),
           createMockTransactionBroadcaster(),
           createMockTransactionMonitor(statusMap),
@@ -278,11 +291,13 @@ describe('TransactionReplacer', () => {
 
         await replacer.replaceTransactions([tx], 1n, 101);
 
-        expect(mockSigner.sendTransaction).toHaveBeenCalledWith(
+        expect(mockSendTransactionWithNonce).toHaveBeenCalledWith(
           expect.objectContaining({
             maxFeePerGas: 1120n,
             maxPriorityFeePerGas: 112n
-          })
+          }),
+          1,
+          undefined
         );
       });
 
@@ -290,9 +305,14 @@ describe('TransactionReplacer', () => {
         const statusMap = new Map<string, TransactionStatus>();
         statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
 
-        const mockSigner = createMockSigner();
+        const mockSendTransactionWithNonce = mock(() =>
+          Promise.resolve({ hash: '0xnewhash', nonce: 1 } as TransactionResponse)
+        );
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mockSendTransactionWithNonce
+        });
         const replacer = new TransactionReplacer(
-          createMockWallet({ signer: mockSigner }),
+          mockSigner,
           createMockBlockchainStateService(),
           createMockTransactionBroadcaster(),
           createMockTransactionMonitor(statusMap),
@@ -303,11 +323,13 @@ describe('TransactionReplacer', () => {
 
         await replacer.replaceTransactions([tx], 1n, 101);
 
-        expect(mockSigner.sendTransaction).toHaveBeenCalledWith(
+        expect(mockSendTransactionWithNonce).toHaveBeenCalledWith(
           expect.objectContaining({
             maxFeePerGas: 1120n,
             maxPriorityFeePerGas: 112n
-          })
+          }),
+          1,
+          undefined
         );
       });
     });
@@ -318,11 +340,11 @@ describe('TransactionReplacer', () => {
         statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
 
         const mockSigner = createMockSigner({
-          sendTransaction: mock(() => Promise.reject({ code: NONCE_EXPIRED_ERROR_CODE }))
+          sendTransactionWithNonce: mock(() => Promise.reject({ code: NONCE_EXPIRED_ERROR_CODE }))
         });
         const mockLogger = createMockLogger();
         const replacer = new TransactionReplacer(
-          createMockWallet({ signer: mockSigner }),
+          mockSigner,
           createMockBlockchainStateService(),
           createMockTransactionBroadcaster(),
           createMockTransactionMonitor(statusMap),
@@ -350,7 +372,7 @@ describe('TransactionReplacer', () => {
 
         const mockLogger = createMockLogger();
         const replacer = new TransactionReplacer(
-          createMockWallet(),
+          createMockSigner(),
           createMockBlockchainStateService(),
           createMockTransactionBroadcaster(),
           createMockTransactionMonitor(statusMap),
@@ -371,7 +393,7 @@ describe('TransactionReplacer', () => {
 
         const mockLogger = createMockLogger();
         const replacer = new TransactionReplacer(
-          createMockWallet(),
+          createMockSigner(),
           createMockBlockchainStateService(),
           createMockTransactionBroadcaster(),
           createMockTransactionMonitor(statusMap),
@@ -395,10 +417,15 @@ describe('TransactionReplacer', () => {
           receipt: { hash: '0xhash1', status: 0 } as never
         });
 
-        const mockWallet = createMockWallet();
+        const mockSendTransaction = mock(() =>
+          Promise.resolve({ hash: '0xnewhash', nonce: 1 } as TransactionResponse)
+        );
+        const mockSigner = createMockSigner({
+          sendTransaction: mockSendTransaction
+        });
         const mockLogger = createMockLogger();
         const replacer = new TransactionReplacer(
-          mockWallet,
+          mockSigner,
           createMockBlockchainStateService(),
           createMockTransactionBroadcaster(),
           createMockTransactionMonitor(statusMap),
@@ -409,17 +436,22 @@ describe('TransactionReplacer', () => {
 
         await replacer.replaceTransactions([tx], 1n, 101);
 
-        expect(mockWallet.sendTransaction).toHaveBeenCalled();
+        expect(mockSendTransaction).toHaveBeenCalled();
       });
 
       it('categorizes PENDING transactions and replaces with same nonce', async () => {
         const statusMap = new Map<string, TransactionStatus>();
         statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
 
-        const mockSigner = createMockSigner();
+        const mockSendTransactionWithNonce = mock(() =>
+          Promise.resolve({ hash: '0xnewhash', nonce: 1 } as TransactionResponse)
+        );
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mockSendTransactionWithNonce
+        });
         const mockLogger = createMockLogger();
         const replacer = new TransactionReplacer(
-          createMockWallet({ signer: mockSigner }),
+          mockSigner,
           createMockBlockchainStateService(),
           createMockTransactionBroadcaster(),
           createMockTransactionMonitor(statusMap),
@@ -430,8 +462,10 @@ describe('TransactionReplacer', () => {
 
         await replacer.replaceTransactions([tx], 1n, 101);
 
-        expect(mockSigner.sendTransaction).toHaveBeenCalledWith(
-          expect.objectContaining({ nonce: 1 })
+        expect(mockSendTransactionWithNonce).toHaveBeenCalledWith(
+          expect.anything(),
+          1,
+          undefined
         );
       });
     });
@@ -446,7 +480,7 @@ describe('TransactionReplacer', () => {
         });
 
         const replacer = new TransactionReplacer(
-          createMockWallet(),
+          createMockSigner(),
           createMockBlockchainStateService(),
           createMockTransactionBroadcaster(),
           createMockTransactionMonitor(statusMap),
@@ -470,7 +504,7 @@ describe('TransactionReplacer', () => {
         });
 
         const replacer = new TransactionReplacer(
-          createMockWallet(),
+          createMockSigner(),
           createMockBlockchainStateService(),
           createMockTransactionBroadcaster(),
           createMockTransactionMonitor(statusMap),

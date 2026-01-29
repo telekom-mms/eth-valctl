@@ -15,8 +15,12 @@ const createMockProvider = (overrides?: {
   } as unknown as JsonRpcProvider;
 };
 
-const createMockReceipt = (status: number, hash = '0xabc123'): TransactionReceipt => {
-  return { status, hash } as unknown as TransactionReceipt;
+const createMockReceipt = (
+  status: number,
+  hash = '0xabc123',
+  blockNumber = 100
+): TransactionReceipt => {
+  return { status, hash, blockNumber } as unknown as TransactionReceipt;
 };
 
 const createMockTransactionResponse = (

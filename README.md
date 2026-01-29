@@ -2,7 +2,7 @@
 
 CLI tool for managing Ethereum validators via execution layer requests. This cli currently only supports validator related features included in the Pectra hardfork. This might change in the future. The tool is especially useful if you need to manage multiple validators at once.
 
-Currently it only supports private keys as secret. This will change soon with e.g. hardware ledger support.
+Supports both private key signing (default) and Ledger hardware wallet signing via the `--ledger` flag.
 
 **Please find the latest [release here](https://github.com/TobiWo/eth-valctl/releases).**
 
@@ -20,7 +20,7 @@ Currently it only supports private keys as secret. This will change soon with e.
 - Partially withdraw ETH from one or many validators
 - Exit one or many validators
 
-**Note: The application will request the secret e.g. the private key during runtime. You do not need to put the secret into the start command.**
+**Note: When using private key signing (default), the application will request the private key during runtime. You do not need to put the secret into the start command. When using `--ledger`, ensure your Ledger device is connected with the Ethereum app open.**
 
 ## Available cli options and commands
 
@@ -28,12 +28,13 @@ Print the help message with `--help`. This works also for every subcommand.
 
 ### Global Options
 
-| Short Option | Long Option              | Description                                                                                      |
-| ------------ | ------------------------ | ------------------------------------------------------------------------------------------------ |
-| -n           | --network                | The network name which you want to connect to                                                    |
-| -r           | --json-rpc-url           | The json rpc endpoint which is used for sending execution layer requests                         |
-| -b           | --beacon-api-url         | The beacon api endpoint which is used for sanity checks like e.g.checking withdrawal credentials |
-| -m           | --max-requests-per-block | The max. number of EL requests which are tried to be packaged into one block                     |
+| Short Option | Long Option | Description |
+| --- | --- | --- |
+| -n | --network | The network name which you want to connect to |
+| -r | --json-rpc-url | The json rpc endpoint which is used for sending execution layer requests |
+| -b | --beacon-api-url | The beacon api endpoint which is used for sanity checks like e.g.checking withdrawal credentials |
+| -m | --max-requests-per-block | The max. number of EL requests which are tried to be packaged into one block |
+| | --ledger | Use Ledger hardware wallet for signing (requires Ledger device with Ethereum app) |
 
 ### Switch
 

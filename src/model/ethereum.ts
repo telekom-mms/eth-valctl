@@ -1,4 +1,23 @@
-import { JsonRpcProvider, NonceManager, TransactionReceipt, TransactionResponse } from 'ethers';
+import type { JsonRpcProvider, TransactionReceipt, TransactionResponse } from 'ethers';
+
+import type { ISigner } from '../service/domain/signer';
+
+/**
+ * Signer type for transaction signing
+ */
+export type SignerType = 'wallet' | 'ledger';
+
+/**
+ * Context for signing operations (used for user prompts with hardware wallets)
+ */
+export interface SigningContext {
+  /** Current transaction index (1-based) */
+  currentIndex: number;
+  /** Total number of transactions to sign */
+  totalCount: number;
+  /** Validator public key for this transaction */
+  validatorPubkey: string;
+}
 
 export enum TransactionStatusType {
   MINED = 'mined',
@@ -14,8 +33,11 @@ export enum TransactionReplacementStatusType {
   ALREADY_MINED = 'already_mined'
 }
 
+/**
+ * Connection to Ethereum network with signer abstraction
+ */
 export interface EthereumConnection {
-  wallet: NonceManager;
+  signer: ISigner;
   provider: JsonRpcProvider;
 }
 
@@ -123,6 +145,26 @@ export interface CategorizedTransactions {
   mined: TransactionReplacementResult[];
   reverted: PendingTransactionInfo[];
   pending: PendingTransactionInfo[];
+}
+
+/**
+ * Beacon API genesis response structure
+ */
+export interface GenesisResponse {
+  data: {
+    genesis_time: string;
+    genesis_validators_root: string;
+    genesis_fork_version: string;
+  };
+}
+
+/**
+ * Current slot position within the beacon chain
+ */
+export interface SlotPosition {
+  currentSlot: number;
+  secondInSlot: number;
+  secondsUntilNextSlot: number;
 }
 
 export class BlockchainStateError extends Error {

@@ -29,7 +29,7 @@ export class TransactionProgressLogger {
   }
 
   /**
-   * Log start of transaction broadcast with network context
+   * Log start of transaction broadcast with network context (parallel mode)
    *
    * @param count - Number of transactions being broadcast
    * @param blockNumber - Target block number
@@ -37,6 +37,16 @@ export class TransactionProgressLogger {
    */
   logBroadcastStart(count: number, blockNumber: number, maxFeePerGasInGwei: string): void {
     console.log(chalk.cyan(logging.BROADCAST_START_INFO(count, blockNumber, maxFeePerGasInGwei)));
+  }
+
+  /**
+   * Log start of transaction broadcast for sequential mode (Ledger)
+   *
+   * @param count - Number of transactions being broadcast
+   * @param maxFeePerGasInGwei - Current max fee per gas in gwei
+   */
+  logBroadcastStartSequential(count: number, maxFeePerGasInGwei: string): void {
+    console.log(chalk.cyan(logging.BROADCAST_START_SEQUENTIAL_INFO(count, maxFeePerGasInGwei)));
   }
 
   /**

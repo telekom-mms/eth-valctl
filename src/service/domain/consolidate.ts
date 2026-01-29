@@ -24,7 +24,8 @@ export async function consolidate(
     await checkWithdrawalCredentialType(globalOptions.beaconApiUrl, [targetValidatorPubkey]);
     logConsolidationWarning();
   }
-  const ethereumConnection = await createEthereumConnection(globalOptions.jsonRpcUrl);
+  const signerType = globalOptions.ledger ? 'ledger' : 'wallet';
+  const ethereumConnection = await createEthereumConnection(globalOptions.jsonRpcUrl, signerType);
   const consolidationRequestData: string[] = [];
   for (const sourceValidator of sourceValidatorPubkeys) {
     const request = createConsolidationRequestData(sourceValidator, targetValidatorPubkey);
@@ -33,9 +34,10 @@ export async function consolidate(
   await sendExecutionLayerRequests(
     networkConfig[globalOptions.network]!.consolidationContractAddress,
     ethereumConnection.provider,
-    ethereumConnection.wallet,
+    ethereumConnection.signer,
     consolidationRequestData,
-    globalOptions.maxRequestsPerBlock
+    globalOptions.maxRequestsPerBlock,
+    globalOptions.beaconApiUrl
   );
 }
 
