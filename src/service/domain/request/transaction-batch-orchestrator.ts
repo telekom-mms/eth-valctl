@@ -133,7 +133,7 @@ export class TransactionBatchOrchestrator {
     let currentBlockNumber = initialBlockNumber;
     let retryCount = 0;
 
-    while (this.shouldContinueRetrying(pendingTransactions.length, retryCount)) {
+    while (pendingTransactions.length > 0 && retryCount < serviceConstants.MAX_TRANSACTION_RETRIES) {
       const unresolvedTransactions =
         await this.checkAndExtractUnresolvedTransactions(pendingTransactions);
 
@@ -185,7 +185,7 @@ export class TransactionBatchOrchestrator {
       return basicTransactionRetryResult;
     }
 
-    if (this.hasBlockChanged(currentBlockNumber, newBlockNumber)) {
+    if (newBlockNumber > currentBlockNumber) {
       return await this.handleBlockChange(newBlockNumber, unresolvedTransactions);
     }
 
@@ -285,17 +285,6 @@ export class TransactionBatchOrchestrator {
   }
 
   /**
-   * Determine if retry loop should continue
-   *
-   * @param pendingTransactionCount - Number of pending transactions
-   * @param retryCount - Current retry attempt count
-   * @returns True if should continue retrying
-   */
-  private shouldContinueRetrying(pendingTransactionCount: number, retryCount: number): boolean {
-    return pendingTransactionCount > 0 && retryCount < serviceConstants.MAX_TRANSACTION_RETRIES;
-  }
-
-  /**
    * Split array of request data into batches of specified size
    *
    * @param requestData - Array of request data to split
@@ -308,17 +297,6 @@ export class TransactionBatchOrchestrator {
       batches.push(requestData.slice(i, i + batchSize));
     }
     return batches;
-  }
-
-  /**
-   * Check if block number has changed
-   *
-   * @param currentBlockNumber - Previously known block number
-   * @param newBlockNumber - Newly fetched block number
-   * @returns True if block has advanced
-   */
-  private hasBlockChanged(currentBlockNumber: number, newBlockNumber: number): boolean {
-    return newBlockNumber > currentBlockNumber;
   }
 
   /**

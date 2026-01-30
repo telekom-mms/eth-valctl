@@ -9,7 +9,7 @@ import type { JsonRpcProvider, TransactionResponse } from 'ethers';
 
 import * as logging from '../../../constants/logging';
 import type { ExecutionLayerRequestTransaction, SigningContext } from '../../../model/ethereum';
-import type { ISigner, SignerCapabilities } from './signer.interface';
+import type { IInteractiveSigner, SignerCapabilities } from './signer.interface';
 
 const DEFAULT_DERIVATION_PATH = "44'/60'/0'/0/0";
 
@@ -19,7 +19,7 @@ const DEFAULT_DERIVATION_PATH = "44'/60'/0'/0/0";
  * Requires user interaction for each transaction signing.
  * Does not support parallel signing due to single-threaded device communication.
  */
-export class LedgerSigner implements ISigner {
+export class LedgerSigner implements IInteractiveSigner {
   readonly capabilities: SignerCapabilities = {
     supportsParallelSigning: false,
     requiresUserInteraction: true,
@@ -111,6 +111,13 @@ export class LedgerSigner implements ISigner {
     nonce: number,
     context?: SigningContext
   ): Promise<TransactionResponse> {
+    this.promptUserForSigning(context);
+    const { txData, common } = await this.buildUnsignedTransaction(tx, nonce);
+    const serializedTx = await this.signWithLedger(txData, common);
+    return await this.provider.broadcastTransaction(serializedTx);
+  }
+
+  private promptUserForSigning(context?: SigningContext): void {
     if (context) {
       console.log(
         chalk.cyan(
@@ -124,7 +131,23 @@ export class LedgerSigner implements ISigner {
     } else {
       console.log(chalk.cyan(logging.LEDGER_SIGN_GENERIC_PROMPT));
     }
+  }
 
+  private async buildUnsignedTransaction(
+    tx: ExecutionLayerRequestTransaction,
+    nonce: number
+  ): Promise<{
+    txData: {
+      nonce: bigint;
+      maxFeePerGas: bigint;
+      maxPriorityFeePerGas: bigint;
+      gasLimit: bigint;
+      to: PrefixedHexString;
+      value: bigint;
+      data: PrefixedHexString;
+    };
+    common: ReturnType<typeof createCustomCommon>;
+  }> {
     const feeData = await this.provider.getFeeData();
     const maxFeePerGas = tx.maxFeePerGas ?? feeData.maxFeePerGas ?? 0n;
     const maxPriorityFeePerGas = tx.maxPriorityFeePerGas ?? feeData.maxPriorityFeePerGas ?? 0n;
@@ -141,6 +164,21 @@ export class LedgerSigner implements ISigner {
       data: tx.data as PrefixedHexString
     };
 
+    return { txData, common };
+  }
+
+  private async signWithLedger(
+    txData: {
+      nonce: bigint;
+      maxFeePerGas: bigint;
+      maxPriorityFeePerGas: bigint;
+      gasLimit: bigint;
+      to: PrefixedHexString;
+      value: bigint;
+      data: PrefixedHexString;
+    },
+    common: ReturnType<typeof createCustomCommon>
+  ): Promise<string> {
     const unsignedTx = createFeeMarket1559Tx(txData, { common });
     const unsignedTxBytes = unsignedTx.getMessageToSign();
     const unsignedTxHex = Buffer.from(unsignedTxBytes).toString('hex');
@@ -165,10 +203,6 @@ export class LedgerSigner implements ISigner {
     };
 
     const signedTx = createFeeMarket1559Tx(signedTxData, { common });
-    const serializedTx = '0x' + Buffer.from(signedTx.serialize()).toString('hex');
-
-    const response = await this.provider.broadcastTransaction(serializedTx);
-
-    return response;
+    return '0x' + Buffer.from(signedTx.serialize()).toString('hex');
   }
 }

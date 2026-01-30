@@ -53,12 +53,14 @@ const createMockBlockchainStateService = (
 const createMockLogger = (): TransactionProgressLogger => {
   return {
     logBroadcastStart: mock(),
-    logBroadcastFeesFetchError: mock()
+    logBroadcastFeesFetchError: mock(),
+    logBroadcastingTransaction: mock(),
+    logBroadcastFailure: mock()
   } as unknown as TransactionProgressLogger;
 };
 
-const createMockBroadcastStrategy = (): IBroadcastStrategy => {
-  return new ParallelBroadcastStrategy();
+const createMockBroadcastStrategy = (logger: TransactionProgressLogger): IBroadcastStrategy => {
+  return new ParallelBroadcastStrategy(logger);
 };
 
 describe('TransactionBroadcaster', () => {
@@ -77,12 +79,13 @@ describe('TransactionBroadcaster', () => {
 
   describe('createElTransaction', () => {
     it('creates transaction with required fields', () => {
+      const mockLogger = createMockLogger();
       const broadcaster = new TransactionBroadcaster(
         createMockSigner(),
         SYSTEM_CONTRACT_ADDRESS,
         createMockBlockchainStateService(),
-        createMockLogger(),
-        createMockBroadcastStrategy()
+        mockLogger,
+        createMockBroadcastStrategy(mockLogger)
       );
 
       const transaction = broadcaster.createElTransaction('0xdata', 1000n);
@@ -94,12 +97,13 @@ describe('TransactionBroadcaster', () => {
     });
 
     it('creates transaction without fee fields when not provided', () => {
+      const mockLogger = createMockLogger();
       const broadcaster = new TransactionBroadcaster(
         createMockSigner(),
         SYSTEM_CONTRACT_ADDRESS,
         createMockBlockchainStateService(),
-        createMockLogger(),
-        createMockBroadcastStrategy()
+        mockLogger,
+        createMockBroadcastStrategy(mockLogger)
       );
 
       const transaction = broadcaster.createElTransaction('0xdata', 1000n);
@@ -109,12 +113,13 @@ describe('TransactionBroadcaster', () => {
     });
 
     it('includes maxFeePerGas when provided', () => {
+      const mockLogger = createMockLogger();
       const broadcaster = new TransactionBroadcaster(
         createMockSigner(),
         SYSTEM_CONTRACT_ADDRESS,
         createMockBlockchainStateService(),
-        createMockLogger(),
-        createMockBroadcastStrategy()
+        mockLogger,
+        createMockBroadcastStrategy(mockLogger)
       );
 
       const transaction = broadcaster.createElTransaction('0xdata', 1000n, 2000n);
@@ -124,12 +129,13 @@ describe('TransactionBroadcaster', () => {
     });
 
     it('includes both fee fields when provided', () => {
+      const mockLogger = createMockLogger();
       const broadcaster = new TransactionBroadcaster(
         createMockSigner(),
         SYSTEM_CONTRACT_ADDRESS,
         createMockBlockchainStateService(),
-        createMockLogger(),
-        createMockBroadcastStrategy()
+        mockLogger,
+        createMockBroadcastStrategy(mockLogger)
       );
 
       const transaction = broadcaster.createElTransaction('0xdata', 1000n, 2000n, 200n);
@@ -141,6 +147,7 @@ describe('TransactionBroadcaster', () => {
 
   describe('broadcastExecutionLayerRequests', () => {
     it('broadcasts all requests using strategy', async () => {
+      const mockLogger = createMockLogger();
       const mockSendTransaction = mock(() =>
         Promise.resolve({ hash: '0xhash', nonce: 1 } as TransactionResponse)
       );
@@ -148,8 +155,8 @@ describe('TransactionBroadcaster', () => {
         createMockSigner({ sendTransaction: mockSendTransaction }),
         SYSTEM_CONTRACT_ADDRESS,
         createMockBlockchainStateService(),
-        createMockLogger(),
-        createMockBroadcastStrategy()
+        mockLogger,
+        createMockBroadcastStrategy(mockLogger)
       );
 
       const results = await broadcaster.broadcastExecutionLayerRequests(
@@ -163,6 +170,7 @@ describe('TransactionBroadcaster', () => {
     });
 
     it('returns success results for successful broadcasts', async () => {
+      const mockLogger = createMockLogger();
       const broadcaster = new TransactionBroadcaster(
         createMockSigner({
           sendTransaction: mock(() =>
@@ -171,8 +179,8 @@ describe('TransactionBroadcaster', () => {
         }),
         SYSTEM_CONTRACT_ADDRESS,
         createMockBlockchainStateService(),
-        createMockLogger(),
-        createMockBroadcastStrategy()
+        mockLogger,
+        createMockBroadcastStrategy(mockLogger)
       );
 
       const results = await broadcaster.broadcastExecutionLayerRequests(['0xdata'], 1000n, 100);
@@ -188,14 +196,15 @@ describe('TransactionBroadcaster', () => {
     });
 
     it('returns failed results for failed broadcasts', async () => {
+      const mockLogger = createMockLogger();
       const broadcaster = new TransactionBroadcaster(
         createMockSigner({
           sendTransaction: mock(() => Promise.reject(new Error('Broadcast failed')))
         }),
         SYSTEM_CONTRACT_ADDRESS,
         createMockBlockchainStateService(),
-        createMockLogger(),
-        createMockBroadcastStrategy()
+        mockLogger,
+        createMockBroadcastStrategy(mockLogger)
       );
 
       const results = await broadcaster.broadcastExecutionLayerRequests(
@@ -212,6 +221,7 @@ describe('TransactionBroadcaster', () => {
     });
 
     it('handles mixed success and failure results', async () => {
+      const mockLogger = createMockLogger();
       let callCount = 0;
       const broadcaster = new TransactionBroadcaster(
         createMockSigner({
@@ -225,8 +235,8 @@ describe('TransactionBroadcaster', () => {
         }),
         SYSTEM_CONTRACT_ADDRESS,
         createMockBlockchainStateService(),
-        createMockLogger(),
-        createMockBroadcastStrategy()
+        mockLogger,
+        createMockBroadcastStrategy(mockLogger)
       );
 
       const results = await broadcaster.broadcastExecutionLayerRequests(
@@ -249,7 +259,7 @@ describe('TransactionBroadcaster', () => {
         SYSTEM_CONTRACT_ADDRESS,
         createMockBlockchainStateService({ maxFeePerGas: 25000000000n, maxPriorityFeePerGas: 100n }),
         mockLogger,
-        createMockBroadcastStrategy()
+        createMockBroadcastStrategy(mockLogger)
       );
 
       await broadcaster.broadcastExecutionLayerRequests(['0xdata'], 1000n, 100);
@@ -268,7 +278,7 @@ describe('TransactionBroadcaster', () => {
         SYSTEM_CONTRACT_ADDRESS,
         mockBlockchainStateService,
         mockLogger,
-        createMockBroadcastStrategy()
+        createMockBroadcastStrategy(mockLogger)
       );
 
       await broadcaster.broadcastExecutionLayerRequests(['0xdata'], 1000n, 100);
@@ -278,6 +288,7 @@ describe('TransactionBroadcaster', () => {
     });
 
     it('extracts source validator pubkey correctly from request data', async () => {
+      const mockLogger = createMockLogger();
       const pubkey = 'ab'.repeat(48);
       const requestData = '0x' + pubkey + 'cd'.repeat(48);
 
@@ -287,8 +298,8 @@ describe('TransactionBroadcaster', () => {
         }),
         SYSTEM_CONTRACT_ADDRESS,
         createMockBlockchainStateService(),
-        createMockLogger(),
-        createMockBroadcastStrategy()
+        mockLogger,
+        createMockBroadcastStrategy(mockLogger)
       );
 
       const results = await broadcaster.broadcastExecutionLayerRequests(

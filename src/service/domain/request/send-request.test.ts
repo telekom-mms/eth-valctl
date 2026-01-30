@@ -4,6 +4,7 @@ import type { JsonRpcProvider } from 'ethers';
 import type { ISigner, SignerCapabilities } from '../signer';
 import { ParallelBroadcastStrategy } from './broadcast-strategy/parallel-broadcast-strategy';
 import { SequentialBroadcastStrategy } from './broadcast-strategy/sequential-broadcast-strategy';
+import { TransactionProgressLogger } from './transaction-progress-logger';
 
 const MOCK_GENESIS_TIME = 1606824023;
 
@@ -64,7 +65,8 @@ describe('Strategy Selection Logic', () => {
 
   describe('ParallelBroadcastStrategy', () => {
     it('has isParallel set to true', () => {
-      const strategy = new ParallelBroadcastStrategy();
+      const logger = new TransactionProgressLogger();
+      const strategy = new ParallelBroadcastStrategy(logger);
       expect(strategy.isParallel).toBe(true);
     });
 
@@ -89,11 +91,13 @@ describe('Strategy Selection Logic', () => {
 
       const { EthereumStateService } = await import('./ethereum-state-service');
       const ethereumStateService = new EthereumStateService(mockProvider, '0xContract');
+      const logger = new TransactionProgressLogger();
 
       const strategy = new SequentialBroadcastStrategy(
         ethereumStateService,
         '0xContract',
-        beaconService
+        beaconService,
+        logger
       );
 
       expect(strategy.isParallel).toBe(false);

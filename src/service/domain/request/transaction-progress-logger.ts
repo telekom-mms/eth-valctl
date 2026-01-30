@@ -106,4 +106,22 @@ export class TransactionProgressLogger {
     console.log(chalk.cyan(logging.FAILED_VALIDATORS_FOR_RETRY_HEADER));
     console.log(chalk.white(failedValidatorPubkeys.join(' ')));
   }
+
+  /**
+   * Log broadcasting of a transaction
+   *
+   * @param hash - Transaction hash being broadcast
+   */
+  logBroadcastingTransaction(hash: string): void {
+    console.log(chalk.yellow(logging.BROADCASTING_EL_REQUEST_INFO, hash, '...'));
+  }
+
+  /**
+   * Log broadcast failure
+   *
+   * @param error - Error that occurred during broadcast
+   */
+  logBroadcastFailure(error: unknown): void {
+    console.error(chalk.red(logging.FAILED_TO_BROADCAST_TRANSACTION_ERROR), error);
+  }
 }

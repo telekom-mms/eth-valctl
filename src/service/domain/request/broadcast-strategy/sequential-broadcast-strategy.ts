@@ -1,17 +1,19 @@
-import chalk from 'chalk';
-
-import * as serviceConstants from '../../../../constants/application';
-import * as logging from '../../../../constants/logging';
 import type {
   BroadcastResult,
   ExecutionLayerRequestTransaction,
   SigningContext
 } from '../../../../model/ethereum';
-import type { ISigner } from '../../signer';
+import type { IInteractiveSigner, ISigner } from '../../signer';
 import type { ISlotTimingService } from '../../slot-timing.interface';
 import type { EthereumStateService } from '../ethereum-state-service';
+import type { TransactionProgressLogger } from '../transaction-progress-logger';
 import type { IBroadcastStrategy } from './broadcast-strategy.interface';
-import { createPendingTransactionInfo, extractValidatorPubkey } from './broadcast-utils';
+import {
+  createElTransaction,
+  createFailedBroadcastResult,
+  createSuccessBroadcastResult,
+  extractValidatorPubkey
+} from './broadcast-utils';
 
 /**
  * Sequential broadcast strategy for hardware wallets
@@ -30,11 +32,13 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
    * @param blockchainStateService - Service for fetching fresh contract fees
    * @param systemContractAddress - Target system contract address
    * @param slotTimingService - Service for slot-aware timing
+   * @param logger - Logger for transaction progress
    */
   constructor(
     private readonly blockchainStateService: EthereumStateService,
     private readonly systemContractAddress: string,
-    private readonly slotTimingService: ISlotTimingService
+    private readonly slotTimingService: ISlotTimingService,
+    private readonly logger: TransactionProgressLogger
   ) {}
 
   /**
@@ -72,44 +76,24 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
       try {
         await this.slotTimingService.waitForOptimalBroadcastWindow();
         const freshContractFee = await this.blockchainStateService.fetchContractFee();
-        const freshTransaction = this.createElTransaction(requestData, freshContractFee);
-        const response = await signer.sendTransaction(freshTransaction, context);
-        console.log(chalk.yellow(logging.BROADCASTING_EL_REQUEST_INFO, response.hash, '...'));
-        results.push({
-          status: 'success',
-          transaction: createPendingTransactionInfo(
-            response,
-            requestData,
-            this.systemContractAddress,
-            blockNumber
-          )
-        });
+        const freshTransaction = createElTransaction(
+          this.systemContractAddress,
+          requestData,
+          freshContractFee
+        );
+        const response = signer.capabilities.requiresUserInteraction
+          ? await (signer as IInteractiveSigner).sendTransaction(freshTransaction, context)
+          : await signer.sendTransaction(freshTransaction);
+        this.logger.logBroadcastingTransaction(response.hash);
+        results.push(
+          createSuccessBroadcastResult(response, requestData, this.systemContractAddress, blockNumber)
+        );
       } catch (error) {
-        console.error(chalk.red(logging.FAILED_TO_BROADCAST_TRANSACTION_ERROR), error);
-        results.push({
-          status: 'failed',
-          validatorPubkey,
-          error
-        });
+        this.logger.logBroadcastFailure(error);
+        results.push(createFailedBroadcastResult(requestData, error));
       }
     }
 
     return results;
-  }
-
-  /**
-   * Create an execution layer request transaction object
-   *
-   * @param encodedRequestData - Encoded request data for the transaction
-   * @param fee - Contract fee amount
-   * @returns Transaction object ready for signing
-   */
-  private createElTransaction(encodedRequestData: string, fee: bigint): ExecutionLayerRequestTransaction {
-    return {
-      to: this.systemContractAddress,
-      data: encodedRequestData,
-      value: fee,
-      gasLimit: serviceConstants.TRANSACTION_GAS_LIMIT
-    };
   }
 }
