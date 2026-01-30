@@ -9,9 +9,11 @@ import type { JsonRpcProvider, TransactionResponse } from 'ethers';
 
 import * as logging from '../../../constants/logging';
 import type { ExecutionLayerRequestTransaction, SigningContext } from '../../../model/ethereum';
+import { classifyLedgerError, isLedgerError } from './ledger-error-handler';
 import type { IInteractiveSigner, SignerCapabilities } from './signer.interface';
 
 const DEFAULT_DERIVATION_PATH = "44'/60'/0'/0/0";
+const CONNECTION_TIMEOUT_MS = 5000;
 
 /**
  * Ledger hardware wallet signer
@@ -56,18 +58,38 @@ export class LedgerSigner implements IInteractiveSigner {
   ): Promise<LedgerSigner> {
     console.log(chalk.cyan(logging.LEDGER_CONNECTING_INFO));
 
-    const transport = await TransportNodeHid.create();
+    let transport: Transport;
+    try {
+      transport = await Promise.race([
+        TransportNodeHid.create(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Connection timeout')), CONNECTION_TIMEOUT_MS)
+        )
+      ]);
+    } catch (error) {
+      const errorInfo = classifyLedgerError(error);
+      console.error(chalk.red(errorInfo.message));
+      throw error;
+    }
+
     const eth = new Eth(transport);
 
-    const { address } = await eth.getAddress(derivationPath);
-    console.log(chalk.cyan(logging.LEDGER_CONNECTED_INFO(address)));
+    try {
+      const { address } = await eth.getAddress(derivationPath);
+      console.log(chalk.cyan(logging.LEDGER_CONNECTED_INFO(address)));
 
-    const network = await provider.getNetwork();
-    const chainId = network.chainId;
+      const network = await provider.getNetwork();
+      const chainId = network.chainId;
 
-    const nonce = await provider.getTransactionCount(address, 'pending');
+      const nonce = await provider.getTransactionCount(address, 'pending');
 
-    return new LedgerSigner(transport, eth, provider, chainId, address, nonce, derivationPath);
+      return new LedgerSigner(transport, eth, provider, chainId, address, nonce, derivationPath);
+    } catch (error) {
+      await transport.close();
+      const errorInfo = classifyLedgerError(error);
+      console.error(chalk.red(errorInfo.message));
+      throw error;
+    }
   }
 
   async sendTransaction(
@@ -112,11 +134,25 @@ export class LedgerSigner implements IInteractiveSigner {
     context?: SigningContext
   ): Promise<TransactionResponse> {
     this.promptUserForSigning(context);
-    const { txData, common } = await this.buildUnsignedTransaction(tx, nonce);
-    const serializedTx = await this.signWithLedger(txData, common);
-    return await this.provider.broadcastTransaction(serializedTx);
+
+    try {
+      const { txData, common } = await this.buildUnsignedTransaction(tx, nonce);
+      const serializedTx = await this.signWithLedger(txData, common);
+      return await this.provider.broadcastTransaction(serializedTx);
+    } catch (error) {
+      if (isLedgerError(error)) {
+        const errorInfo = classifyLedgerError(error, { duringSigning: true });
+        console.error(chalk.red(errorInfo.message));
+      }
+      throw error;
+    }
   }
 
+  /**
+   * Display signing prompt to user with transaction context
+   *
+   * @param context - Optional signing context with validator info and progress
+   */
   private promptUserForSigning(context?: SigningContext): void {
     if (context) {
       console.log(
@@ -133,6 +169,13 @@ export class LedgerSigner implements IInteractiveSigner {
     }
   }
 
+  /**
+   * Build unsigned EIP-1559 transaction with current network fees
+   *
+   * @param tx - Transaction parameters (to, data, value, gasLimit)
+   * @param nonce - Transaction nonce
+   * @returns Transaction data and chain configuration for signing
+   */
   private async buildUnsignedTransaction(
     tx: ExecutionLayerRequestTransaction,
     nonce: number
@@ -167,6 +210,15 @@ export class LedgerSigner implements IInteractiveSigner {
     return { txData, common };
   }
 
+  /**
+   * Sign transaction using Ledger device and serialize result
+   *
+   * Uses Ledger's transaction resolution service for ERC-20/NFT context.
+   *
+   * @param txData - Unsigned transaction data
+   * @param common - EthereumJS common chain configuration
+   * @returns Serialized signed transaction as hex string
+   */
   private async signWithLedger(
     txData: {
       nonce: bigint;

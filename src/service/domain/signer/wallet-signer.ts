@@ -29,6 +29,11 @@ export class WalletSigner implements ISigner {
     this.address = wallet.address;
   }
 
+  /**
+   * Get underlying wallet instance from nonce manager
+   *
+   * @returns The wrapped ethers Wallet instance
+   */
   private getWallet(): Wallet {
     return this.nonceManager.signer as Wallet;
   }
