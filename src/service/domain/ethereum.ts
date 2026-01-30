@@ -4,7 +4,8 @@ import { JsonRpcProvider, NonceManager, Wallet } from 'ethers';
 import * as logging from '../../constants/logging';
 import type { EthereumConnection, SignerType } from '../../model/ethereum';
 import { promptSecret } from '../prompt';
-import { LedgerSigner, WalletSigner } from './signer';
+import { LedgerSigner } from './signer/ledger-signer';
+import { WalletSigner } from './signer/wallet-signer';
 
 /**
  * Create Ethereum related connection information
@@ -49,8 +50,7 @@ async function createLedgerConnection(provider: JsonRpcProvider): Promise<Ethere
   try {
     const signer = await LedgerSigner.create(provider);
     return { signer, provider };
-  } catch (error) {
-    console.error(chalk.red(logging.LEDGER_CONNECTION_ERROR), error);
+  } catch {
     process.exit(1);
   }
 }

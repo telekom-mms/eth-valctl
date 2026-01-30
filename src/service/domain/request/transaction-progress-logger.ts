@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import * as serviceConstants from '../../../constants/application';
 import * as logging from '../../../constants/logging';
 import type { PendingTransactionInfo, ReplacementSummary } from '../../../model/ethereum';
+import { isLedgerError } from '../signer';
 
 /**
  * Service for logging transaction processing progress with consistent formatting.
@@ -119,9 +120,15 @@ export class TransactionProgressLogger {
   /**
    * Log broadcast failure
    *
+   * Ledger errors are already logged with user-friendly messages in LedgerSigner,
+   * so we only print the header without the stack trace.
+   *
    * @param error - Error that occurred during broadcast
    */
   logBroadcastFailure(error: unknown): void {
+    if (isLedgerError(error)) {
+      return;
+    }
     console.error(chalk.red(logging.FAILED_TO_BROADCAST_TRANSACTION_ERROR), error);
   }
 }

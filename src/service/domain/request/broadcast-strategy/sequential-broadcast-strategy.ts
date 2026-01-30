@@ -3,7 +3,7 @@ import type {
   ExecutionLayerRequestTransaction,
   SigningContext
 } from '../../../../model/ethereum';
-import type { IInteractiveSigner, ISigner } from '../../signer';
+import { type IInteractiveSigner, isFatalLedgerError, type ISigner } from '../../signer';
 import type { ISlotTimingService } from '../../slot-timing.interface';
 import type { EthereumStateService } from '../ethereum-state-service';
 import type { TransactionProgressLogger } from '../transaction-progress-logger';
@@ -91,6 +91,14 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
       } catch (error) {
         this.logger.logBroadcastFailure(error);
         results.push(createFailedBroadcastResult(requestData, error));
+
+        if (isFatalLedgerError(error)) {
+          for (let remaining = index + 1; remaining < total; remaining++) {
+            const remainingData = transactions[remaining]!.requestData;
+            results.push(createFailedBroadcastResult(remainingData, error));
+          }
+          break;
+        }
       }
     }
 

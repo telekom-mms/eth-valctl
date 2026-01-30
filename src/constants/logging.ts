@@ -115,3 +115,23 @@ export const LEDGER_SIGN_PROMPT = (
 ): string =>
   `[${currentIndex}/${totalCount}] Please confirm transaction on Ledger for validator ${validatorPubkey.slice(0, 10)}...${validatorPubkey.slice(-8)}`;
 export const LEDGER_SIGN_GENERIC_PROMPT = 'Please confirm transaction on Ledger device...';
+
+export const LEDGER_DEVICE_LOCKED_ERROR =
+  'Ledger device is locked. Please unlock your device with your PIN and try again.';
+
+export const LEDGER_DEVICE_DISCONNECTED_ERROR =
+  'Ledger device was disconnected. Please reconnect the device and try again.';
+
+export const LEDGER_DEVICE_DISCONNECTED_DURING_OPERATION_ERROR =
+  'Ledger device was disconnected during operation. The transaction was NOT signed. Please reconnect and retry.';
+
+export const LEDGER_ETH_APP_NOT_OPEN_ERROR =
+  'Ethereum app is not open on the Ledger device. Please open the Ethereum app and try again.';
+
+export const LEDGER_USER_REJECTED_ERROR = 'Transaction was rejected on the Ledger device.';
+
+export const LEDGER_UNKNOWN_ERROR = (code: number): string =>
+  `Unknown Ledger error (0x${code.toString(16)}). Please ensure the Ethereum app is open and try again.`;
+
+export const LEDGER_CONNECTION_TIMEOUT_ERROR =
+  'No Ledger device found. Please connect your device and ensure the Ethereum app is open.';
