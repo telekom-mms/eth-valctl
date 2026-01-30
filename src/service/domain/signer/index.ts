@@ -1,3 +1,4 @@
+export { LedgerAddressSelector } from './ledger-address-selector';
 export {
   classifyLedgerError,
   isFatalLedgerError,

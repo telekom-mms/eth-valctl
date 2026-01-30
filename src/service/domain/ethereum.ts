@@ -3,7 +3,7 @@ import { JsonRpcProvider, NonceManager, Wallet } from 'ethers';
 
 import * as logging from '../../constants/logging';
 import type { EthereumConnection, SignerType } from '../../model/ethereum';
-import { promptSecret } from '../prompt';
+import { promptLedgerAddressSelection, promptSecret } from '../prompt';
 import { LedgerSigner } from './signer/ledger-signer';
 import { WalletSigner } from './signer/wallet-signer';
 
@@ -45,10 +45,13 @@ async function createWalletConnection(provider: JsonRpcProvider): Promise<Ethere
 
 /**
  * Create connection using Ledger hardware wallet
+ *
+ * Prompts user to select from available HD wallet addresses before signing.
  */
 async function createLedgerConnection(provider: JsonRpcProvider): Promise<EthereumConnection> {
   try {
-    const signer = await LedgerSigner.create(provider);
+    const selection = await promptLedgerAddressSelection(provider);
+    const signer = await LedgerSigner.create(provider, selection.derivationPath);
     return { signer, provider };
   } catch {
     process.exit(1);

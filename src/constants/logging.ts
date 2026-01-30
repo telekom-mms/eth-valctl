@@ -135,3 +135,9 @@ export const LEDGER_UNKNOWN_ERROR = (code: number): string =>
 
 export const LEDGER_CONNECTION_TIMEOUT_ERROR =
   'No Ledger device found. Please connect your device and ensure the Ethereum app is open.';
+
+/** Ledger address selection messages */
+export const LEDGER_ADDRESS_SELECTION_HEADER = 'Select Ledger address:';
+export const LEDGER_ADDRESS_FETCHING_INFO = (page: number): string =>
+  `Fetching addresses for page ${page + 1}...`;
+export const LEDGER_ADDRESS_SELECTION_CANCELLED = 'Address selection cancelled.';
