@@ -12,7 +12,7 @@ import type {
   TransactionReplacementResult
 } from '../../../model/ethereum';
 import { TransactionReplacementStatusType, TransactionStatusType } from '../../../model/ethereum';
-import type { ISigner } from '../signer';
+import type { IInteractiveSigner, ISigner } from '../signer';
 import { extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
 import { EthereumStateService } from './ethereum-state-service';
 import { TransactionBroadcaster } from './transaction-broadcaster';
@@ -321,10 +321,9 @@ export class TransactionReplacer {
       newContractFee
     );
 
-    const replacementResponse = await this.signer.sendTransaction(
-      replacementTransaction,
-      context
-    );
+    const replacementResponse = this.signer.capabilities.requiresUserInteraction
+      ? await (this.signer as IInteractiveSigner).sendTransaction(replacementTransaction, context)
+      : await this.signer.sendTransaction(replacementTransaction);
     console.log(
       chalk.yellow(logging.BROADCASTING_EL_REQUEST_INFO, replacementResponse.hash, '...')
     );
@@ -364,11 +363,13 @@ export class TransactionReplacer {
       increasedMaxNetworkFees.maxPriorityFeePerGas
     );
 
-    const replacementResponse = await this.signer.sendTransactionWithNonce(
-      replacementTransaction,
-      pendingTransaction.nonce,
-      context
-    );
+    const replacementResponse = this.signer.capabilities.requiresUserInteraction
+      ? await (this.signer as IInteractiveSigner).sendTransactionWithNonce(
+          replacementTransaction,
+          pendingTransaction.nonce,
+          context
+        )
+      : await this.signer.sendTransactionWithNonce(replacementTransaction, pendingTransaction.nonce);
 
     console.log(
       chalk.yellow(

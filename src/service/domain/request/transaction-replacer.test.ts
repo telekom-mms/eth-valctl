@@ -264,8 +264,7 @@ describe('TransactionReplacer', () => {
             maxFeePerGas: 1120n,
             maxPriorityFeePerGas: 112n
           }),
-          1,
-          undefined
+          1
         );
       });
 
@@ -296,8 +295,7 @@ describe('TransactionReplacer', () => {
             maxFeePerGas: 1120n,
             maxPriorityFeePerGas: 112n
           }),
-          1,
-          undefined
+          1
         );
       });
 
@@ -328,8 +326,7 @@ describe('TransactionReplacer', () => {
             maxFeePerGas: 1120n,
             maxPriorityFeePerGas: 112n
           }),
-          1,
-          undefined
+          1
         );
       });
     });
@@ -462,11 +459,7 @@ describe('TransactionReplacer', () => {
 
         await replacer.replaceTransactions([tx], 1n, 101);
 
-        expect(mockSendTransactionWithNonce).toHaveBeenCalledWith(
-          expect.anything(),
-          1,
-          undefined
-        );
+        expect(mockSendTransactionWithNonce).toHaveBeenCalledWith(expect.anything(), 1);
       });
     });
 

@@ -1,12 +1,12 @@
 import { formatUnits } from 'ethers';
 
-import * as serviceConstants from '../../../constants/application';
 import type {
   BroadcastResult,
   ExecutionLayerRequestTransaction
 } from '../../../model/ethereum';
 import type { ISigner } from '../signer';
 import type { IBroadcastStrategy } from './broadcast-strategy';
+import { createElTransaction } from './broadcast-strategy/broadcast-utils';
 import { EthereumStateService } from './ethereum-state-service';
 import { TransactionProgressLogger } from './transaction-progress-logger';
 
@@ -50,7 +50,7 @@ export class TransactionBroadcaster {
     await this.logBroadcastStart(requestData.length, blockNumber + 1);
 
     const transactions = requestData.map((data) => ({
-      transaction: this.createElTransaction(data, requiredFee),
+      transaction: createElTransaction(this.systemContractAddress, data, requiredFee),
       requestData: data
     }));
 
@@ -59,6 +59,8 @@ export class TransactionBroadcaster {
 
   /**
    * Create an execution layer request transaction object
+   *
+   * Delegates to shared createElTransaction utility function.
    *
    * @param encodedRequestData - Single encoded request data for the transaction
    * @param requiredFee - Fee amount to send with transaction
@@ -72,14 +74,13 @@ export class TransactionBroadcaster {
     maxFeePerGas?: bigint,
     maxPriorityFeePerGas?: bigint
   ): ExecutionLayerRequestTransaction {
-    return {
-      to: this.systemContractAddress,
-      data: encodedRequestData,
-      value: requiredFee,
-      gasLimit: serviceConstants.TRANSACTION_GAS_LIMIT,
-      ...(maxFeePerGas && { maxFeePerGas }),
-      ...(maxPriorityFeePerGas && { maxPriorityFeePerGas })
-    };
+    return createElTransaction(
+      this.systemContractAddress,
+      encodedRequestData,
+      requiredFee,
+      maxFeePerGas,
+      maxPriorityFeePerGas
+    );
   }
 
   /**

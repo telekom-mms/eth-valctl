@@ -37,14 +37,15 @@ export async function sendExecutionLayerRequests(
 
   let broadcastStrategy: IBroadcastStrategy;
   if (signer.capabilities.supportsParallelSigning) {
-    broadcastStrategy = new ParallelBroadcastStrategy();
+    broadcastStrategy = new ParallelBroadcastStrategy(logger);
   } else {
     const beaconService = new BeaconService(beaconApiUrl);
     await beaconService.initialize();
     broadcastStrategy = new SequentialBroadcastStrategy(
       ethereumStateService,
       systemContractAddress,
-      beaconService
+      beaconService,
+      logger
     );
   }
 

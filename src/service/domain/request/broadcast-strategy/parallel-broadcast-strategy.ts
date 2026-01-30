@@ -1,10 +1,8 @@
-import chalk from 'chalk';
-
-import * as logging from '../../../../constants/logging';
 import type { BroadcastResult, ExecutionLayerRequestTransaction } from '../../../../model/ethereum';
 import type { ISigner } from '../../signer';
+import type { TransactionProgressLogger } from '../transaction-progress-logger';
 import type { IBroadcastStrategy } from './broadcast-strategy.interface';
-import { createPendingTransactionInfo, extractValidatorPubkey } from './broadcast-utils';
+import { createFailedBroadcastResult, createSuccessBroadcastResult } from './broadcast-utils';
 
 /**
  * Parallel broadcast strategy for software wallets
@@ -14,6 +12,13 @@ import { createPendingTransactionInfo, extractValidatorPubkey } from './broadcas
  */
 export class ParallelBroadcastStrategy implements IBroadcastStrategy {
   readonly isParallel = true;
+
+  /**
+   * Creates a parallel broadcast strategy
+   *
+   * @param logger - Logger for transaction progress
+   */
+  constructor(private readonly logger: TransactionProgressLogger) {}
 
   /**
    * Broadcast all transactions concurrently
@@ -37,23 +42,11 @@ export class ParallelBroadcastStrategy implements IBroadcastStrategy {
     const broadcastPromises = transactions.map(async ({ transaction, requestData }) => {
       try {
         const response = await signer.sendTransaction(transaction);
-        console.log(chalk.yellow(logging.BROADCASTING_EL_REQUEST_INFO, response.hash, '...'));
-        return {
-          status: 'success' as const,
-          transaction: createPendingTransactionInfo(
-            response,
-            requestData,
-            transaction.to,
-            blockNumber
-          )
-        };
+        this.logger.logBroadcastingTransaction(response.hash);
+        return createSuccessBroadcastResult(response, requestData, transaction.to, blockNumber);
       } catch (error) {
-        console.error(chalk.red(logging.FAILED_TO_BROADCAST_TRANSACTION_ERROR), error);
-        return {
-          status: 'failed' as const,
-          validatorPubkey: extractValidatorPubkey(requestData),
-          error
-        };
+        this.logger.logBroadcastFailure(error);
+        return createFailedBroadcastResult(requestData, error);
       }
     });
 

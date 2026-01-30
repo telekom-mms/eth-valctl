@@ -1,7 +1,7 @@
 import type { TransactionResponse, Wallet } from 'ethers';
 import { NonceManager } from 'ethers';
 
-import type { ExecutionLayerRequestTransaction, SigningContext } from '../../../model/ethereum';
+import type { ExecutionLayerRequestTransaction } from '../../../model/ethereum';
 import type { ISigner, SignerCapabilities } from './signer.interface';
 
 /**
@@ -29,31 +29,17 @@ export class WalletSigner implements ISigner {
     this.address = wallet.address;
   }
 
-  /**
-   * @returns The underlying NonceManager for legacy code compatibility
-   */
-  getNonceManager(): NonceManager {
-    return this.nonceManager;
-  }
-
-  /**
-   * @returns The underlying Wallet for direct access
-   */
-  getWallet(): Wallet {
+  private getWallet(): Wallet {
     return this.nonceManager.signer as Wallet;
   }
 
-  async sendTransaction(
-    tx: ExecutionLayerRequestTransaction,
-    _context?: SigningContext // WalletSigner ignores context - only used by LedgerSigner
-  ): Promise<TransactionResponse> {
+  async sendTransaction(tx: ExecutionLayerRequestTransaction): Promise<TransactionResponse> {
     return await this.nonceManager.sendTransaction(tx);
   }
 
   async sendTransactionWithNonce(
     tx: ExecutionLayerRequestTransaction,
-    nonce: number,
-    _context?: SigningContext // WalletSigner ignores context - only used by LedgerSigner
+    nonce: number
   ): Promise<TransactionResponse> {
     const wallet = this.getWallet();
     return await wallet.sendTransaction({ ...tx, nonce });
