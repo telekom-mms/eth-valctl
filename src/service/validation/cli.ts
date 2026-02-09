@@ -2,7 +2,6 @@ import { PublicKey } from '@chainsafe/blst';
 import chalk from 'chalk';
 import { JsonRpcProvider } from 'ethers';
 import { exit } from 'process';
-import { format } from 'util';
 
 import {
   MAX_NUMBER_OF_REQUESTS_PER_BLOCK,
@@ -99,8 +98,7 @@ export async function validateNetwork(jsonRpcUrl: string, network: string): Prom
     if (connectedNetwork.chainId != config.chainId) {
       console.error(
         chalk.red(
-          format(
-            logging.WRONG_CONNECTED_NETWORK_ERROR,
+          logging.WRONG_CONNECTED_NETWORK_ERROR(
             network,
             connectedNetwork.name,
             connectedNetwork.chainId

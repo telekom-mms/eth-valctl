@@ -5,7 +5,7 @@ import type { GlobalCliOptions } from '../../model/commander';
 import { networkConfig } from '../../network-config';
 import { checkWithdrawalCredentialType } from '../validation/pre-request';
 import { createEthereumConnection } from './ethereum';
-import { sendExecutionLayerRequests } from './request';
+import { sendExecutionLayerRequests } from './request/send-request';
 
 /**
  * Withdraw the provided amount from one or many validators / Exit one or many validators

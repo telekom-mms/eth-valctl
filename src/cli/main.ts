@@ -1,4 +1,13 @@
 #! /usr/bin/env node
+/**
+ * CLI entry point for eth-valctl - Ethereum validator control tool
+ *
+ * Provides commands for managing execution layer requests:
+ * - consolidate: Consolidate validator balances (EIP-7251)
+ * - switch: Switch withdrawal credentials from 0x01 to 0x02
+ * - withdraw: Partial withdrawal from validators
+ * - exit: Full validator exit
+ */
 import chalk from 'chalk';
 import { Command, Option } from 'commander';
 

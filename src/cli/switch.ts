@@ -1,3 +1,9 @@
+/**
+ * CLI command for switching withdrawal credential type
+ *
+ * Creates execution layer consolidation requests (EIP-7251) with matching source and target
+ * to convert validators from 0x01 (BLS) to 0x02 (compounding) credentials.
+ */
 import { Command } from 'commander';
 
 import type { GlobalCliOptions, ValidatorOption } from '../model/commander';
