@@ -1,6 +1,12 @@
+/**
+ * CLI command for partial ETH withdrawal from validators
+ *
+ * Creates execution layer withdrawal requests (EIP-7002) to withdraw specific amounts
+ * from validators without fully exiting them.
+ */
 import { Command } from 'commander';
 
-import { GlobalCliOptions, WithdrawOptions } from '../model/commander';
+import type { GlobalCliOptions, WithdrawOptions } from '../model/commander';
 import { withdraw } from '../service/domain/withdraw';
 import {
   parseAndValidateValidatorPubKeys,

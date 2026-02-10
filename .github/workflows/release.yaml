@@ -1,6 +1,7 @@
 ---
 name: "Build Cross-Platform Binaries"
 
+# yamllint disable-line rule:truthy
 on:
   push:
     tags:
@@ -8,64 +9,267 @@ on:
 
 jobs:
   build:
-    name: "Build on ${{ matrix.os }}"
-    runs-on: "${{ matrix.os }}"
+    name: "Build ${{ matrix.target }}"
+    runs-on: "ubuntu-latest"
     strategy:
       matrix:
         include:
-          - os: "ubuntu-latest"
-            TARGET: "linux-x64"
-            PLATFORM: "linux"
-          - os: "macos-latest"
-            TARGET: "macos-x64"
-            PLATFORM: "darwin"
-          - os: "windows-latest"
-            TARGET: "win-x64"
-            PLATFORM: "win"
+          - target: "linux-x64"
+            binary: "eth-valctl-linux-x64"
+          - target: "linux-arm64"
+            binary: "eth-valctl-linux-arm64"
+          - target: "win-x64"
+            binary: "eth-valctl-win-x64.exe"
 
     steps:
-      - uses: "actions/checkout@v4"
+      - name: "Checkout"
+        uses: "actions/checkout@v6"
 
-      - name: "Setup Node.js"
-        uses: "actions/setup-node@v4"
+      - name: "Setup Bun"
+        uses: "oven-sh/setup-bun@v2"
         with:
-          node-version: "22.12.0"
-          cache: "npm"
+          bun-version: "latest"
 
       - name: "Install dependencies"
-        run: "npm ci"
+        run: "bun install"
 
-      - name: "Build application"
-        run: "npm run build"
-
-      - name: "Package application"
-        run: "npx pkg . --targets node22-${{ matrix.TARGET }} --out-path ./bin"
+      - name: "Build binary"
+        run: "bun run package ${{ matrix.target }}"
 
       - name: "Create compressed archive"
         shell: "bash"
+        env:
+          TARGET: "${{ matrix.target }}"
+          TAG: "${{ github.ref_name }}"
+          BINARY: "${{ matrix.binary }}"
         run: |
           cd bin
-          if [ "${{ matrix.PLATFORM }}" == "win" ]; then
-            tar -czvf eth-validator-cli-${{ matrix.PLATFORM }}-x64-${{ github.ref_name }}.tar.gz eth-validator-cli.exe
-          else
-            tar -czvf eth-validator-cli-${{ matrix.PLATFORM }}-x64-${{ github.ref_name }}.tar.gz eth-validator-cli
-          fi
+          tar -czvf "eth-valctl-${TARGET}-${TAG}.tar.gz" "$BINARY"
 
       - name: "Upload artifact"
-        uses: "actions/upload-artifact@v4"
+        uses: "actions/upload-artifact@v6"
+        env:
+          TARGET: "${{ matrix.target }}"
+          TAG: "${{ github.ref_name }}"
         with:
-          name: "eth-validator-cli-${{ matrix.PLATFORM }}-x64-${{ github.ref_name }}.tar.gz"
-          path: "bin/eth-validator-cli-${{ matrix.PLATFORM }}-x64-${{ github.ref_name }}.tar.gz"
-          retention-days: "5"
+          name: "eth-valctl-${{ env.TARGET }}-${{ env.TAG }}"
+          path: "bin/eth-valctl-${{ env.TARGET }}-${{ env.TAG }}.tar.gz"
+          retention-days: 5
+
+  build-macos:
+    name: "Build & Sign macOS"
+    runs-on:
+      - "self-hosted"
+      - "macos-builder"
+    permissions:
+      id-token: "write"
+      contents: "read"
+
+    steps:
+      - name: "Checkout"
+        uses: "actions/checkout@v6"
+
+      - name: "Setup Bun"
+        uses: "oven-sh/setup-bun@v2"
+        with:
+          bun-version: "latest"
+
+      - name: "Install dependencies"
+        run: "bun install"
+
+      - name: "Install quill"
+        env:
+          QUILL_VERSION: "0.5.1"
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL https://raw.githubusercontent.com/anchore/quill/main/install.sh \
+            | sh -s -- -b "$HOME/.local/bin" "v${QUILL_VERSION}"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: "Verify quill installation"
+        run: "quill --version"
+
+      - name: "Fetch signing and notarization credentials from OpenBao"
+        uses: "hashicorp/vault-action@v3"
+        with:
+          url: "${{ secrets.VAULT_ADDR }}"
+          path: "jwt-github"
+          method: "jwt"
+          role: "eth-valctl"
+          jwtGithubAudience: "${{ secrets.VAULT_JWT_AUDIENCE }}"
+          secrets: |
+            vaas/data/github/eth-valctl p12_certificate | APPLE_CERT_B64 ;
+            vaas/data/github/eth-valctl p12_password | APPLE_CERT_PASSWORD ;
+            vaas/data/github/eth-valctl notary_key | APPLE_NOTARY_KEY_B64 ;
+            vaas/data/github/eth-valctl notary_key_id | APPLE_NOTARY_KEY_ID ;
+            vaas/data/github/eth-valctl notary_issuer | APPLE_NOTARY_ISSUER
+
+      - name: "Prepare credentials"
+        run: |
+          echo "$APPLE_CERT_B64" | base64 -d > /tmp/cert.p12
+          echo "$APPLE_NOTARY_KEY_B64" | base64 -d > /tmp/notary-key.p8
+
+      - name: "Build macOS binaries"
+        run: |
+          bun run package macos-x64
+          bun run package macos-arm64
+
+      - name: "Sign arm64 binary"
+        env:
+          QUILL_SIGN_PASSWORD: "${{ env.APPLE_CERT_PASSWORD }}"
+        run: |
+          quill sign \
+            --p12 /tmp/cert.p12 \
+            --entitlements scripts/package/entitlements.plist \
+            ./bin/eth-valctl-macos-arm64
+
+      - name: "Sign x64 binary"
+        env:
+          QUILL_SIGN_PASSWORD: "${{ env.APPLE_CERT_PASSWORD }}"
+        run: |
+          quill sign \
+            --p12 /tmp/cert.p12 \
+            --entitlements scripts/package/entitlements.plist \
+            ./bin/eth-valctl-macos-x64
+
+      - name: "Notarize arm64 binary"
+        run: |
+          quill notarize \
+            --notary-key /tmp/notary-key.p8 \
+            --notary-key-id "$APPLE_NOTARY_KEY_ID" \
+            --notary-issuer "$APPLE_NOTARY_ISSUER" \
+            ./bin/eth-valctl-macos-arm64
+
+      - name: "Notarize x64 binary"
+        run: |
+          quill notarize \
+            --notary-key /tmp/notary-key.p8 \
+            --notary-key-id "$APPLE_NOTARY_KEY_ID" \
+            --notary-issuer "$APPLE_NOTARY_ISSUER" \
+            ./bin/eth-valctl-macos-x64
+
+      - name: "Cleanup secrets"
+        if: "always()"
+        run: "rm -f /tmp/cert.p12 /tmp/notary-key.p8"
+
+      - name: "Create compressed archives"
+        env:
+          TAG: "${{ github.ref_name }}"
+        run: |
+          cd bin
+          tar -czvf "eth-valctl-macos-x64-${TAG}.tar.gz" eth-valctl-macos-x64
+          tar -czvf "eth-valctl-macos-arm64-${TAG}.tar.gz" eth-valctl-macos-arm64
+
+      - name: "Upload x64 artifact"
+        uses: "actions/upload-artifact@v6"
+        with:
+          name: "eth-valctl-macos-x64-${{ github.ref_name }}"
+          path: "bin/eth-valctl-macos-x64-${{ github.ref_name }}.tar.gz"
+          retention-days: 5
+
+      - name: "Upload arm64 artifact"
+        uses: "actions/upload-artifact@v6"
+        with:
+          name: "eth-valctl-macos-arm64-${{ github.ref_name }}"
+          path: "bin/eth-valctl-macos-arm64-${{ github.ref_name }}.tar.gz"
+          retention-days: 5
+
+  verify:
+    name: "Verify ${{ matrix.target }}"
+    needs: "build"
+    runs-on: "${{ matrix.runner }}"
+    strategy:
+      matrix:
+        include:
+          - target: "linux-x64"
+            runner: "ubuntu-latest"
+            binary: "eth-valctl-linux-x64"
+          - target: "linux-arm64"
+            runner: "ubuntu-24.04-arm"
+            binary: "eth-valctl-linux-arm64"
+          - target: "win-x64"
+            runner: "windows-latest"
+            binary: "eth-valctl-win-x64.exe"
+
+    steps:
+      - name: "Download artifact"
+        uses: "actions/download-artifact@v7"
+        with:
+          name: "eth-valctl-${{ matrix.target }}-${{ github.ref_name }}"
+          path: "artifacts"
+
+      - name: "Extract binary"
+        shell: "bash"
+        run: |
+          cd artifacts
+          tar -xzf eth-valctl-*.tar.gz
+          ls -la
+
+      - name: "Test binary execution (Unix)"
+        if: "runner.os != 'Windows'"
+        run: |
+          chmod +x artifacts/${{ matrix.binary }}
+          ./artifacts/${{ matrix.binary }} --version
+          ./artifacts/${{ matrix.binary }} --help
+
+      - name: "Test binary execution (Windows)"
+        if: "runner.os == 'Windows'"
+        shell: "cmd"
+        run: |
+          artifacts\${{ matrix.binary }} --version
+          artifacts\${{ matrix.binary }} --help
+
+  verify-macos:
+    name: "Verify ${{ matrix.target }}"
+    needs: "build-macos"
+    runs-on: "${{ matrix.runner }}"
+    strategy:
+      matrix:
+        include:
+          - target: "macos-x64"
+            runner: "macos-15-intel"
+            binary: "eth-valctl-macos-x64"
+          - target: "macos-arm64"
+            runner: "macos-latest"
+            binary: "eth-valctl-macos-arm64"
+
+    steps:
+      - name: "Download artifact"
+        uses: "actions/download-artifact@v7"
+        with:
+          name: "eth-valctl-${{ matrix.target }}-${{ github.ref_name }}"
+          path: "artifacts"
+
+      - name: "Extract binary"
+        shell: "bash"
+        run: |
+          cd artifacts
+          tar -xzf eth-valctl-*.tar.gz
+          ls -la
+
+      - name: "Verify signature"
+        run: |
+          codesign --verify --verbose=3 "artifacts/${{ matrix.binary }}"
+          codesign -d --verbose=3 "artifacts/${{ matrix.binary }}"
+
+      - name: "Test binary execution"
+        run: |
+          chmod +x artifacts/${{ matrix.binary }}
+          ./artifacts/${{ matrix.binary }} --version
+          ./artifacts/${{ matrix.binary }} --help
 
   release:
     name: "Release new version"
-    needs: "build"
+    needs:
+      - "verify"
+      - "verify-macos"
     runs-on: "ubuntu-latest"
+    permissions:
+      contents: "write"
 
     steps:
       - name: "Download all artifacts"
-        uses: "actions/download-artifact@v4"
+        uses: "actions/download-artifact@v7"
         with:
           path: "release-assets"
 
@@ -81,11 +285,13 @@ jobs:
       - name: "Upload release assets"
         uses: "softprops/action-gh-release@v2"
         with:
-          token: "${{ secrets.PERSONAL_ACCESS_TOKEN }}"
+          token: "${{ secrets.GITHUB_TOKEN }}"
           tag_name: "${{ github.ref_name }}"
-          generate_release_notes: "true"
+          generate_release_notes: true
           files: |
-            eth-validator-cli-linux-x64-${{ github.ref_name }}.tar.gz
-            eth-validator-cli-darwin-x64-${{ github.ref_name }}.tar.gz
-            eth-validator-cli-win-x64-${{ github.ref_name }}.tar.gz
+            eth-valctl-linux-x64-${{ github.ref_name }}.tar.gz
+            eth-valctl-linux-arm64-${{ github.ref_name }}.tar.gz
+            eth-valctl-win-x64-${{ github.ref_name }}.tar.gz
+            eth-valctl-macos-x64-${{ github.ref_name }}.tar.gz
+            eth-valctl-macos-arm64-${{ github.ref_name }}.tar.gz
 ...

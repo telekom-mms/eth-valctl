@@ -1,9 +1,19 @@
 #! /usr/bin/env node
+/**
+ * CLI entry point for eth-valctl - Ethereum validator control tool
+ *
+ * Provides commands for managing execution layer requests:
+ * - consolidate: Consolidate validator balances (EIP-7251)
+ * - switch: Switch withdrawal credentials from 0x01 to 0x02
+ * - withdraw: Partial withdrawal from validators
+ * - exit: Full validator exit
+ */
 import chalk from 'chalk';
 import { Command, Option } from 'commander';
 
+import packageJson from '../../package.json';
 import { DISCLAIMER_INFO } from '../constants/logging';
-import { GlobalCliOptions } from '../model/commander';
+import type { GlobalCliOptions } from '../model/commander';
 import {
   parseAndValidateMaxNumberOfRequestsPerBlock,
   parseAndValidateNodeUrl,
@@ -22,17 +32,17 @@ const beaconApiOptionName = 'beacon-api-url';
 const maxRequestsPerBlockOptionName = 'max-requests-per-block';
 
 program
-  .name('eth-validator-cli')
+  .name('eth-valctl')
   .description(`CLI tool for managing Ethereum validators.\n${chalk.yellow(DISCLAIMER_INFO)}`)
-  .version('0.4.0')
+  .version(packageJson.version)
   .addOption(
     new Option(
       `-n, --${networkOptionName} <network>`,
       'Ethereum network which will be used for request processing'
     )
-      .choices(['hoodi', 'holesky', 'sepolia', 'kurtosis_pectra_devnet'])
+      .choices(['mainnet', 'hoodi', 'sepolia', 'kurtosis_devnet'])
       .makeOptionMandatory(true)
-      .default('kurtosis_pectra_devnet')
+      .default('mainnet')
   )
   .requiredOption(
     `-r, --${jsonRpcOptionName} <jsonRpcUrl>`,
@@ -52,7 +62,7 @@ program
     parseAndValidateMaxNumberOfRequestsPerBlock,
     10
   )
-  .hook('preSubcommand', (thisCommand) => {
+  .hook('preAction', (thisCommand) => {
     console.log(chalk.yellow(DISCLAIMER_INFO));
     const globalOptions: GlobalCliOptions = thisCommand.opts();
     validateNetwork(globalOptions.jsonRpcUrl, globalOptions.network);

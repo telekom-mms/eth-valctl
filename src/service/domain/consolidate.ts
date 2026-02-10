@@ -2,11 +2,11 @@ import chalk from 'chalk';
 
 import { PREFIX_0x } from '../../constants/application';
 import * as logging from '../../constants/logging';
-import { GlobalCliOptions } from '../../model/commander';
+import type { GlobalCliOptions } from '../../model/commander';
 import { networkConfig } from '../../network-config';
 import { checkWithdrawalCredentialType } from '../validation/pre-request';
 import { createEthereumConnection } from './ethereum';
-import { sendExecutionLayerRequests } from './request';
+import { sendExecutionLayerRequests } from './request/send-request';
 
 /**
  * Consolidate one or many validators to one target validator / Switch withdrawal credential type from 0x01 to 0x02 for one or many validators
@@ -31,7 +31,7 @@ export async function consolidate(
     consolidationRequestData.push(request);
   }
   await sendExecutionLayerRequests(
-    networkConfig[globalOptions.network].consolidationContractAddress,
+    networkConfig[globalOptions.network]!.consolidationContractAddress,
     ethereumConnection.provider,
     ethereumConnection.wallet,
     consolidationRequestData,

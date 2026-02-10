@@ -1,6 +1,12 @@
+/**
+ * CLI command for full validator exit
+ *
+ * Creates execution layer withdrawal requests (EIP-7002) with amount 0
+ * to trigger complete validator exit and balance withdrawal.
+ */
 import { Command } from 'commander';
 
-import { GlobalCliOptions, ValidatorOption } from '../model/commander';
+import type { GlobalCliOptions, ValidatorOption } from '../model/commander';
 import { exit } from '../service/domain/exit';
 import { parseAndValidateValidatorPubKeys } from '../service/validation/cli';
 

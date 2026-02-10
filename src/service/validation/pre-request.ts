@@ -1,7 +1,6 @@
 import chalk from 'chalk';
 import { exit } from 'process';
 import { fetch, Response } from 'undici';
-import { format } from 'util';
 
 import {
   VALIDATOR_STATE_BEACON_API_ENDPOINT,
@@ -9,7 +8,7 @@ import {
   WITHDRAWAL_CREDENTIALS_0x02
 } from '../../constants/application';
 import * as logging from '../../constants/logging';
-import { ValidatorResponse } from '../../model/ethereum';
+import type { ValidatorResponse } from '../../model/ethereum';
 
 /**
  * Check if the provided validator withdrawal credentials are of type compounding
@@ -65,7 +64,7 @@ async function handleErrorResponse(response: Response) {
  */
 async function handleWithdrawalCredentialsType(withdrawalCredentialsType: string) {
   console.error(
-    chalk.red(format(logging.GENERAL_WRONG_WITHDRAWAL_CREDENTIALS_ERROR, withdrawalCredentialsType))
+    chalk.red(logging.GENERAL_WRONG_WITHDRAWAL_CREDENTIALS_ERROR(withdrawalCredentialsType))
   );
   if (withdrawalCredentialsType === WITHDRAWAL_CREDENTIALS_0x00) {
     console.error(chalk.red(logging.WRONG_WITHDRAWAL_CREDENTIALS_0x00_ERROR));

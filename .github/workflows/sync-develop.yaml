@@ -1,0 +1,37 @@
+---
+name: "Sync Develop"
+
+# yamllint disable-line rule:truthy
+on:
+  workflow_run:
+    workflows: ["Semantic Release"]
+    types: ["completed"]
+    branches: ["main"]
+
+jobs:
+  sync:
+    name: "Sync develop with main"
+    runs-on: "ubuntu-latest"
+    if: "${{ github.event.workflow_run.conclusion == 'success' }}"
+
+    permissions:
+      contents: "write"
+
+    steps:
+      - uses: "actions/checkout@v6"
+        with:
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          fetch-depth: 0
+          ref: "develop"
+
+      - name: "Configure Git"
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: "Merge main into develop"
+        run: |
+          git fetch origin main
+          git merge origin/main --no-edit -m "chore(develop): Sync develop with main [skip ci]"
+          git push origin develop
+...

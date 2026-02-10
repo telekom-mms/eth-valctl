@@ -1,0 +1,95 @@
+{
+  "enableAllProjectMcpServers": true,
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/post-tool-use-tracker.sh",
+            "type": "command"
+          }
+        ],
+        "matcher": "Edit|MultiEdit|Write"
+      },
+      {
+        "hooks": [
+          {
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/skill-usage-confirm.sh",
+            "type": "command"
+          }
+        ],
+        "matcher": "Skill"
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/code-format.sh",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/skill-activation-prompt.sh",
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "mcp__exa__crawling_exa",
+      "mcp__exa__web_search_exa",
+      "mcp__exa__get_code_context_exa",
+      "Bash(bun:*)",
+      "Bash(git:*)",
+      "Bash(docker:*)",
+      "Bash(python:*)",
+      "Bash(pip:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(mkdir:*)",
+      "Bash(touch:*)",
+      "Bash(echo:*)",
+      "Bash(grep:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(curl:*)",
+      "Bash(find:*)",
+      "Bash(tree:*)",
+      "Bash(wc:*)",
+      "Bash(chmod:*)",
+      "Read(**/*.json)",
+      "Read(**/*.js)",
+      "Read(**/*.ts)",
+      "Read(**/*.py)",
+      "Read(**/*.txt)",
+      "Read(**/*.yaml)",
+      "Edit(**/*.js)",
+      "Edit(**/*.ts)",
+      "Edit(**/*.py)",
+      "Edit(**/*.json)",
+      "Edit(**/*.txt)",
+      "Edit(**/*.yaml)",
+      "Write(**/*.js)",
+      "Write(**/*.ts)",
+      "Write(**/*.py)",
+      "Write(**/*.txt)",
+      "Write(**/*.yaml)",
+      "MultiEdit(**/*.js)",
+      "MultiEdit(**/*.ts)",
+      "MultiEdit(**/*.py)",
+      "MultiEdit(**/*.json)",
+      "MultiEdit(**/*.txt)",
+      "MultiEdit(**/*.yaml)"
+    ],
+    "defaultMode": "acceptEdits"
+  }
+}

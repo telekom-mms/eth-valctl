@@ -1,0 +1,5 @@
+---
+# MD013/line-length - Line length
+# Disabled: Many markdown files have long lines that are acceptable
+MD013: false
+...

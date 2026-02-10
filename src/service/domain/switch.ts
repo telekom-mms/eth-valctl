@@ -1,4 +1,4 @@
-import { GlobalCliOptions } from '../../model/commander';
+import type { GlobalCliOptions } from '../../model/commander';
 import { consolidate } from './consolidate';
 
 /**
