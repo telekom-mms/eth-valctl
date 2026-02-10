@@ -11,6 +11,7 @@
 import chalk from 'chalk';
 import { Command, Option } from 'commander';
 
+import packageJson from '../../package.json';
 import { DISCLAIMER_INFO } from '../constants/logging';
 import type { GlobalCliOptions } from '../model/commander';
 import {
@@ -33,15 +34,15 @@ const maxRequestsPerBlockOptionName = 'max-requests-per-block';
 program
   .name('eth-valctl')
   .description(`CLI tool for managing Ethereum validators.\n${chalk.yellow(DISCLAIMER_INFO)}`)
-  .version('0.4.0')
+  .version(packageJson.version)
   .addOption(
     new Option(
       `-n, --${networkOptionName} <network>`,
       'Ethereum network which will be used for request processing'
     )
-      .choices(['hoodi', 'holesky', 'sepolia', 'kurtosis_pectra_devnet'])
+      .choices(['mainnet', 'hoodi', 'sepolia', 'kurtosis_devnet'])
       .makeOptionMandatory(true)
-      .default('kurtosis_pectra_devnet')
+      .default('mainnet')
   )
   .requiredOption(
     `-r, --${jsonRpcOptionName} <jsonRpcUrl>`,
