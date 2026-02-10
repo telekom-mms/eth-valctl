@@ -14,7 +14,7 @@ import type { NetworkConfig } from './model/ethereum';
  * - mainnet: Ethereum mainnet (chain ID 1)
  * - sepolia: Sepolia testnet (chain ID 11155111)
  * - hoodi: Hoodi testnet (chain ID 560048)
- * - kurtosis_pectra_devnet: Kurtosis Pectra devnet (chain ID 3151908)
+ * - kurtosis_devnet: Kurtosis Pectra devnet (chain ID 3151908)
  */
 export const networkConfig: Record<string, NetworkConfig> = {
   mainnet: {

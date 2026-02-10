@@ -32,7 +32,7 @@ const { exit } = await import('./exit');
 const { switchWithdrawalCredentialType } = await import('./switch');
 
 const createGlobalOptions = (overrides?: Partial<GlobalCliOptions>): GlobalCliOptions => ({
-  network: 'holesky',
+  network: 'hoodi',
   jsonRpcUrl: 'http://localhost:8545',
   beaconApiUrl: 'http://localhost:5052',
   maxRequestsPerBlock: 10,
@@ -362,7 +362,7 @@ describe('Domain Services Integration Tests', () => {
   });
 
   describe('network configuration', () => {
-    const networks = ['hoodi', 'holesky', 'sepolia', 'kurtosis_pectra_devnet'] as const;
+    const networks = ['mainnet', 'hoodi', 'sepolia', 'kurtosis_devnet'] as const;
 
     for (const network of networks) {
       it(`uses correct contract addresses for ${network} network`, async () => {
