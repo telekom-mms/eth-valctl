@@ -52,5 +52,5 @@
     "typecheck": "bun run --bun tsc --noEmit && echo \"\u2713 TypeScript compilation successful - no errors found\""
   },
   "type": "module",
-  "version": "0.4.0"
+  "version": "0.5.0"
 }
