@@ -33,13 +33,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: "Setup Bun"
-        uses: "oven-sh/setup-bun@v2"
+      - name: "Setup Node.js"
+        uses: "actions/setup-node@v6"
         with:
-          bun-version: "latest"
+          node-version: "24"
+          cache: "npm"
 
       - name: "Install dependencies"
-        run: "bun install --frozen-lockfile"
+        run: "npm ci"
 
       - name: "Show current version"
         run: |
@@ -51,9 +52,9 @@ jobs:
           GITHUB_TOKEN: "${{ secrets.SEMANTIC_RELEASE_TOKEN }}"
         run: |
           if [ "${{ inputs.dry_run }}" = "true" ]; then
-            bunx semantic-release --dry-run
+            npx semantic-release --dry-run
           else
-            bunx semantic-release
+            npx semantic-release
           fi
 
       - name: "Verify version update"
