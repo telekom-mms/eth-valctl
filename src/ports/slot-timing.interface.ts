@@ -1,4 +1,4 @@
-import type { SlotPosition } from '../../model/ethereum';
+import type { SlotPosition } from '../model/ethereum';
 
 /**
  * Service interface for beacon chain slot timing operations

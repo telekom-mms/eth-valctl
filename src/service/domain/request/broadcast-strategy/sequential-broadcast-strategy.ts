@@ -3,11 +3,11 @@ import type {
   ExecutionLayerRequestTransaction,
   SigningContext
 } from '../../../../model/ethereum';
+import type { IBroadcastStrategy } from '../../../../ports/broadcast-strategy.interface';
+import type { ISlotTimingService } from '../../../../ports/slot-timing.interface';
 import { type IInteractiveSigner, isFatalLedgerError, type ISigner } from '../../signer';
-import type { ISlotTimingService } from '../../slot-timing.interface';
 import type { EthereumStateService } from '../ethereum-state-service';
 import type { TransactionProgressLogger } from '../transaction-progress-logger';
-import type { IBroadcastStrategy } from './broadcast-strategy.interface';
 import {
   createElTransaction,
   createFailedBroadcastResult,

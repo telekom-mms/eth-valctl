@@ -9,8 +9,8 @@ import type { JsonRpcProvider, TransactionResponse } from 'ethers';
 
 import * as logging from '../../../constants/logging';
 import type { ExecutionLayerRequestTransaction, SigningContext } from '../../../model/ethereum';
+import type { IInteractiveSigner, SignerCapabilities } from '../../../ports/signer.interface';
 import { classifyLedgerError, isLedgerError } from './ledger-error-handler';
-import type { IInteractiveSigner, SignerCapabilities } from './signer.interface';
 
 const DEFAULT_DERIVATION_PATH = "44'/60'/0'/0/0";
 const CONNECTION_TIMEOUT_MS = 5000;

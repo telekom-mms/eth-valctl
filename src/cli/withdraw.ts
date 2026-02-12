@@ -11,7 +11,7 @@ import { withdraw } from '../service/domain/withdraw';
 import {
   parseAndValidateValidatorPubKeys,
   parseAndValidateWithdrawAmount
-} from '../service/validation/cli';
+} from './validation/cli';
 
 const withdrawCommand = new Command();
 

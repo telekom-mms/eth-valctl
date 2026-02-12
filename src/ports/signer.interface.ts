@@ -1,6 +1,6 @@
 import type { TransactionResponse } from 'ethers';
 
-import type { ExecutionLayerRequestTransaction, SigningContext } from '../../../model/ethereum';
+import type { ExecutionLayerRequestTransaction, SigningContext } from '../model/ethereum';
 
 /**
  * Signer capabilities indicating supported features
