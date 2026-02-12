@@ -1,6 +1,6 @@
 import type { JsonRpcProvider, TransactionReceipt, TransactionResponse } from 'ethers';
 
-import type { ISigner } from '../service/domain/signer';
+import type { ISigner } from '../ports/signer.interface';
 
 /**
  * Signer type for transaction signing

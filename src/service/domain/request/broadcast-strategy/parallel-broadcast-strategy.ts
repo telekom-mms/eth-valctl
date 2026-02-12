@@ -1,7 +1,7 @@
 import type { BroadcastResult, ExecutionLayerRequestTransaction } from '../../../../model/ethereum';
+import type { IBroadcastStrategy } from '../../../../ports/broadcast-strategy.interface';
 import type { ISigner } from '../../signer';
 import type { TransactionProgressLogger } from '../transaction-progress-logger';
-import type { IBroadcastStrategy } from './broadcast-strategy.interface';
 import { createFailedBroadcastResult, createSuccessBroadcastResult } from './broadcast-utils';
 
 /**

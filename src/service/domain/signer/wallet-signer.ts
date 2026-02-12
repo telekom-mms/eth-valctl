@@ -2,7 +2,7 @@ import type { TransactionResponse, Wallet } from 'ethers';
 import { NonceManager } from 'ethers';
 
 import type { ExecutionLayerRequestTransaction } from '../../../model/ethereum';
-import type { ISigner, SignerCapabilities } from './signer.interface';
+import type { ISigner, SignerCapabilities } from '../../../ports/signer.interface';
 
 /**
  * Software wallet signer using ethers NonceManager

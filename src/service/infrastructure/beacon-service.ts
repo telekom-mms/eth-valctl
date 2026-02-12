@@ -11,7 +11,7 @@ import {
 import * as logging from '../../constants/logging';
 import type { GenesisResponse, SlotPosition } from '../../model/ethereum';
 import { BlockchainStateError } from '../../model/ethereum';
-import type { ISlotTimingService } from '../domain/slot-timing.interface';
+import type { ISlotTimingService } from '../../ports/slot-timing.interface';
 
 /**
  * Service for beacon chain timing operations.

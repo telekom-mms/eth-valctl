@@ -13,14 +13,14 @@ import { Command, Option } from 'commander';
 
 import { DISCLAIMER_INFO } from '../constants/logging';
 import type { GlobalCliOptions } from '../model/commander';
+import { consolidateCommand } from './consolidate';
+import { exitCommand } from './exit';
+import { switchWithdrawalCredentialTypeCommand } from './switch';
 import {
   parseAndValidateMaxNumberOfRequestsPerBlock,
   parseAndValidateNodeUrl,
   validateNetwork
-} from '../service/validation/cli';
-import { consolidateCommand } from './consolidate';
-import { exitCommand } from './exit';
-import { switchWithdrawalCredentialTypeCommand } from './switch';
+} from './validation/cli';
 import { withdrawCommand } from './withdraw';
 
 const program = new Command();

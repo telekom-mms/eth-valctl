@@ -1,5 +1,5 @@
-import type { BroadcastResult, ExecutionLayerRequestTransaction } from '../../../../model/ethereum';
-import type { ISigner } from '../../signer';
+import type { BroadcastResult, ExecutionLayerRequestTransaction } from '../model/ethereum';
+import type { ISigner } from './signer.interface';
 
 /**
  * Context for a single transaction broadcast

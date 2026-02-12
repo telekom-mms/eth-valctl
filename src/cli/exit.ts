@@ -8,7 +8,7 @@ import { Command } from 'commander';
 
 import type { GlobalCliOptions, ValidatorOption } from '../model/commander';
 import { exit } from '../service/domain/exit';
-import { parseAndValidateValidatorPubKeys } from '../service/validation/cli';
+import { parseAndValidateValidatorPubKeys } from './validation/cli';
 
 const exitCommand = new Command();
 

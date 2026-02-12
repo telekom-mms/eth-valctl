@@ -31,7 +31,7 @@ mock.module('./request/send-request', () => ({
   sendExecutionLayerRequests: mockSendExecutionLayerRequests
 }));
 
-mock.module('../validation/pre-request', () => ({
+mock.module('./pre-request-validation', () => ({
   checkWithdrawalCredentialType: mockCheckWithdrawalCredentialType
 }));
 

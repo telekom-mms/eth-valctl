@@ -1,15 +1,7 @@
 import type { JsonRpcProvider } from 'ethers';
 
-import { BeaconService } from '../../infrastructure/beacon-service';
-import type { ISigner } from '../signer';
-import type { IBroadcastStrategy } from './broadcast-strategy';
-import { ParallelBroadcastStrategy, SequentialBroadcastStrategy } from './broadcast-strategy';
-import { EthereumStateService } from './ethereum-state-service';
-import { TransactionBatchOrchestrator } from './transaction-batch-orchestrator';
-import { TransactionBroadcaster } from './transaction-broadcaster';
-import { TransactionMonitor } from './transaction-monitor';
-import { TransactionProgressLogger } from './transaction-progress-logger';
-import { TransactionReplacer } from './transaction-replacer';
+import type { ISigner } from '../../../ports/signer.interface';
+import { createTransactionBatchOrchestrator } from './execution-layer-request-factory';
 
 /**
  * Send execution layer requests via JSON-RPC connection
@@ -32,47 +24,11 @@ export async function sendExecutionLayerRequests(
   executionLayerRequestBatchSize: number,
   beaconApiUrl: string
 ): Promise<void> {
-  const ethereumStateService = new EthereumStateService(jsonRpcProvider, systemContractAddress);
-  const logger = new TransactionProgressLogger();
-
-  let broadcastStrategy: IBroadcastStrategy;
-  if (signer.capabilities.supportsParallelSigning) {
-    broadcastStrategy = new ParallelBroadcastStrategy(logger);
-  } else {
-    const beaconService = new BeaconService(beaconApiUrl);
-    await beaconService.initialize();
-    broadcastStrategy = new SequentialBroadcastStrategy(
-      ethereumStateService,
-      systemContractAddress,
-      beaconService,
-      logger
-    );
-  }
-
-  const transactionBroadcaster = new TransactionBroadcaster(
-    signer,
+  const orchestrator = await createTransactionBatchOrchestrator(
     systemContractAddress,
-    ethereumStateService,
-    logger,
-    broadcastStrategy
-  );
-
-  const transactionMonitor = new TransactionMonitor(jsonRpcProvider);
-
-  const transactionReplacer = new TransactionReplacer(
+    jsonRpcProvider,
     signer,
-    ethereumStateService,
-    transactionBroadcaster,
-    transactionMonitor,
-    logger
-  );
-
-  const orchestrator = new TransactionBatchOrchestrator(
-    ethereumStateService,
-    transactionBroadcaster,
-    transactionMonitor,
-    transactionReplacer,
-    logger
+    beaconApiUrl
   );
 
   try {
