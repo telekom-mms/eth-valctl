@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import type { TransactionResponse } from 'ethers';
 
+import { INSUFFICIENT_FUNDS_ERROR } from '../../../constants/logging';
 import type { PendingTransactionInfo, ReplacementSummary } from '../../../model/ethereum';
 import { TransactionProgressLogger } from './transaction-progress-logger';
 
@@ -154,6 +155,32 @@ describe('TransactionProgressLogger', () => {
       expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
       const callArgs = consoleErrorSpy.mock.calls[0];
       expect(callArgs?.join(' ')).toContain('3');
+    });
+  });
+
+  describe('logBroadcastFailure', () => {
+    it('logs clean message for INSUFFICIENT_FUNDS error', () => {
+      logger.logBroadcastFailure({ code: 'INSUFFICIENT_FUNDS' });
+
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+      const callArgs = consoleErrorSpy.mock.calls[0];
+      expect(callArgs?.join(' ')).toContain(INSUFFICIENT_FUNDS_ERROR);
+    });
+
+    it('does not pass raw error object for INSUFFICIENT_FUNDS error', () => {
+      const error = { code: 'INSUFFICIENT_FUNDS' };
+      logger.logBroadcastFailure(error);
+
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+      expect(consoleErrorSpy.mock.calls[0]).toHaveLength(1);
+    });
+
+    it('logs raw error for non-INSUFFICIENT_FUNDS errors', () => {
+      const error = new Error('some other error');
+      logger.logBroadcastFailure(error);
+
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+      expect(consoleErrorSpy.mock.calls[0]).toHaveLength(2);
     });
   });
 

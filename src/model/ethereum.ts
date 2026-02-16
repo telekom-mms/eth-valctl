@@ -176,3 +176,13 @@ export class BlockchainStateError extends Error {
     this.name = 'BlockchainStateError';
   }
 }
+
+/**
+ * Thrown when INSUFFICIENT_FUNDS is detected during broadcast to abort remaining batches
+ */
+export class InsufficientFundsAbortError extends Error {
+  constructor(public readonly failedPubkeys: string[]) {
+    super('Insufficient funds detected - aborting remaining batches');
+    this.name = 'InsufficientFundsAbortError';
+  }
+}

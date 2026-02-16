@@ -7,8 +7,9 @@ import type {
   PendingTransactionInfo,
   TransactionRetryResult
 } from '../../../model/ethereum';
-import { BlockchainStateError } from '../../../model/ethereum';
+import { BlockchainStateError, InsufficientFundsAbortError } from '../../../model/ethereum';
 import { extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
+import { isInsufficientFundsError } from './error-utils';
 import { EthereumStateService } from './ethereum-state-service';
 import { TransactionBroadcaster } from './transaction-broadcaster';
 import { TransactionMonitor } from './transaction-monitor';
@@ -39,7 +40,9 @@ export class TransactionBatchOrchestrator {
   /**
    * Send execution layer requests with batch processing and retry logic
    *
-   * Processes each batch independently - failures in one batch don't prevent processing of other batches.
+   * Processes batches sequentially. Generic failures in one batch don't prevent processing of
+   * subsequent batches. However, if INSUFFICIENT_FUNDS is detected, remaining batches are aborted
+   * since they would fail for the same reason.
    *
    * @param requestData - Array of encoded request data to send
    * @param executionLayerRequestBatchSize - Maximum number of requests per batch
@@ -55,11 +58,21 @@ export class TransactionBatchOrchestrator {
       executionLayerRequestBatchSize
     );
 
-    for (const batch of executionLayerRequestBatches) {
+    for (let batchIndex = 0; batchIndex < executionLayerRequestBatches.length; batchIndex++) {
+      const batch = executionLayerRequestBatches[batchIndex]!;
       try {
         const failedPubkeys = await this.processBatch(batch);
         allFailedValidators.push(...failedPubkeys);
       } catch (error) {
+        if (error instanceof InsufficientFundsAbortError) {
+          allFailedValidators.push(...error.failedPubkeys);
+          allFailedValidators.push(
+            ...executionLayerRequestBatches.slice(batchIndex + 1).flatMap(
+              (skippedBatch) => skippedBatch.map(extractValidatorPubkey)
+            )
+          );
+          break;
+        }
         const failedPubkeys = batch.map(extractValidatorPubkey);
         if (error instanceof BlockchainStateError) {
           allFailedValidators.push(...failedPubkeys);
@@ -95,9 +108,11 @@ export class TransactionBatchOrchestrator {
       currentBlockNumber
     );
 
-    const failedValidatorPubkeys = broadcastResults
-      .filter(this.isFailedBroadcast)
-      .map((result) => result.validatorPubkey);
+    const failedBroadcasts = broadcastResults.filter(this.isFailedBroadcast);
+    const failedValidatorPubkeys = failedBroadcasts.map((result) => result.validatorPubkey);
+    const hasInsufficientFunds = failedBroadcasts.some(
+      (result) => isInsufficientFundsError(result.error)
+    );
 
     const pendingTransactions = broadcastResults
       .filter(this.isSuccessfulBroadcast)
@@ -113,7 +128,11 @@ export class TransactionBatchOrchestrator {
       const exhaustedRetryPubkeys = exhaustedTransactions.map((tx) =>
         extractValidatorPubkey(tx.data)
       );
-      return [...failedValidatorPubkeys, ...exhaustedRetryPubkeys];
+      failedValidatorPubkeys.push(...exhaustedRetryPubkeys);
+    }
+
+    if (hasInsufficientFunds) {
+      throw new InsufficientFundsAbortError(failedValidatorPubkeys);
     }
 
     return failedValidatorPubkeys;

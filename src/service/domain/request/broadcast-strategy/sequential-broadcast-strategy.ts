@@ -6,6 +6,7 @@ import type {
 import type { IBroadcastStrategy } from '../../../../ports/broadcast-strategy.interface';
 import type { ISlotTimingService } from '../../../../ports/slot-timing.interface';
 import { type IInteractiveSigner, isFatalLedgerError, type ISigner } from '../../signer';
+import { isInsufficientFundsError } from '../error-utils';
 import type { EthereumStateService } from '../ethereum-state-service';
 import type { TransactionProgressLogger } from '../transaction-progress-logger';
 import {
@@ -92,7 +93,7 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
         this.logger.logBroadcastFailure(error);
         results.push(createFailedBroadcastResult(requestData, error));
 
-        if (isFatalLedgerError(error)) {
+        if (isFatalLedgerError(error) || isInsufficientFundsError(error)) {
           for (let remaining = index + 1; remaining < total; remaining++) {
             const remainingData = transactions[remaining]!.requestData;
             results.push(createFailedBroadcastResult(remainingData, error));
