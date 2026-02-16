@@ -194,6 +194,28 @@ describe('TransactionBatchOrchestrator', () => {
       expect(mockLogger.logFailedValidators).toHaveBeenCalledWith(['0xdata1', '0xdata2']);
     });
 
+    it('handles unexpected errors by logging and adding batch to failed validators', async () => {
+      const mockLogger = createMockLogger();
+      const mockBlockchainStateService = createMockBlockchainStateService({
+        fetchBlockNumber: mock(() =>
+          Promise.reject(new Error('Connection refused'))
+        )
+      });
+
+      const orchestrator = new TransactionBatchOrchestrator(
+        mockBlockchainStateService,
+        createMockTransactionBroadcaster(),
+        createMockTransactionMonitor(),
+        createMockTransactionReplacer(),
+        mockLogger
+      );
+
+      await orchestrator.sendExecutionLayerRequests(['0xdata1', '0xdata2'], 10);
+
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      expect(mockLogger.logFailedValidators).toHaveBeenCalledWith(['0xdata1', '0xdata2']);
+    });
+
     it('does not log failed validators when all succeed', async () => {
       const mockLogger = createMockLogger();
       const mockBroadcaster = createMockTransactionBroadcaster([

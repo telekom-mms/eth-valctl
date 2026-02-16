@@ -24,6 +24,10 @@ import {
 } from './validation/cli';
 import { withdrawCommand } from './withdraw';
 
+process.on('unhandledRejection', (reason) => {
+  console.error(chalk.red('Unhandled promise rejection:'), reason);
+});
+
 const program = new Command();
 
 const networkOptionName = 'network';
@@ -78,4 +82,7 @@ program
   .addCommand(withdrawCommand)
   .addCommand(exitCommand);
 
-program.parseAsync(process.argv).then(() => {});
+program.parseAsync(process.argv).catch((error: unknown) => {
+  console.error(chalk.red('Fatal error:'), error);
+  process.exit(1);
+});
