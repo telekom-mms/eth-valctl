@@ -60,8 +60,12 @@ export class TransactionBatchOrchestrator {
         const failedPubkeys = await this.processBatch(batch);
         allFailedValidators.push(...failedPubkeys);
       } catch (error) {
+        const failedPubkeys = batch.map(extractValidatorPubkey);
         if (error instanceof BlockchainStateError) {
-          allFailedValidators.push(...batch);
+          allFailedValidators.push(...failedPubkeys);
+        } else {
+          console.error(chalk.red('Unexpected error processing batch:'), error);
+          allFailedValidators.push(...failedPubkeys);
         }
       }
     }

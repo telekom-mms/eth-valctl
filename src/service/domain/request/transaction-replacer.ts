@@ -9,7 +9,8 @@ import type {
   PendingTransactionInfo,
   ReplacementSummary,
   SigningContext,
-  TransactionReplacementResult
+  TransactionReplacementResult,
+  TransactionStatus
 } from '../../../model/ethereum';
 import { TransactionReplacementStatusType, TransactionStatusType } from '../../../model/ethereum';
 import type { IInteractiveSigner, ISigner } from '../signer';
@@ -63,17 +64,15 @@ export class TransactionReplacer {
 
     const categorized = await this.categorizeTransactionsByStatus(pendingTransactions);
 
-    if (categorized.mined.length > 0) {
-      this.logger.logProgress(
-        categorized.mined.length,
-        categorized.reverted.length + categorized.pending.length
-      );
+    const remainingCount = categorized.reverted.length + categorized.pending.length;
+    if (categorized.mined.length > 0 && remainingCount > 0) {
+      this.logger.logProgress(categorized.mined.length, remainingCount);
     }
 
     const needsReplacement = categorized.pending.length + categorized.reverted.length;
     if (needsReplacement > 0) {
       console.log(
-        chalk.yellow(logging.BLOCK_CHANGE_INFO(currentBlockNumber, needsReplacement))
+        chalk.yellow(logging.BLOCK_CHANGE_INFO(currentBlockNumber + 1, needsReplacement))
       );
     }
 
@@ -114,12 +113,19 @@ export class TransactionReplacer {
     const walletAddress = this.signer.address;
 
     const statusChecks = pendingTransactions.map(async (tx) => {
-      const status = await this.transactionMonitor.getTransactionStatus(
-        tx.response.hash,
-        walletAddress,
-        tx.nonce
-      );
-      return { transaction: tx, status };
+      try {
+        const status = await this.transactionMonitor.getTransactionStatus(
+          tx.response.hash,
+          walletAddress,
+          tx.nonce
+        );
+        return { transaction: tx, status };
+      } catch {
+        return {
+          transaction: tx,
+          status: { type: TransactionStatusType.PENDING } as TransactionStatus
+        };
+      }
     });
 
     const results = await Promise.all(statusChecks);

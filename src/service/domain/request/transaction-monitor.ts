@@ -1,7 +1,6 @@
 import chalk from 'chalk';
 import { JsonRpcProvider } from 'ethers';
 
-import * as serviceConstants from '../../../constants/application';
 import * as logging from '../../../constants/logging';
 import type {
   PendingTransactionInfo,
@@ -60,9 +59,8 @@ export class TransactionMonitor {
     pendingTransaction: PendingTransactionInfo
   ): Promise<ReceiptCheckResult> {
     try {
-      const receipt = await pendingTransaction.response.wait(
-        1,
-        serviceConstants.TRANSACTION_RECEIPT_TIMEOUT_MS
+      const receipt = await this.provider.getTransactionReceipt(
+        pendingTransaction.response.hash
       );
 
       if (receipt && receipt.status === 1) {
@@ -107,23 +105,27 @@ export class TransactionMonitor {
     walletAddress?: string,
     transactionNonce?: number
   ): Promise<TransactionStatus> {
-    const receipt = await this.provider.getTransactionReceipt(transactionHash);
+    try {
+      const receipt = await this.provider.getTransactionReceipt(transactionHash);
 
-    if (receipt) {
-      if (receipt.status === 1) {
-        return { type: TransactionStatusType.MINED, receipt };
+      if (receipt) {
+        if (receipt.status === 1) {
+          return { type: TransactionStatusType.MINED, receipt };
+        }
+        return { type: TransactionStatusType.REVERTED, receipt };
       }
-      return { type: TransactionStatusType.REVERTED, receipt };
-    }
 
-    if (walletAddress !== undefined && transactionNonce !== undefined) {
-      const currentNonce = await this.provider.getTransactionCount(walletAddress, 'latest');
-      if (currentNonce > transactionNonce) {
-        return { type: TransactionStatusType.MINED_BY_COMPETITOR };
+      if (walletAddress !== undefined && transactionNonce !== undefined) {
+        const currentNonce = await this.provider.getTransactionCount(walletAddress, 'latest');
+        if (currentNonce > transactionNonce) {
+          return { type: TransactionStatusType.MINED_BY_COMPETITOR };
+        }
       }
-    }
 
-    return { type: TransactionStatusType.PENDING };
+      return { type: TransactionStatusType.PENDING };
+    } catch {
+      return { type: TransactionStatusType.PENDING };
+    }
   }
 
   /**

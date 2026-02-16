@@ -26,7 +26,6 @@ export const MAX_NUMBER_OF_REQUESTS_PER_BLOCK = 220;
 
 /** Transaction retry configuration */
 export const MAX_TRANSACTION_RETRIES = 3;
-export const TRANSACTION_RECEIPT_TIMEOUT_MS = 15000;
 export const TRANSACTION_RETRY_DELAY_MS = 1000;
 export const MAX_FETCH_NETWORK_FEES_RETRIES = 5;
 

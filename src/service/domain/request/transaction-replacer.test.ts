@@ -381,7 +381,43 @@ describe('TransactionReplacer', () => {
         const result = await replacer.replaceTransactions([tx], 1n, 101);
 
         expect(result).toHaveLength(0);
-        expect(mockLogger.logProgress).toHaveBeenCalledWith(1, 0);
+        expect(mockLogger.logProgress).not.toHaveBeenCalled();
+      });
+
+      it('does not log progress when all transactions are already mined', async () => {
+        const statusMap = new Map<string, TransactionStatus>();
+        statusMap.set('0xhash1', {
+          type: TransactionStatusType.MINED,
+          receipt: { hash: '0xhash1', status: 1 } as never
+        });
+        statusMap.set('0xhash2', {
+          type: TransactionStatusType.MINED,
+          receipt: { hash: '0xhash2', status: 1 } as never
+        });
+        statusMap.set('0xhash3', {
+          type: TransactionStatusType.MINED_BY_COMPETITOR
+        });
+
+        const mockLogger = createMockLogger();
+        const replacer = new TransactionReplacer(
+          createMockSigner(),
+          createMockBlockchainStateService(),
+          createMockTransactionBroadcaster(),
+          createMockTransactionMonitor(statusMap),
+          mockLogger
+        );
+
+        const tx1 = createMockPendingTransaction(1, '0xhash1');
+        const tx2 = createMockPendingTransaction(2, '0xhash2');
+        const tx3 = createMockPendingTransaction(3, '0xhash3');
+
+        const result = await replacer.replaceTransactions([tx1, tx2, tx3], 1n, 101);
+
+        expect(result).toHaveLength(0);
+        expect(mockLogger.logProgress).not.toHaveBeenCalled();
+        expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
+          expect.objectContaining({ alreadyMined: 3 })
+        );
       });
 
       it('categorizes MINED_BY_COMPETITOR as already mined', async () => {
@@ -460,6 +496,36 @@ describe('TransactionReplacer', () => {
         await replacer.replaceTransactions([tx], 1n, 101);
 
         expect(mockSendTransactionWithNonce).toHaveBeenCalledWith(expect.anything(), 1);
+      });
+    });
+
+    describe('categorizeTransactionsByStatus error handling', () => {
+      it('treats transaction as PENDING when getTransactionStatus throws', async () => {
+        const mockMonitor = {
+          getTransactionStatus: mock(() => Promise.reject(new Error('RPC error')))
+        } as unknown as TransactionMonitor;
+
+        const mockSendTransactionWithNonce = mock(() =>
+          Promise.resolve({ hash: '0xnewhash', nonce: 1 } as TransactionResponse)
+        );
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mockSendTransactionWithNonce
+        });
+        const mockLogger = createMockLogger();
+        const replacer = new TransactionReplacer(
+          mockSigner,
+          createMockBlockchainStateService(),
+          createMockTransactionBroadcaster(),
+          mockMonitor,
+          mockLogger
+        );
+
+        const tx = createMockPendingTransaction(1, '0xhash1');
+
+        const result = await replacer.replaceTransactions([tx], 1n, 101);
+
+        expect(result).toHaveLength(1);
+        expect(mockSendTransactionWithNonce).toHaveBeenCalled();
       });
     });
 
