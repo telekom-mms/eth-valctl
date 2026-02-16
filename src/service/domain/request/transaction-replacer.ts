@@ -15,7 +15,11 @@ import type {
 import { TransactionReplacementStatusType, TransactionStatusType } from '../../../model/ethereum';
 import type { IInteractiveSigner, ISigner } from '../signer';
 import { extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
-import { isInsufficientFundsError } from './error-utils';
+import {
+  isInsufficientFundsError,
+  isNonceExpiredError,
+  isReplacementUnderpricedError
+} from './error-utils';
 import { EthereumStateService } from './ethereum-state-service';
 import { TransactionBroadcaster } from './transaction-broadcaster';
 import { TransactionMonitor } from './transaction-monitor';
@@ -420,11 +424,11 @@ export class TransactionReplacer {
     error: unknown,
     tx: PendingTransactionInfo
   ): TransactionReplacementResult {
-    if (this.isReplacementUnderpricedError(error)) {
+    if (isReplacementUnderpricedError(error)) {
       return { status: TransactionReplacementStatusType.UNDERPRICED, transaction: tx };
     }
 
-    if (this.isNonceExpiredError(error)) {
+    if (isNonceExpiredError(error)) {
       console.log(
         chalk.green(logging.MINED_EL_REQUEST_INFO, tx.response.hash),
         '(nonce consumed by original or competing replacement)'
@@ -502,36 +506,6 @@ export class TransactionReplacer {
   private calculateBumpedFee(oldFee: bigint, networkFallback: bigint): bigint {
     const feeTobump = oldFee > 0n ? oldFee : networkFallback;
     return (feeTobump * serviceConstants.TRANSACTION_FEE_INCREASE_PERCENTAGE) / 100n;
-  }
-
-  /**
-   * Check if error has a specific error code
-   *
-   * @param error - Error to check
-   * @param code - Error code to match
-   * @returns True if error has the specified code
-   */
-  private hasErrorCode(error: unknown, code: string): boolean {
-    return typeof error === 'object' && error !== null && 'code' in error && error.code === code;
-  }
-
-  /**
-   * @returns True if error is REPLACEMENT_UNDERPRICED
-   */
-  private isReplacementUnderpricedError(error: unknown): boolean {
-    return this.hasErrorCode(error, serviceConstants.REPLACEMENT_UNDERPRICED_ERROR_CODE);
-  }
-
-  /**
-   * Check if error indicates nonce was already consumed
-   *
-   * NONCE_EXPIRED occurs when a transaction with the same nonce was already mined.
-   * This can happen when the original transaction wins the race against a replacement.
-   *
-   * @returns True if error is NONCE_EXPIRED
-   */
-  private isNonceExpiredError(error: unknown): boolean {
-    return this.hasErrorCode(error, serviceConstants.NONCE_EXPIRED_ERROR_CODE);
   }
 
   /**
