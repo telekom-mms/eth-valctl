@@ -66,10 +66,12 @@ export class TransactionBatchOrchestrator {
       } catch (error) {
         if (error instanceof InsufficientFundsAbortError) {
           allFailedValidators.push(...error.failedPubkeys);
+          const skippedBatches = executionLayerRequestBatches.slice(batchIndex + 1);
+          if (skippedBatches.length > 0) {
+            this.logger.logSkippedBatchesDueToInsufficientFunds(skippedBatches.length);
+          }
           allFailedValidators.push(
-            ...executionLayerRequestBatches.slice(batchIndex + 1).flatMap(
-              (skippedBatch) => skippedBatch.map(extractValidatorPubkey)
-            )
+            ...skippedBatches.flatMap((skippedBatch) => skippedBatch.map(extractValidatorPubkey))
           );
           break;
         }
@@ -85,6 +87,9 @@ export class TransactionBatchOrchestrator {
 
     if (allFailedValidators.length > 0) {
       this.logger.logFailedValidators(allFailedValidators);
+      this.logger.logExecutionFailure(allFailedValidators.length, requestData.length);
+    } else {
+      this.logger.logExecutionSuccess();
     }
   }
 

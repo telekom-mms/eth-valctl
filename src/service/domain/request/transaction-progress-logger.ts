@@ -4,7 +4,7 @@ import * as serviceConstants from '../../../constants/application';
 import * as logging from '../../../constants/logging';
 import type { PendingTransactionInfo, ReplacementSummary } from '../../../model/ethereum';
 import { isLedgerError } from '../signer';
-import { isInsufficientFundsError } from './error-utils';
+import { isInsufficientFundsError, isNonceExpiredError } from './error-utils';
 
 /**
  * Service for logging transaction processing progress with consistent formatting.
@@ -110,6 +110,32 @@ export class TransactionProgressLogger {
   }
 
   /**
+   * Log warning when batches are skipped due to insufficient funds
+   *
+   * @param skippedCount - Number of batches being skipped
+   */
+  logSkippedBatchesDueToInsufficientFunds(skippedCount: number): void {
+    console.log(chalk.yellow(logging.INSUFFICIENT_FUNDS_SKIPPING_BATCHES_WARNING(skippedCount)));
+  }
+
+  /**
+   * Log successful completion of all execution layer requests
+   */
+  logExecutionSuccess(): void {
+    console.log(chalk.green(logging.EXECUTION_COMPLETED_SUCCESS_INFO));
+  }
+
+  /**
+   * Log execution completion with failures
+   *
+   * @param failedCount - Number of failed requests
+   * @param totalCount - Total number of requests attempted
+   */
+  logExecutionFailure(failedCount: number, totalCount: number): void {
+    console.error(chalk.red(logging.EXECUTION_COMPLETED_WITH_FAILURES_ERROR(failedCount, totalCount)));
+  }
+
+  /**
    * Log broadcasting of a transaction
    *
    * @param hash - Transaction hash being broadcast
@@ -132,6 +158,10 @@ export class TransactionProgressLogger {
     }
     if (isInsufficientFundsError(error)) {
       console.error(chalk.red(logging.INSUFFICIENT_FUNDS_ERROR));
+      return;
+    }
+    if (isNonceExpiredError(error)) {
+      console.error(chalk.yellow(logging.NONCE_EXPIRED_BROADCAST_ERROR));
       return;
     }
     console.error(chalk.red(logging.FAILED_TO_BROADCAST_TRANSACTION_ERROR), error);

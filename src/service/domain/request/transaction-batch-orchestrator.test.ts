@@ -85,7 +85,10 @@ const createMockLogger = (): TransactionProgressLogger => {
   return {
     logProgress: mock(),
     logMaxRetriesExceeded: mock(),
-    logFailedValidators: mock()
+    logFailedValidators: mock(),
+    logSkippedBatchesDueToInsufficientFunds: mock(),
+    logExecutionSuccess: mock(),
+    logExecutionFailure: mock()
   } as unknown as TransactionProgressLogger;
 };
 
@@ -171,6 +174,7 @@ describe('TransactionBatchOrchestrator', () => {
       await orchestrator.sendExecutionLayerRequests([pubkey1], 10);
 
       expect(mockLogger.logFailedValidators).toHaveBeenCalledWith([pubkey1]);
+      expect(mockLogger.logExecutionFailure).toHaveBeenCalledWith(1, 1);
     });
 
     it('handles BlockchainStateError by adding batch to failed validators', async () => {
@@ -192,6 +196,7 @@ describe('TransactionBatchOrchestrator', () => {
       await orchestrator.sendExecutionLayerRequests(['0xdata1', '0xdata2'], 10);
 
       expect(mockLogger.logFailedValidators).toHaveBeenCalledWith(['0xdata1', '0xdata2']);
+      expect(mockLogger.logExecutionFailure).toHaveBeenCalledWith(2, 2);
     });
 
     it('handles unexpected errors by logging and adding batch to failed validators', async () => {
@@ -214,6 +219,7 @@ describe('TransactionBatchOrchestrator', () => {
 
       expect(consoleErrorSpy).toHaveBeenCalled();
       expect(mockLogger.logFailedValidators).toHaveBeenCalledWith(['0xdata1', '0xdata2']);
+      expect(mockLogger.logExecutionFailure).toHaveBeenCalledWith(2, 2);
     });
 
     it('aborts remaining batches when INSUFFICIENT_FUNDS detected', async () => {
@@ -248,7 +254,9 @@ describe('TransactionBatchOrchestrator', () => {
       await orchestrator.sendExecutionLayerRequests([pubkey1, pubkey2, pubkey3], 1);
 
       expect(mockBroadcaster.broadcastExecutionLayerRequests).toHaveBeenCalledTimes(1);
+      expect(mockLogger.logSkippedBatchesDueToInsufficientFunds).toHaveBeenCalledWith(2);
       expect(mockLogger.logFailedValidators).toHaveBeenCalledWith([pubkey1, pubkey2, pubkey3]);
+      expect(mockLogger.logExecutionFailure).toHaveBeenCalledWith(3, 3);
     });
 
     it('waits for successful transactions before aborting on INSUFFICIENT_FUNDS', async () => {
@@ -349,6 +357,7 @@ describe('TransactionBatchOrchestrator', () => {
       await orchestrator.sendExecutionLayerRequests(['0xdata'], 10);
 
       expect(mockLogger.logFailedValidators).not.toHaveBeenCalled();
+      expect(mockLogger.logExecutionSuccess).toHaveBeenCalled();
     });
   });
 
@@ -522,6 +531,7 @@ describe('TransactionBatchOrchestrator', () => {
       await orchestrator.sendExecutionLayerRequests([pubkey], 10);
 
       expect(mockLogger.logFailedValidators).toHaveBeenCalledWith([pubkey]);
+      expect(mockLogger.logExecutionFailure).toHaveBeenCalledWith(1, 1);
     });
   });
 

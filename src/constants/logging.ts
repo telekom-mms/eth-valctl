@@ -43,6 +43,8 @@ export const FAILED_TO_REPLACE_TRANSACTION_ERROR = (transactionHash: string): st
   `Failed to replace execution layer request ${transactionHash}:`;
 export const FAILED_TO_FETCH_NETWORK_FEES_FOR_LOG_ERROR =
   'Failed to fetch network fees for broadcast log. Continue without logging fees.';
+export const NONCE_EXPIRED_BROADCAST_ERROR =
+  'Nonce already used (stale pending transactions from a previous run were mined). Affected validators will appear in the retry list.';
 
 /** Info logs */
 export const BROADCASTING_EL_REQUEST_INFO = 'Broadcasting execution layer request:';
@@ -143,3 +145,13 @@ export const LEDGER_ADDRESS_SELECTION_HEADER = 'Select Ledger address:';
 export const LEDGER_ADDRESS_FETCHING_INFO = (page: number): string =>
   `Fetching addresses for page ${page + 1}...`;
 export const LEDGER_ADDRESS_SELECTION_CANCELLED = 'Address selection cancelled.';
+
+/** Execution status messages */
+export const INSUFFICIENT_FUNDS_SKIPPING_BATCHES_WARNING = (skippedCount: number): string =>
+  `⚠️ Skipping ${skippedCount} remaining batch${skippedCount === 1 ? '' : 'es'} due to insufficient funds`;
+
+export const EXECUTION_COMPLETED_SUCCESS_INFO =
+  '✅ All execution layer requests processed successfully';
+
+export const EXECUTION_COMPLETED_WITH_FAILURES_ERROR = (failedCount: number, totalCount: number): string =>
+  `❌ Execution finished with ${failedCount} of ${totalCount} execution layer requests failed`;
