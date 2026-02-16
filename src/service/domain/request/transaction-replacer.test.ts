@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:te
 import type { TransactionResponse } from 'ethers';
 
 import {
+  INSUFFICIENT_FUNDS_ERROR_CODE,
   NONCE_EXPIRED_ERROR_CODE,
   REPLACEMENT_UNDERPRICED_ERROR_CODE
 } from '../../../constants/application';
+import { INSUFFICIENT_FUNDS_ERROR } from '../../../constants/logging';
 import type {
   ExecutionLayerRequestTransaction,
   MaxNetworkFees,
@@ -332,6 +334,36 @@ describe('TransactionReplacer', () => {
     });
 
     describe('error handling', () => {
+      it('logs clean message for INSUFFICIENT_FUNDS error and returns FAILED', async () => {
+        const statusMap = new Map<string, TransactionStatus>();
+        statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
+
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mock(() =>
+            Promise.reject({ code: INSUFFICIENT_FUNDS_ERROR_CODE })
+          )
+        });
+        const mockLogger = createMockLogger();
+        const replacer = new TransactionReplacer(
+          mockSigner,
+          createMockBlockchainStateService(),
+          createMockTransactionBroadcaster(),
+          createMockTransactionMonitor(statusMap),
+          mockLogger
+        );
+
+        const tx = createMockPendingTransaction(1, '0xhash1');
+
+        await replacer.replaceTransactions([tx], 1n, 101);
+
+        expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
+          expect.objectContaining({ failed: 1 })
+        );
+        const errorCall = consoleErrorSpy.mock.calls[0];
+        expect(errorCall?.join(' ')).toContain(INSUFFICIENT_FUNDS_ERROR);
+        expect(errorCall).toHaveLength(1);
+      });
+
       it('handles NONCE_EXPIRED by returning ALREADY_MINED', async () => {
         const statusMap = new Map<string, TransactionStatus>();
         statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });

@@ -216,6 +216,118 @@ describe('TransactionBatchOrchestrator', () => {
       expect(mockLogger.logFailedValidators).toHaveBeenCalledWith(['0xdata1', '0xdata2']);
     });
 
+    it('aborts remaining batches when INSUFFICIENT_FUNDS detected', async () => {
+      const pubkey1 = '0x' + 'aa'.repeat(48);
+      const pubkey2 = '0x' + 'bb'.repeat(48);
+      const pubkey3 = '0x' + 'cc'.repeat(48);
+      const mockLogger = createMockLogger();
+      const mockBroadcaster = {
+        broadcastExecutionLayerRequests: mock(() =>
+          Promise.resolve([
+            {
+              status: 'failed',
+              validatorPubkey: pubkey1,
+              error: { code: 'INSUFFICIENT_FUNDS' }
+            } as BroadcastResult
+          ])
+        )
+      } as unknown as TransactionBroadcaster;
+      const mockMonitor = createMockTransactionMonitor({
+        waitForTransactionReceipts: mock(() => Promise.resolve([])),
+        extractPendingTransactions: mock(() => [])
+      });
+
+      const orchestrator = new TransactionBatchOrchestrator(
+        createMockBlockchainStateService(),
+        mockBroadcaster,
+        mockMonitor,
+        createMockTransactionReplacer(),
+        mockLogger
+      );
+
+      await orchestrator.sendExecutionLayerRequests([pubkey1, pubkey2, pubkey3], 1);
+
+      expect(mockBroadcaster.broadcastExecutionLayerRequests).toHaveBeenCalledTimes(1);
+      expect(mockLogger.logFailedValidators).toHaveBeenCalledWith([pubkey1, pubkey2, pubkey3]);
+    });
+
+    it('waits for successful transactions before aborting on INSUFFICIENT_FUNDS', async () => {
+      const successPubkey = '0x' + 'aa'.repeat(48);
+      const failPubkey = '0x' + 'bb'.repeat(48);
+      const skippedPubkey = '0x' + 'cc'.repeat(48);
+      const successTx = createMockPendingTransaction(1, '0xhash1', successPubkey);
+      const mockLogger = createMockLogger();
+      const mockBroadcaster = {
+        broadcastExecutionLayerRequests: mock(() =>
+          Promise.resolve([
+            { status: 'success', transaction: successTx } as BroadcastResult,
+            {
+              status: 'failed',
+              validatorPubkey: failPubkey,
+              error: { code: 'INSUFFICIENT_FUNDS' }
+            } as BroadcastResult
+          ])
+        )
+      } as unknown as TransactionBroadcaster;
+      const mockMonitor = createMockTransactionMonitor({
+        waitForTransactionReceipts: mock(() =>
+          Promise.resolve([
+            {
+              pendingTransaction: successTx,
+              status: { type: TransactionStatusType.MINED, receipt: {} }
+            }
+          ] as ReceiptCheckResult[])
+        ),
+        extractPendingTransactions: mock(() => [])
+      });
+
+      const orchestrator = new TransactionBatchOrchestrator(
+        createMockBlockchainStateService(),
+        mockBroadcaster,
+        mockMonitor,
+        createMockTransactionReplacer(),
+        mockLogger
+      );
+
+      await orchestrator.sendExecutionLayerRequests(
+        [successPubkey, failPubkey, skippedPubkey],
+        2
+      );
+
+      expect(mockMonitor.waitForTransactionReceipts).toHaveBeenCalledTimes(1);
+      expect(mockBroadcaster.broadcastExecutionLayerRequests).toHaveBeenCalledTimes(1);
+      expect(mockLogger.logFailedValidators).toHaveBeenCalledWith([failPubkey, skippedPubkey]);
+    });
+
+    it('does not abort remaining batches for non-INSUFFICIENT_FUNDS failures', async () => {
+      const pubkey1 = '0x' + 'aa'.repeat(48);
+      const pubkey2 = '0x' + 'bb'.repeat(48);
+      const mockLogger = createMockLogger();
+      const mockBroadcaster = {
+        broadcastExecutionLayerRequests: mock(() =>
+          Promise.resolve([
+            createFailedBroadcastResult(pubkey1)
+          ])
+        )
+      } as unknown as TransactionBroadcaster;
+      const mockMonitor = createMockTransactionMonitor({
+        waitForTransactionReceipts: mock(() => Promise.resolve([])),
+        extractPendingTransactions: mock(() => [])
+      });
+
+      const orchestrator = new TransactionBatchOrchestrator(
+        createMockBlockchainStateService(),
+        mockBroadcaster,
+        mockMonitor,
+        createMockTransactionReplacer(),
+        mockLogger
+      );
+
+      await orchestrator.sendExecutionLayerRequests([pubkey1, pubkey2], 1);
+
+      expect(mockBroadcaster.broadcastExecutionLayerRequests).toHaveBeenCalledTimes(2);
+    });
+
     it('does not log failed validators when all succeed', async () => {
       const mockLogger = createMockLogger();
       const mockBroadcaster = createMockTransactionBroadcaster([

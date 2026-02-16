@@ -15,6 +15,7 @@ import type {
 import { TransactionReplacementStatusType, TransactionStatusType } from '../../../model/ethereum';
 import type { IInteractiveSigner, ISigner } from '../signer';
 import { extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
+import { isInsufficientFundsError } from './error-utils';
 import { EthereumStateService } from './ethereum-state-service';
 import { TransactionBroadcaster } from './transaction-broadcaster';
 import { TransactionMonitor } from './transaction-monitor';
@@ -188,10 +189,14 @@ export class TransactionReplacer {
         );
         results.push({ status: TransactionReplacementStatusType.SUCCESS, transaction });
       } catch (error) {
-        console.error(
-          chalk.red(logging.FAILED_TO_REPLACE_TRANSACTION_ERROR(tx.response.hash)),
-          error
-        );
+        if (isInsufficientFundsError(error)) {
+          console.error(chalk.red(logging.INSUFFICIENT_FUNDS_ERROR));
+        } else {
+          console.error(
+            chalk.red(logging.FAILED_TO_REPLACE_TRANSACTION_ERROR(tx.response.hash)),
+            error
+          );
+        }
         results.push({
           status: TransactionReplacementStatusType.FAILED,
           transaction: tx,
@@ -425,6 +430,11 @@ export class TransactionReplacer {
         '(nonce consumed by original or competing replacement)'
       );
       return { status: TransactionReplacementStatusType.ALREADY_MINED };
+    }
+
+    if (isInsufficientFundsError(error)) {
+      console.error(chalk.red(logging.INSUFFICIENT_FUNDS_ERROR));
+      return { status: TransactionReplacementStatusType.FAILED, transaction: tx, error };
     }
 
     console.error(

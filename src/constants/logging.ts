@@ -31,6 +31,8 @@ export const RESPONSE_ERROR = 'Response error:';
 export const BATCH_PROCESSING_ERROR = (batchIndex: number): string =>
   `Error processing batch ${batchIndex + 1} - marking all transactions in batch as failed`;
 export const FAILED_TO_BROADCAST_TRANSACTION_ERROR = 'Failed to broadcast execution layer request';
+export const INSUFFICIENT_FUNDS_ERROR =
+  'Insufficient ETH balance for transaction cost (gas fees + contract fee). Fund the wallet and retry.';
 export const FAILED_TO_FETCH_REQUIRED_FEE_ERROR = (contractAddress: string): string =>
   `Failed to fetch required fee from system contract: ${contractAddress}`;
 export const BATCH_INITIALIZATION_ERROR = (batchIndex: number): string =>

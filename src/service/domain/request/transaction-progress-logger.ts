@@ -4,6 +4,7 @@ import * as serviceConstants from '../../../constants/application';
 import * as logging from '../../../constants/logging';
 import type { PendingTransactionInfo, ReplacementSummary } from '../../../model/ethereum';
 import { isLedgerError } from '../signer';
+import { isInsufficientFundsError } from './error-utils';
 
 /**
  * Service for logging transaction processing progress with consistent formatting.
@@ -127,6 +128,10 @@ export class TransactionProgressLogger {
    */
   logBroadcastFailure(error: unknown): void {
     if (isLedgerError(error)) {
+      return;
+    }
+    if (isInsufficientFundsError(error)) {
+      console.error(chalk.red(logging.INSUFFICIENT_FUNDS_ERROR));
       return;
     }
     console.error(chalk.red(logging.FAILED_TO_BROADCAST_TRANSACTION_ERROR), error);
