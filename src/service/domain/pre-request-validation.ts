@@ -12,13 +12,13 @@ import * as logging from '../../constants/logging';
 import type { ValidatorResponse } from '../../model/ethereum';
 
 /**
- * Fetch the withdrawal credentials type for a validator from the Beacon API
+ * Fetch the full withdrawal credentials string for a validator from the Beacon API
  *
  * @param beaconApiUrl - The beacon api url
  * @param validatorPubkey - The validator public key
- * @returns The withdrawal credentials type prefix (e.g. '0x00', '0x01', '0x02')
+ * @returns The full withdrawal credentials hex string
  */
-async function fetchWithdrawalCredentialsType(
+async function fetchValidatorCredentials(
   beaconApiUrl: string,
   validatorPubkey: string
 ): Promise<string> {
@@ -30,7 +30,32 @@ async function fetchWithdrawalCredentialsType(
   }
 
   const data = (await response.json()) as ValidatorResponse;
-  return data.data.validator.withdrawal_credentials.substring(0, 4);
+  return data.data.validator.withdrawal_credentials;
+}
+
+/**
+ * Fetch the withdrawal credentials type for a validator from the Beacon API
+ *
+ * @param beaconApiUrl - The beacon api url
+ * @param validatorPubkey - The validator public key
+ * @returns The withdrawal credentials type prefix (e.g. '0x00', '0x01', '0x02')
+ */
+async function fetchWithdrawalCredentialsType(
+  beaconApiUrl: string,
+  validatorPubkey: string
+): Promise<string> {
+  const credentials = await fetchValidatorCredentials(beaconApiUrl, validatorPubkey);
+  return credentials.substring(0, 4);
+}
+
+/**
+ * Extract the Ethereum address from withdrawal credentials
+ *
+ * @param credentials - The full withdrawal credentials hex string
+ * @returns The embedded Ethereum address (last 20 bytes)
+ */
+function extractAddressFromCredentials(credentials: string): string {
+  return '0x' + credentials.substring(26);
 }
 
 /**
@@ -164,6 +189,51 @@ export async function filterSwitchableValidators(
   }
 
   return switchable;
+}
+
+/**
+ * Check that the signer address matches the withdrawal address embedded in each validator's credentials
+ *
+ * @param beaconApiUrl - The beacon api url
+ * @param signerAddress - The address of the connected signer
+ * @param validatorPubkeys - The validator public keys to check
+ */
+export async function checkWithdrawalAddressOwnership(
+  beaconApiUrl: string,
+  signerAddress: string,
+  validatorPubkeys: string[]
+): Promise<void> {
+  const mismatches: { pubkey: string; withdrawalAddress: string }[] = [];
+
+  for (const validatorPubkey of validatorPubkeys) {
+    try {
+      const credentials = await fetchValidatorCredentials(beaconApiUrl, validatorPubkey);
+      const withdrawalAddress = extractAddressFromCredentials(credentials);
+
+      if (withdrawalAddress.toLowerCase() !== signerAddress.toLowerCase()) {
+        mismatches.push({ pubkey: validatorPubkey, withdrawalAddress });
+      }
+    } catch (error) {
+      if (error instanceof TypeError) {
+        console.error(chalk.red(logging.BEACON_API_ERROR, error.cause));
+      } else {
+        console.error(chalk.red(logging.UNEXPECTED_BEACON_API_ERROR, error));
+      }
+      exit(1);
+    }
+  }
+
+  if (mismatches.length > 0) {
+    console.error(chalk.red(logging.WITHDRAWAL_ADDRESS_OWNERSHIP_HEADER));
+    for (const { pubkey, withdrawalAddress } of mismatches) {
+      console.error(
+        chalk.red(
+          logging.WITHDRAWAL_ADDRESS_MISMATCH_ERROR(pubkey, withdrawalAddress, signerAddress)
+        )
+      );
+    }
+    exit(1);
+  }
 }
 
 /**

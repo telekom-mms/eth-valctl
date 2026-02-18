@@ -106,6 +106,14 @@ export const SWITCH_SOURCE_VALIDATOR_0x00_CREDENTIALS_ERROR = (validatorPubkey: 
   `Validator ${validatorPubkey} has 0x00 withdrawal credentials and cannot be switched directly to 0x02. Please update to 0x01 first.`;
 export const EXIT_VALIDATOR_0x00_CREDENTIALS_ERROR = (validatorPubkey: string): string =>
   `Validator ${validatorPubkey} has 0x00 withdrawal credentials and cannot be exited via an execution layer request. Please update to 0x01 first.`;
+export const WITHDRAWAL_ADDRESS_OWNERSHIP_HEADER =
+  'Withdrawal address ownership check failed. The following validators are not owned by the connected wallet:';
+export const WITHDRAWAL_ADDRESS_MISMATCH_ERROR = (
+  validatorPubkey: string,
+  withdrawalAddress: string,
+  signerAddress: string
+): string =>
+  `Validator ${validatorPubkey} has withdrawal address ${withdrawalAddress} which does not match signer address ${signerAddress}`;
 export const SWITCH_SOURCE_VALIDATOR_ALREADY_0x02_WARNING = (validatorPubkey: string): string =>
   `Validator ${validatorPubkey} already has 0x02 credentials — skipping.`;
 
@@ -157,5 +165,8 @@ export const INSUFFICIENT_FUNDS_SKIPPING_BATCHES_WARNING = (skippedCount: number
 export const EXECUTION_COMPLETED_SUCCESS_INFO =
   '✅ All execution layer requests processed successfully';
 
-export const EXECUTION_COMPLETED_WITH_FAILURES_ERROR = (failedCount: number, totalCount: number): string =>
+export const EXECUTION_COMPLETED_WITH_FAILURES_ERROR = (
+  failedCount: number,
+  totalCount: number
+): string =>
   `❌ Execution finished with ${failedCount} of ${totalCount} execution layer requests failed`;

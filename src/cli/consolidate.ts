@@ -31,9 +31,19 @@ consolidateCommand
     'Target validator pubkey',
     parseAndValidateValidatorPubKey
   )
+  .option(
+    '--skip-target-ownership-check',
+    'Skip ownership validation for the target validator',
+    false
+  )
   .action(async (options: ConsolidationOptions, command) => {
     const globalOptions: GlobalCliOptions = command.parent.opts();
-    await consolidate(globalOptions, options.source, options.target);
+    await consolidate(
+      globalOptions,
+      options.source,
+      options.target,
+      options.skipTargetOwnershipCheck
+    );
   });
 
 export { consolidateCommand };

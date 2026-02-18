@@ -1,13 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import type { JsonRpcProvider } from 'ethers';
 
-import { CONSOLIDATION_CONTRACT_ADDRESS, WITHDRAWAL_CONTRACT_ADDRESS } from '../../constants/application';
+import {
+  CONSOLIDATION_CONTRACT_ADDRESS,
+  WITHDRAWAL_CONTRACT_ADDRESS
+} from '../../constants/application';
 import type { GlobalCliOptions } from '../../model/commander';
 import type { ISigner } from './signer';
 
 const mockProvider = {} as JsonRpcProvider;
 const mockSigner = {
-  capabilities: { supportsParallelSigning: true, requiresUserInteraction: false, signerType: 'wallet' },
+  capabilities: {
+    supportsParallelSigning: true,
+    requiresUserInteraction: false,
+    signerType: 'wallet'
+  },
   address: '0xMockAddress',
   sendTransaction: mock(() => Promise.resolve({ hash: '0xhash', nonce: 1 })),
   sendTransactionWithNonce: mock(() => Promise.resolve({ hash: '0xhash', nonce: 1 })),
@@ -23,10 +30,10 @@ const mockCreateEthereumConnection = mock(() =>
 const mockSendExecutionLayerRequests = mock(() => Promise.resolve());
 const mockCheckCompoundingCredentials = mock(() => Promise.resolve());
 const mockCheckHasExecutionCredentials = mock(() => Promise.resolve());
-const mockFilterSwitchableValidators = mock((
-  _beaconApiUrl: string,
-  validatorPubkeys: string[]
-) => Promise.resolve(validatorPubkeys));
+const mockCheckWithdrawalAddressOwnership = mock(() => Promise.resolve());
+const mockFilterSwitchableValidators = mock((_beaconApiUrl: string, validatorPubkeys: string[]) =>
+  Promise.resolve(validatorPubkeys)
+);
 
 mock.module('./ethereum', () => ({
   createEthereumConnection: mockCreateEthereumConnection
@@ -39,6 +46,7 @@ mock.module('./request/send-request', () => ({
 mock.module('./pre-request-validation', () => ({
   checkCompoundingCredentials: mockCheckCompoundingCredentials,
   checkHasExecutionCredentials: mockCheckHasExecutionCredentials,
+  checkWithdrawalAddressOwnership: mockCheckWithdrawalAddressOwnership,
   filterSwitchableValidators: mockFilterSwitchableValidators
 }));
 
@@ -70,11 +78,11 @@ describe('Domain Services Integration Tests', () => {
     mockSendExecutionLayerRequests.mockClear();
     mockCheckCompoundingCredentials.mockClear();
     mockCheckHasExecutionCredentials.mockClear();
+    mockCheckWithdrawalAddressOwnership.mockClear();
     mockFilterSwitchableValidators.mockClear();
-    mockFilterSwitchableValidators.mockImplementation((
-      _beaconApiUrl: string,
-      validatorPubkeys: string[]
-    ) => Promise.resolve(validatorPubkeys));
+    mockFilterSwitchableValidators.mockImplementation(
+      (_beaconApiUrl: string, validatorPubkeys: string[]) => Promise.resolve(validatorPubkeys)
+    );
   });
 
   afterEach(() => {
@@ -96,10 +104,9 @@ describe('Domain Services Integration Tests', () => {
 
       await consolidate(options, [VALID_PUBKEY], VALID_TARGET_PUBKEY);
 
-      expect(mockCheckCompoundingCredentials).toHaveBeenCalledWith(
-        options.beaconApiUrl,
-        [VALID_TARGET_PUBKEY]
-      );
+      expect(mockCheckCompoundingCredentials).toHaveBeenCalledWith(options.beaconApiUrl, [
+        VALID_TARGET_PUBKEY
+      ]);
     });
 
     it('checks execution credentials for source validators', async () => {
@@ -177,6 +184,30 @@ describe('Domain Services Integration Tests', () => {
         expect.any(String)
       );
     });
+
+    it('checks withdrawal address ownership for source and target validators', async () => {
+      const options = createGlobalOptions();
+
+      await consolidate(options, [VALID_PUBKEY], VALID_TARGET_PUBKEY);
+
+      expect(mockCheckWithdrawalAddressOwnership).toHaveBeenCalledWith(
+        options.beaconApiUrl,
+        '0xMockAddress',
+        [VALID_TARGET_PUBKEY, VALID_PUBKEY]
+      );
+    });
+
+    it('skips target ownership check when flag is true', async () => {
+      const options = createGlobalOptions();
+
+      await consolidate(options, [VALID_PUBKEY], VALID_TARGET_PUBKEY, true);
+
+      expect(mockCheckWithdrawalAddressOwnership).toHaveBeenCalledWith(
+        options.beaconApiUrl,
+        '0xMockAddress',
+        [VALID_PUBKEY]
+      );
+    });
   });
 
   describe('withdraw', () => {
@@ -193,10 +224,9 @@ describe('Domain Services Integration Tests', () => {
 
       await withdraw(options, [VALID_PUBKEY], 1);
 
-      expect(mockCheckCompoundingCredentials).toHaveBeenCalledWith(
-        options.beaconApiUrl,
-        [VALID_PUBKEY]
-      );
+      expect(mockCheckCompoundingCredentials).toHaveBeenCalledWith(options.beaconApiUrl, [
+        VALID_PUBKEY
+      ]);
     });
 
     it('does not check withdrawal credentials when amount is 0 (exit)', async () => {
@@ -227,7 +257,7 @@ describe('Domain Services Integration Tests', () => {
 
       await withdraw(options, [VALID_PUBKEY], 1);
 
-      const amountGweiHex = (1_000_000_000n).toString(16).padStart(16, '0');
+      const amountGweiHex = 1_000_000_000n.toString(16).padStart(16, '0');
       const expectedData = '0x' + 'ab'.repeat(48) + amountGweiHex;
       expect(mockSendExecutionLayerRequests).toHaveBeenCalledWith(
         expect.any(String),
@@ -260,7 +290,7 @@ describe('Domain Services Integration Tests', () => {
 
       await withdraw(options, [VALID_PUBKEY], 0.001);
 
-      const amountGweiHex = (1_000_000n).toString(16).padStart(16, '0');
+      const amountGweiHex = 1_000_000n.toString(16).padStart(16, '0');
       const expectedData = '0x' + 'ab'.repeat(48) + amountGweiHex;
       expect(mockSendExecutionLayerRequests).toHaveBeenCalledWith(
         expect.any(String),
@@ -282,9 +312,24 @@ describe('Domain Services Integration Tests', () => {
         expect.any(String),
         expect.anything(),
         expect.anything(),
-        expect.arrayContaining([expect.stringContaining('ab'.repeat(48)), expect.stringContaining('ef'.repeat(48))]),
+        expect.arrayContaining([
+          expect.stringContaining('ab'.repeat(48)),
+          expect.stringContaining('ef'.repeat(48))
+        ]),
         expect.any(Number),
         expect.any(String)
+      );
+    });
+
+    it('checks withdrawal address ownership for validators', async () => {
+      const options = createGlobalOptions();
+
+      await withdraw(options, [VALID_PUBKEY], 1);
+
+      expect(mockCheckWithdrawalAddressOwnership).toHaveBeenCalledWith(
+        options.beaconApiUrl,
+        '0xMockAddress',
+        [VALID_PUBKEY]
       );
     });
   });
@@ -337,6 +382,18 @@ describe('Domain Services Integration Tests', () => {
         expect.any(String)
       );
     });
+
+    it('checks withdrawal address ownership for validators', async () => {
+      const options = createGlobalOptions();
+
+      await exit(options, [VALID_PUBKEY]);
+
+      expect(mockCheckWithdrawalAddressOwnership).toHaveBeenCalledWith(
+        options.beaconApiUrl,
+        '0xMockAddress',
+        [VALID_PUBKEY]
+      );
+    });
   });
 
   describe('switchWithdrawalCredentialType', () => {
@@ -345,10 +402,9 @@ describe('Domain Services Integration Tests', () => {
 
       await switchWithdrawalCredentialType(options, [VALID_PUBKEY]);
 
-      expect(mockFilterSwitchableValidators).toHaveBeenCalledWith(
-        options.beaconApiUrl,
-        [VALID_PUBKEY]
-      );
+      expect(mockFilterSwitchableValidators).toHaveBeenCalledWith(options.beaconApiUrl, [
+        VALID_PUBKEY
+      ]);
     });
 
     it('sends requests to consolidation contract address', async () => {
@@ -370,9 +426,7 @@ describe('Domain Services Integration Tests', () => {
     it('filters out validators that already have 0x02 credentials', async () => {
       const options = createGlobalOptions();
       const pubkey2 = '0x' + 'ef'.repeat(48);
-      mockFilterSwitchableValidators.mockImplementation(() =>
-        Promise.resolve([VALID_PUBKEY])
-      );
+      mockFilterSwitchableValidators.mockImplementation(() => Promise.resolve([VALID_PUBKEY]));
 
       await switchWithdrawalCredentialType(options, [VALID_PUBKEY, pubkey2]);
 
@@ -389,9 +443,7 @@ describe('Domain Services Integration Tests', () => {
 
     it('returns early without establishing connection when all validators already have 0x02', async () => {
       const options = createGlobalOptions();
-      mockFilterSwitchableValidators.mockImplementation(() =>
-        Promise.resolve([])
-      );
+      mockFilterSwitchableValidators.mockImplementation(() => Promise.resolve([]));
 
       await switchWithdrawalCredentialType(options, [VALID_PUBKEY]);
 
@@ -414,6 +466,18 @@ describe('Domain Services Integration Tests', () => {
         [expectedData1, expectedData2],
         expect.any(Number),
         expect.any(String)
+      );
+    });
+
+    it('checks withdrawal address ownership for switchable validators', async () => {
+      const options = createGlobalOptions();
+
+      await switchWithdrawalCredentialType(options, [VALID_PUBKEY]);
+
+      expect(mockCheckWithdrawalAddressOwnership).toHaveBeenCalledWith(
+        options.beaconApiUrl,
+        '0xMockAddress',
+        [VALID_PUBKEY]
       );
     });
   });
