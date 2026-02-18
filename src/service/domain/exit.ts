@@ -1,7 +1,6 @@
-import chalk from 'chalk';
-
 import * as logging from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
+import { checkHasExecutionCredentials } from './pre-request-validation';
 import { withdraw } from './withdraw';
 
 /**
@@ -14,13 +13,6 @@ export async function exit(
   globalOptions: GlobalCliOptions,
   validatorPubkeys: string[]
 ): Promise<void> {
-  logExitWarning();
+  await checkHasExecutionCredentials(globalOptions.beaconApiUrl, validatorPubkeys, logging.EXIT_VALIDATOR_0x00_CREDENTIALS_ERROR);
   await withdraw(globalOptions, validatorPubkeys, 0);
-}
-
-/**
- * Log exit specific warning
- */
-function logExitWarning(): void {
-  console.log(chalk.yellow(logging.EXIT_WARNING));
 }
