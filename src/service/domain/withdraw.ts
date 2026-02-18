@@ -3,7 +3,7 @@ import { parseUnits } from 'ethers';
 import { PREFIX_0x } from '../../constants/application';
 import type { GlobalCliOptions } from '../../model/commander';
 import { executeRequestPipeline } from './execution-layer-request-pipeline';
-import { checkWithdrawalCredentialType } from './pre-request-validation';
+import { checkCompoundingCredentials } from './pre-request-validation';
 
 /**
  * Withdraw the provided amount from one or many validators / Exit one or many validators
@@ -25,7 +25,7 @@ export async function withdraw(
     validate:
       amount > 0
         ? async () => {
-            await checkWithdrawalCredentialType(globalOptions.beaconApiUrl, validatorPubkeys);
+            await checkCompoundingCredentials(globalOptions.beaconApiUrl, validatorPubkeys);
           }
         : undefined
   });

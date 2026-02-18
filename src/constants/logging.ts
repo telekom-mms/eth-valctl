@@ -80,10 +80,6 @@ export const FAILED_VALIDATORS_FOR_RETRY_HEADER =
   '📋 Failed validator pubkeys to retry in next eth-valctl call:';
 
 /** Warnings */
-export const WITHDRAWAL_CREDENTIAL_WARNING =
-  'Attention: You can only consolidate validators with the same withdrawal credentials!';
-export const EXIT_WARNING =
-  'Attention: Your validators need to have withdrawal credentials of type 0x01 or 0x02 in order to be able to exit via an execution layer request.';
 export const MAX_RETRIES_EXCEEDED_WARNING = (
   failedCount: number,
   maxRetries: number,
@@ -104,6 +100,14 @@ export const WRONG_WITHDRAWAL_CREDENTIALS_0x00_ERROR = `You cannot directly chan
 Please follow the instructions here: https://github.com/ethereum/staking-deposit-cli?tab=readme-ov-file#generate-bls-to-execution-change-arguments or other respective documentation.`;
 export const WRONG_WITHDRAWAL_CREDENTIALS_0X01_ERROR =
   "You can change the withdrawal credential type from 0x01 to 0x02 while using the 'switch' subcommand.";
+export const SOURCE_VALIDATOR_0x00_CREDENTIALS_ERROR = (validatorPubkey: string): string =>
+  `Source validator ${validatorPubkey} has 0x00 withdrawal credentials. Consolidation requires at least 0x01 credentials. Please update to 0x01 first.`;
+export const SWITCH_SOURCE_VALIDATOR_0x00_CREDENTIALS_ERROR = (validatorPubkey: string): string =>
+  `Validator ${validatorPubkey} has 0x00 withdrawal credentials and cannot be switched directly to 0x02. Please update to 0x01 first.`;
+export const EXIT_VALIDATOR_0x00_CREDENTIALS_ERROR = (validatorPubkey: string): string =>
+  `Validator ${validatorPubkey} has 0x00 withdrawal credentials and cannot be exited via an execution layer request. Please update to 0x01 first.`;
+export const SWITCH_SOURCE_VALIDATOR_ALREADY_0x02_WARNING = (validatorPubkey: string): string =>
+  `Validator ${validatorPubkey} already has 0x02 credentials — skipping.`;
 
 /** Ledger hardware wallet messages */
 export const LEDGER_CONNECTING_INFO = 'Connecting to Ledger device...';

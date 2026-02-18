@@ -36,6 +36,7 @@ export const TRANSACTION_FEE_INCREASE_PERCENTAGE = 112n;
 
 /** Withdrawal credential types */
 export const WITHDRAWAL_CREDENTIALS_0x00 = '0x00';
+export const WITHDRAWAL_CREDENTIALS_0x01 = '0x01';
 export const WITHDRAWAL_CREDENTIALS_0x02 = '0x02';
 
 /** Beacon API endpoints */
