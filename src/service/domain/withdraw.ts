@@ -3,7 +3,10 @@ import { parseUnits } from 'ethers';
 import { PREFIX_0x } from '../../constants/application';
 import type { GlobalCliOptions } from '../../model/commander';
 import { executeRequestPipeline } from './execution-layer-request-pipeline';
-import { checkCompoundingCredentials } from './pre-request-validation';
+import {
+  checkCompoundingCredentials,
+  checkWithdrawalAddressOwnership
+} from './pre-request-validation';
 
 /**
  * Withdraw the provided amount from one or many validators / Exit one or many validators
@@ -22,12 +25,16 @@ export async function withdraw(
     validatorPubkeys,
     encodeRequestData: (pubkey) => createWithdrawRequestData(pubkey, amount),
     resolveContractAddress: (config) => config.withdrawalContractAddress,
-    validate:
-      amount > 0
-        ? async () => {
-            await checkCompoundingCredentials(globalOptions.beaconApiUrl, validatorPubkeys);
-          }
-        : undefined
+    validate: async (connection) => {
+      if (amount > 0) {
+        await checkCompoundingCredentials(globalOptions.beaconApiUrl, validatorPubkeys);
+      }
+      await checkWithdrawalAddressOwnership(
+        globalOptions.beaconApiUrl,
+        connection.signer.address,
+        validatorPubkeys
+      );
+    }
   });
 }
 

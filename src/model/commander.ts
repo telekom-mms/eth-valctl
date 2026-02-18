@@ -11,6 +11,7 @@ export interface ValidatorOption {
 export interface ConsolidationOptions {
   source: string[];
   target: string;
+  skipTargetOwnershipCheck: boolean;
 }
 
 /**

@@ -13,6 +13,10 @@ export async function exit(
   globalOptions: GlobalCliOptions,
   validatorPubkeys: string[]
 ): Promise<void> {
-  await checkHasExecutionCredentials(globalOptions.beaconApiUrl, validatorPubkeys, logging.EXIT_VALIDATOR_0x00_CREDENTIALS_ERROR);
+  await checkHasExecutionCredentials(
+    globalOptions.beaconApiUrl,
+    validatorPubkeys,
+    logging.EXIT_VALIDATOR_0x00_CREDENTIALS_ERROR
+  );
   await withdraw(globalOptions, validatorPubkeys, 0);
 }
