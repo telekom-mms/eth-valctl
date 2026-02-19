@@ -105,9 +105,9 @@ describe('CLI Validation', () => {
 
   describe('parseAndValidateMaxNumberOfRequestsPerBlock', () => {
     it('returns parsed number for valid input', () => {
-      const result = parseAndValidateMaxNumberOfRequestsPerBlock('100');
+      const result = parseAndValidateMaxNumberOfRequestsPerBlock('50');
 
-      expect(result).toBe(100);
+      expect(result).toBe(50);
     });
 
     it('returns parsed number at maximum allowed value', () => {
