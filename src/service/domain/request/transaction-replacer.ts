@@ -13,7 +13,7 @@ import type {
   TransactionStatus
 } from '../../../model/ethereum';
 import { TransactionReplacementStatusType, TransactionStatusType } from '../../../model/ethereum';
-import type { IInteractiveSigner, ISigner } from '../signer';
+import { type IInteractiveSigner, type ISigner, isLedgerError } from '../signer';
 import { extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
 import {
   isInsufficientFundsError,
@@ -195,7 +195,7 @@ export class TransactionReplacer {
       } catch (error) {
         if (isInsufficientFundsError(error)) {
           console.error(chalk.red(logging.INSUFFICIENT_FUNDS_ERROR));
-        } else {
+        } else if (!isLedgerError(error)) {
           console.error(
             chalk.red(logging.FAILED_TO_REPLACE_TRANSACTION_ERROR(tx.response.hash)),
             error
@@ -384,7 +384,10 @@ export class TransactionReplacer {
           pendingTransaction.nonce,
           context
         )
-      : await this.signer.sendTransactionWithNonce(replacementTransaction, pendingTransaction.nonce);
+      : await this.signer.sendTransactionWithNonce(
+          replacementTransaction,
+          pendingTransaction.nonce
+        );
 
     console.log(
       chalk.yellow(
@@ -441,10 +444,12 @@ export class TransactionReplacer {
       return { status: TransactionReplacementStatusType.FAILED, transaction: tx, error };
     }
 
-    console.error(
-      chalk.red(logging.FAILED_TO_REPLACE_TRANSACTION_ERROR(tx.response.hash)),
-      error
-    );
+    if (!isLedgerError(error)) {
+      console.error(
+        chalk.red(logging.FAILED_TO_REPLACE_TRANSACTION_ERROR(tx.response.hash)),
+        error
+      );
+    }
     return { status: TransactionReplacementStatusType.FAILED, transaction: tx, error };
   }
 
