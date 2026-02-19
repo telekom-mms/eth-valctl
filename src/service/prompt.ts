@@ -132,8 +132,6 @@ function buildAddressChoices(
     value: addr.index
   }));
 
-  choices.push({ title: '────────────────────────────────────', value: '' });
-
   if (currentPage > 0) {
     choices.push({ title: '← Previous Page', value: NAVIGATION_PREV });
   }
