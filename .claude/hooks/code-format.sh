@@ -24,8 +24,6 @@ if [ -z "$CHANGED_TS_FILES" ] && [ -z "$STAGED_TS_FILES" ]; then
 	exit 0
 fi
 
-# Run lint with auto-fix
-# Using || true to prevent hook failure on lint errors/warnings
-bun run lint --fix 2>/dev/null || true
+bun run format
 
 exit 0
