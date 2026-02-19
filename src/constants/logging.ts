@@ -1,3 +1,5 @@
+import { MAX_NUMBER_OF_REQUESTS_PER_BLOCK } from './application';
+
 /** User related input errors */
 export const NO_PRIVATE_KEY_ERROR = 'Please provide a valid private key';
 export const INVALID_PRIVATE_KEY_ERROR =
@@ -18,9 +20,7 @@ export const GENERAL_JSON_RPC_ERROR =
   'Error while trying to open connection for provided json rpc url:';
 export const INVALID_REQUESTS_PER_BLOCK_ERROR =
   'Number of max. requests per block should be a number';
-export const TOO_MANY_REQUESTS_PER_BLOCK_ERROR = `Provided maximal number of requests per block is too high.
-The estimated max. per block is 220-230 requests. If this is exceeded the probability increases
-that request transactions will be reverted due to an insufficiently calculated fee.`;
+export const TOO_MANY_REQUESTS_PER_BLOCK_ERROR = `Provided maximal number of requests per block is too high. To minimize the risk of transaction reverts/replacements due to underpriced fees, the number should not exceed ${MAX_NUMBER_OF_REQUESTS_PER_BLOCK}.`;
 
 /** Fetching errors */
 export const BEACON_API_ERROR = 'Error while calling beacon API endpoint:';

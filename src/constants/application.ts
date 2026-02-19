@@ -20,9 +20,9 @@ export const NUMBER_OF_BLOCKS_FOR_LOG_LOOKUP = 50;
 export const TRANSACTION_GAS_LIMIT = 200000n;
 
 /**
- * Maximum execution layer requests per block - EIP-7002 and EIP-7251 combined limit
+ * Maximum execution layer requests accepted per block - EIP-7002 and EIP-7251 combined limit
  */
-export const MAX_NUMBER_OF_REQUESTS_PER_BLOCK = 220;
+export const MAX_NUMBER_OF_REQUESTS_PER_BLOCK = 50;
 
 /** Transaction retry configuration */
 export const MAX_TRANSACTION_RETRIES = 3;
