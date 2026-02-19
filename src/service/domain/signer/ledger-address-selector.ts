@@ -57,7 +57,14 @@ export class LedgerAddressSelector {
     ]);
 
     const eth = new Eth(transport);
-    return new LedgerAddressSelector(transport, eth, provider);
+    const selector = new LedgerAddressSelector(transport, eth, provider);
+
+    const firstPath = selector.buildDerivationPath(0);
+    const { address } = await eth.getAddress(firstPath);
+    const balance = await selector.fetchBalance(address);
+    selector.addressCache.set(0, { derivationPath: firstPath, address, index: 0, balance });
+
+    return selector;
   }
 
   /**
@@ -136,7 +143,9 @@ export class LedgerAddressSelector {
       return derived;
     } catch (error) {
       const errorInfo = classifyLedgerError(error);
-      throw new Error(`Failed to derive address at index ${index}: ${errorInfo.message}`);
+      throw new Error(`Failed to derive address at index ${index}: ${errorInfo.message}`, {
+        cause: error
+      });
     }
   }
 

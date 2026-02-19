@@ -53,7 +53,10 @@ async function createLedgerConnection(provider: JsonRpcProvider): Promise<Ethere
     const selection = await promptLedgerAddressSelection(provider);
     const signer = await LedgerSigner.create(provider, selection.derivationPath);
     return { signer, provider };
-  } catch {
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(chalk.red(error.message));
+    }
     process.exit(1);
   }
 }
