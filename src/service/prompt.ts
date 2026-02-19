@@ -43,6 +43,11 @@ export async function promptLedgerAddressSelection(
 
   try {
     return await selectAddressInteractively(selector);
+  } catch (error) {
+    const originalError = error instanceof Error && error.cause ? error.cause : error;
+    const errorInfo = classifyLedgerError(originalError);
+    console.error(chalk.red(errorInfo.message));
+    throw error;
   } finally {
     await selector.dispose();
   }
