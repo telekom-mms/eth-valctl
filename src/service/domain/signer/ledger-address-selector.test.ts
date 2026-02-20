@@ -33,7 +33,7 @@ const createMockBalanceProvider = (
 describe('LedgerAddressSelector', () => {
   describe('getAddressPage', () => {
     it('returns 5 addresses for page 0', async () => {
-      const selector = LedgerAddressSelector.createWithDependencies(
+      const selector = new LedgerAddressSelector(
         createMockTransport(),
         createMockEth(),
         createMockBalanceProvider()
@@ -47,7 +47,7 @@ describe('LedgerAddressSelector', () => {
     });
 
     it('returns addresses with correct indices for page 0', async () => {
-      const selector = LedgerAddressSelector.createWithDependencies(
+      const selector = new LedgerAddressSelector(
         createMockTransport(),
         createMockEth(),
         createMockBalanceProvider()
@@ -63,7 +63,7 @@ describe('LedgerAddressSelector', () => {
     });
 
     it('returns addresses with correct indices for page 1', async () => {
-      const selector = LedgerAddressSelector.createWithDependencies(
+      const selector = new LedgerAddressSelector(
         createMockTransport(),
         createMockEth(),
         createMockBalanceProvider()
@@ -79,7 +79,7 @@ describe('LedgerAddressSelector', () => {
     });
 
     it('returns correct derivation paths', async () => {
-      const selector = LedgerAddressSelector.createWithDependencies(
+      const selector = new LedgerAddressSelector(
         createMockTransport(),
         createMockEth(),
         createMockBalanceProvider()
@@ -100,7 +100,7 @@ describe('LedgerAddressSelector', () => {
         3: '0xAddress3',
         4: '0xAddress4'
       };
-      const selector = LedgerAddressSelector.createWithDependencies(
+      const selector = new LedgerAddressSelector(
         createMockTransport(),
         createMockEth(mockAddresses),
         createMockBalanceProvider()
@@ -122,7 +122,7 @@ describe('LedgerAddressSelector', () => {
         '0xAddr0': 1000000000000000000n,
         '0xAddr1': 500000000000000000n
       };
-      const selector = LedgerAddressSelector.createWithDependencies(
+      const selector = new LedgerAddressSelector(
         createMockTransport(),
         createMockEth(mockAddresses),
         createMockBalanceProvider(mockBalances)
@@ -138,7 +138,7 @@ describe('LedgerAddressSelector', () => {
       const failingBalanceProvider: IBalanceProvider = {
         getBalance: mock(() => Promise.reject(new Error('RPC error')))
       };
-      const selector = LedgerAddressSelector.createWithDependencies(
+      const selector = new LedgerAddressSelector(
         createMockTransport(),
         createMockEth(),
         failingBalanceProvider
@@ -154,7 +154,7 @@ describe('LedgerAddressSelector', () => {
   describe('address caching', () => {
     it('caches addresses between page requests', async () => {
       const mockEth = createMockEth();
-      const selector = LedgerAddressSelector.createWithDependencies(
+      const selector = new LedgerAddressSelector(
         createMockTransport(),
         mockEth,
         createMockBalanceProvider()
@@ -168,7 +168,7 @@ describe('LedgerAddressSelector', () => {
 
     it('derives new addresses when navigating to new page', async () => {
       const mockEth = createMockEth();
-      const selector = LedgerAddressSelector.createWithDependencies(
+      const selector = new LedgerAddressSelector(
         createMockTransport(),
         mockEth,
         createMockBalanceProvider()
@@ -182,7 +182,7 @@ describe('LedgerAddressSelector', () => {
 
     it('uses cached addresses when navigating back', async () => {
       const mockEth = createMockEth();
-      const selector = LedgerAddressSelector.createWithDependencies(
+      const selector = new LedgerAddressSelector(
         createMockTransport(),
         mockEth,
         createMockBalanceProvider()
@@ -197,7 +197,7 @@ describe('LedgerAddressSelector', () => {
 
     it('refreshes balances even for cached addresses', async () => {
       const mockBalanceProvider = createMockBalanceProvider();
-      const selector = LedgerAddressSelector.createWithDependencies(
+      const selector = new LedgerAddressSelector(
         createMockTransport(),
         createMockEth(),
         mockBalanceProvider
@@ -213,7 +213,7 @@ describe('LedgerAddressSelector', () => {
   describe('dispose', () => {
     it('closes transport on dispose', async () => {
       const mockTransport = createMockTransport();
-      const selector = LedgerAddressSelector.createWithDependencies(
+      const selector = new LedgerAddressSelector(
         mockTransport,
         createMockEth(),
         createMockBalanceProvider()
@@ -228,7 +228,7 @@ describe('LedgerAddressSelector', () => {
   describe('derivation path format', () => {
     it('uses BIP-44 Ethereum path format', async () => {
       const mockEth = createMockEth();
-      const selector = LedgerAddressSelector.createWithDependencies(
+      const selector = new LedgerAddressSelector(
         createMockTransport(),
         mockEth,
         createMockBalanceProvider()
@@ -247,7 +247,7 @@ describe('LedgerAddressSelector', () => {
       const failingEth: IEthAddressProvider = {
         getAddress: mock(() => Promise.reject(new Error('Device error')))
       };
-      const selector = LedgerAddressSelector.createWithDependencies(
+      const selector = new LedgerAddressSelector(
         createMockTransport(),
         failingEth,
         createMockBalanceProvider()

@@ -21,8 +21,7 @@ const DEFAULT_DERIVATION_PATH = "44'/60'/0'/0/0";
  */
 export class LedgerSigner implements ISigner {
   readonly capabilities: SignerCapabilities = {
-    supportsParallelSigning: false,
-    requiresUserInteraction: true
+    supportsParallelSigning: false
   };
 
   readonly address: string;

@@ -8,8 +8,6 @@ import type { ExecutionLayerRequestTransaction, SigningContext } from '../model/
 export interface SignerCapabilities {
   /** Whether the signer can process multiple transactions in parallel */
   supportsParallelSigning: boolean;
-  /** Whether signing requires user interaction (e.g., hardware wallet confirmation) */
-  requiresUserInteraction: boolean;
 }
 
 /**

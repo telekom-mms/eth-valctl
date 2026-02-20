@@ -33,7 +33,7 @@ export interface ITransportProvider {
 export class LedgerAddressSelector {
   private readonly addressCache: Map<number, LedgerDerivedAddress> = new Map();
 
-  private constructor(
+  constructor(
     private readonly transport: ITransportProvider,
     private readonly eth: IEthAddressProvider,
     private readonly balanceProvider: IBalanceProvider
@@ -58,22 +58,6 @@ export class LedgerAddressSelector {
     selector.addressCache.set(0, { derivationPath: firstPath, address, index: 0, balance });
 
     return selector;
-  }
-
-  /**
-   * Create address selector with injected dependencies (for testing)
-   *
-   * @param transport - Transport provider for cleanup
-   * @param eth - Ethereum address derivation provider
-   * @param balanceProvider - Balance fetching provider
-   * @returns Address selector instance
-   */
-  static createWithDependencies(
-    transport: ITransportProvider,
-    eth: IEthAddressProvider,
-    balanceProvider: IBalanceProvider
-  ): LedgerAddressSelector {
-    return new LedgerAddressSelector(transport, eth, balanceProvider);
   }
 
   /**

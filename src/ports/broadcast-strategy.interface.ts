@@ -2,18 +2,6 @@ import type { BroadcastResult, ExecutionLayerRequestTransaction } from '../model
 import type { ISigner } from './signer.interface';
 
 /**
- * Context for a single transaction broadcast
- */
-export interface BroadcastContext {
-  /** Index of this transaction in the batch (0-based) */
-  index: number;
-  /** Total number of transactions in the batch */
-  total: number;
-  /** Encoded request data for extracting validator info */
-  requestData: string;
-}
-
-/**
  * Strategy interface for broadcasting execution layer request transactions
  *
  * Different implementations handle parallel vs sequential broadcasting

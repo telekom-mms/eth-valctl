@@ -12,14 +12,13 @@ import type {
 } from '../../../model/ethereum';
 import { TransactionReplacementStatusType, TransactionStatusType } from '../../../model/ethereum';
 import type { ISigner } from '../signer';
-import { extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
+import { createElTransaction, extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
 import {
   isInsufficientFundsError,
   isNonceExpiredError,
   isReplacementUnderpricedError
 } from './error-utils';
 import { EthereumStateService } from './ethereum-state-service';
-import { TransactionBroadcaster } from './transaction-broadcaster';
 import { TransactionMonitor } from './transaction-monitor';
 import { TransactionProgressLogger } from './transaction-progress-logger';
 
@@ -32,14 +31,14 @@ export class TransactionReplacer {
    *
    * @param signer - Signer for transaction signing (wallet or Ledger)
    * @param blockchainStateService - Service for fetching blockchain state
-   * @param transactionBroadcaster - Service for creating transactions
+   * @param systemContractAddress - Target system contract address for requests
    * @param transactionMonitor - Service for checking transaction status
    * @param logger - Service for logging progress
    */
   constructor(
     private readonly signer: ISigner,
     private readonly blockchainStateService: EthereumStateService,
-    private readonly transactionBroadcaster: TransactionBroadcaster,
+    private readonly systemContractAddress: string,
     private readonly transactionMonitor: TransactionMonitor,
     private readonly logger: TransactionProgressLogger
   ) {}
@@ -322,7 +321,8 @@ export class TransactionReplacer {
   ): Promise<PendingTransactionInfo> {
     this.logger.logRevertedTransactionRetry(pendingTransaction.response.hash);
 
-    const replacementTransaction = this.transactionBroadcaster.createElTransaction(
+    const replacementTransaction = createElTransaction(
+      this.systemContractAddress,
       pendingTransaction.data,
       newContractFee
     );
@@ -358,7 +358,8 @@ export class TransactionReplacer {
     context?: SigningContext
   ): Promise<PendingTransactionInfo> {
     const increasedMaxNetworkFees = this.increaseMaxNetworkFees(pendingTransaction, maxNetworkFees);
-    const replacementTransaction = this.transactionBroadcaster.createElTransaction(
+    const replacementTransaction = createElTransaction(
+      this.systemContractAddress,
       pendingTransaction.data,
       newContractFee,
       increasedMaxNetworkFees.maxFeePerGas,

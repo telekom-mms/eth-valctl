@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import type { TransactionResponse } from 'ethers';
 
-import { TRANSACTION_GAS_LIMIT } from '../../../constants/application';
 import type { MaxNetworkFees } from '../../../model/ethereum';
 import type { ISigner } from '../signer';
 import type { IBroadcastStrategy } from './broadcast-strategy';
@@ -17,8 +16,7 @@ const createMockSigner = (overrides?: {
 }): ISigner => {
   return {
     capabilities: {
-      supportsParallelSigning: true,
-      requiresUserInteraction: false
+      supportsParallelSigning: true
       },
     address: '0xMockAddress',
     sendTransaction:
@@ -72,74 +70,6 @@ describe('TransactionBroadcaster', () => {
   afterEach(() => {
     consoleSpy.mockRestore();
     consoleErrorSpy.mockRestore();
-  });
-
-  describe('createElTransaction', () => {
-    it('creates transaction with required fields', () => {
-      const mockLogger = createMockLogger();
-      const broadcaster = new TransactionBroadcaster(
-        createMockSigner(),
-        SYSTEM_CONTRACT_ADDRESS,
-        createMockBlockchainStateService(),
-        mockLogger,
-        createMockBroadcastStrategy(mockLogger)
-      );
-
-      const transaction = broadcaster.createElTransaction('0xdata', 1000n);
-
-      expect(transaction.to).toBe(SYSTEM_CONTRACT_ADDRESS);
-      expect(transaction.data).toBe('0xdata');
-      expect(transaction.value).toBe(1000n);
-      expect(transaction.gasLimit).toBe(TRANSACTION_GAS_LIMIT);
-    });
-
-    it('creates transaction without fee fields when not provided', () => {
-      const mockLogger = createMockLogger();
-      const broadcaster = new TransactionBroadcaster(
-        createMockSigner(),
-        SYSTEM_CONTRACT_ADDRESS,
-        createMockBlockchainStateService(),
-        mockLogger,
-        createMockBroadcastStrategy(mockLogger)
-      );
-
-      const transaction = broadcaster.createElTransaction('0xdata', 1000n);
-
-      expect(transaction.maxFeePerGas).toBeUndefined();
-      expect(transaction.maxPriorityFeePerGas).toBeUndefined();
-    });
-
-    it('includes maxFeePerGas when provided', () => {
-      const mockLogger = createMockLogger();
-      const broadcaster = new TransactionBroadcaster(
-        createMockSigner(),
-        SYSTEM_CONTRACT_ADDRESS,
-        createMockBlockchainStateService(),
-        mockLogger,
-        createMockBroadcastStrategy(mockLogger)
-      );
-
-      const transaction = broadcaster.createElTransaction('0xdata', 1000n, 2000n);
-
-      expect(transaction.maxFeePerGas).toBe(2000n);
-      expect(transaction.maxPriorityFeePerGas).toBeUndefined();
-    });
-
-    it('includes both fee fields when provided', () => {
-      const mockLogger = createMockLogger();
-      const broadcaster = new TransactionBroadcaster(
-        createMockSigner(),
-        SYSTEM_CONTRACT_ADDRESS,
-        createMockBlockchainStateService(),
-        mockLogger,
-        createMockBroadcastStrategy(mockLogger)
-      );
-
-      const transaction = broadcaster.createElTransaction('0xdata', 1000n, 2000n, 200n);
-
-      expect(transaction.maxFeePerGas).toBe(2000n);
-      expect(transaction.maxPriorityFeePerGas).toBe(200n);
-    });
   });
 
   describe('broadcastExecutionLayerRequests', () => {

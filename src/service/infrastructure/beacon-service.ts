@@ -20,23 +20,18 @@ import type { ISlotTimingService } from '../../ports/slot-timing.interface';
  * slot-aware transaction broadcasting for hardware wallets.
  */
 export class BeaconService implements ISlotTimingService {
-  private genesisTime: number | null = null;
+  private constructor(private readonly genesisTime: number) {}
 
   /**
-   * Creates a beacon service
+   * Create a beacon service by fetching genesis time from the beacon API
    *
    * @param beaconApiUrl - Base URL of the beacon API
-   */
-  constructor(private readonly beaconApiUrl: string) {}
-
-  /**
-   * Initialize the service by fetching genesis time from beacon API
-   *
+   * @returns Initialized beacon service instance
    * @throws BlockchainStateError if genesis fetch fails or returns invalid data
    */
-  async initialize(): Promise<void> {
+  static async create(beaconApiUrl: string): Promise<BeaconService> {
     try {
-      const url = `${this.beaconApiUrl}${GENESIS_BEACON_API_ENDPOINT}`;
+      const url = `${beaconApiUrl}${GENESIS_BEACON_API_ENDPOINT}`;
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -55,7 +50,7 @@ export class BeaconService implements ISlotTimingService {
         );
       }
 
-      this.genesisTime = parsed;
+      return new BeaconService(parsed);
     } catch (error) {
       if (error instanceof BlockchainStateError) {
         throw error;
@@ -68,12 +63,8 @@ export class BeaconService implements ISlotTimingService {
    * Calculate the current slot position within the beacon chain
    *
    * @returns Current slot, position within slot, and time until next slot
-   * @throws Error if service not initialized
    */
   calculateSlotPosition(): SlotPosition {
-    if (this.genesisTime === null) {
-      throw new Error('BeaconService not initialized - call initialize() first');
-    }
     const now = Math.floor(Date.now() / MS_PER_SECOND);
     const secondsSinceGenesis = now - this.genesisTime;
     const currentSlot = Math.floor(secondsSinceGenesis / SECONDS_PER_SLOT);

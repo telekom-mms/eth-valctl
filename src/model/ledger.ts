@@ -11,11 +11,7 @@ export interface LedgerDerivedAddress {
 /**
  * Result of address selection from Ledger device
  */
-export interface AddressSelectionResult {
-  derivationPath: string;
-  address: string;
-  index: number;
-}
+export type AddressSelectionResult = Omit<LedgerDerivedAddress, 'balance'>;
 
 /**
  * State for paginated address display

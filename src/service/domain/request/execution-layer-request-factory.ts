@@ -54,7 +54,7 @@ export async function createTransactionBatchOrchestrator(
   const transactionReplacer = new TransactionReplacer(
     signer,
     ethereumStateService,
-    transactionBroadcaster,
+    systemContractAddress,
     transactionMonitor,
     logger
   );
@@ -89,8 +89,7 @@ async function createBroadcastStrategy(
     return new ParallelBroadcastStrategy(logger);
   }
 
-  const beaconService = new BeaconService(beaconApiUrl);
-  await beaconService.initialize();
+  const beaconService = await BeaconService.create(beaconApiUrl);
   return new SequentialBroadcastStrategy(
     ethereumStateService,
     systemContractAddress,

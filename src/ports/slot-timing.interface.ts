@@ -8,17 +8,9 @@ import type { SlotPosition } from '../model/ethereum';
  */
 export interface ISlotTimingService {
   /**
-   * Initialize the service by fetching required timing data
-   *
-   * @throws BlockchainStateError if initialization fails
-   */
-  initialize(): Promise<void>;
-
-  /**
    * Calculate the current slot position within the beacon chain
    *
    * @returns Current slot, position within slot, and time until next slot
-   * @throws Error if service not initialized
    */
   calculateSlotPosition(): SlotPosition;
 

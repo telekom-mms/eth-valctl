@@ -46,12 +46,11 @@ describe('BeaconService', () => {
     consoleSpy.mockRestore();
   });
 
-  describe('initialize', () => {
+  describe('create', () => {
     it('fetches and parses genesis time from beacon API', async () => {
       mockFetch.mockResolvedValueOnce(createMockFetchResponse());
 
-      const service = new BeaconService('http://localhost:5052');
-      await service.initialize();
+      const service = await BeaconService.create('http://localhost:5052');
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(mockFetch).toHaveBeenCalledWith(
@@ -71,10 +70,10 @@ describe('BeaconService', () => {
         })
       );
 
-      const service = new BeaconService('http://localhost:5052');
-
-      await expect(service.initialize()).rejects.toThrow(BlockchainStateError);
-      await expect(service.initialize()).rejects.toThrow(
+      await expect(BeaconService.create('http://localhost:5052')).rejects.toThrow(
+        BlockchainStateError
+      );
+      await expect(BeaconService.create('http://localhost:5052')).rejects.toThrow(
         'Failed to fetch beacon genesis: 500 Internal Server Error'
       );
     });
@@ -86,10 +85,10 @@ describe('BeaconService', () => {
         })
       );
 
-      const service = new BeaconService('http://localhost:5052');
-
-      await expect(service.initialize()).rejects.toThrow(BlockchainStateError);
-      await expect(service.initialize()).rejects.toThrow(
+      await expect(BeaconService.create('http://localhost:5052')).rejects.toThrow(
+        BlockchainStateError
+      );
+      await expect(BeaconService.create('http://localhost:5052')).rejects.toThrow(
         'Invalid genesis time received from beacon API'
       );
     });
@@ -97,20 +96,20 @@ describe('BeaconService', () => {
     it('throws BlockchainStateError when network request fails', async () => {
       mockFetch.mockRejectedValue(new Error('Network error'));
 
-      const service = new BeaconService('http://localhost:5052');
-
-      await expect(service.initialize()).rejects.toThrow(BlockchainStateError);
-      await expect(service.initialize()).rejects.toThrow('Unable to initialize beacon service');
+      await expect(BeaconService.create('http://localhost:5052')).rejects.toThrow(
+        BlockchainStateError
+      );
+      await expect(BeaconService.create('http://localhost:5052')).rejects.toThrow(
+        'Unable to initialize beacon service'
+      );
     });
 
     it('includes original error as cause when network request fails', async () => {
       const originalError = new Error('Network error');
       mockFetch.mockRejectedValue(originalError);
 
-      const service = new BeaconService('http://localhost:5052');
-
       try {
-        await service.initialize();
+        await BeaconService.create('http://localhost:5052');
         expect.unreachable('Should have thrown');
       } catch (error) {
         expect(error).toBeInstanceOf(BlockchainStateError);
@@ -120,19 +119,10 @@ describe('BeaconService', () => {
   });
 
   describe('calculateSlotPosition', () => {
-    it('throws error when service not initialized', () => {
-      const service = new BeaconService('http://localhost:5052');
-
-      expect(() => service.calculateSlotPosition()).toThrow(
-        'BeaconService not initialized - call initialize() first'
-      );
-    });
-
     it('calculates correct slot position for known timestamp', async () => {
       mockFetch.mockResolvedValueOnce(createMockFetchResponse());
 
-      const service = new BeaconService('http://localhost:5052');
-      await service.initialize();
+      const service = await BeaconService.create('http://localhost:5052');
 
       const now = Math.floor(Date.now() / 1000);
       const expectedSlot = Math.floor((now - MOCK_GENESIS_TIME) / SECONDS_PER_SLOT);
@@ -152,8 +142,7 @@ describe('BeaconService', () => {
     it('does not wait when secondInSlot is below threshold', async () => {
       mockFetch.mockResolvedValueOnce(createMockFetchResponse());
 
-      const service = new BeaconService('http://localhost:5052');
-      await service.initialize();
+      const service = await BeaconService.create('http://localhost:5052');
 
       const calculateSlotPositionSpy = spyOn(service, 'calculateSlotPosition').mockReturnValue({
         currentSlot: 100,
@@ -174,8 +163,7 @@ describe('BeaconService', () => {
     it('waits when secondInSlot equals threshold', async () => {
       mockFetch.mockResolvedValueOnce(createMockFetchResponse());
 
-      const service = new BeaconService('http://localhost:5052');
-      await service.initialize();
+      const service = await BeaconService.create('http://localhost:5052');
 
       const secondsUntilNext = 2;
       const calculateSlotPositionSpy = spyOn(service, 'calculateSlotPosition').mockReturnValue({
@@ -199,8 +187,7 @@ describe('BeaconService', () => {
     it('waits when secondInSlot exceeds threshold', async () => {
       mockFetch.mockResolvedValueOnce(createMockFetchResponse());
 
-      const service = new BeaconService('http://localhost:5052');
-      await service.initialize();
+      const service = await BeaconService.create('http://localhost:5052');
 
       const secondsUntilNext = 1;
       const calculateSlotPositionSpy = spyOn(service, 'calculateSlotPosition').mockReturnValue({

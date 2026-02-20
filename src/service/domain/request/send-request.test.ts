@@ -70,8 +70,7 @@ describe('Strategy Selection Logic', () => {
 
     it('is selected when signer supports parallel signing', () => {
       const mockSigner = createMockSigner({
-        supportsParallelSigning: true,
-        requiresUserInteraction: false
+        supportsParallelSigning: true
         });
 
       expect(mockSigner.capabilities.supportsParallelSigning).toBe(true);
@@ -83,8 +82,7 @@ describe('Strategy Selection Logic', () => {
       mockFetch.mockResolvedValueOnce(createMockFetchResponse());
 
       const mockProvider = createMockProvider();
-      const beaconService = new BeaconService('http://localhost:5052');
-      await beaconService.initialize();
+      const beaconService = await BeaconService.create('http://localhost:5052');
 
       const { EthereumStateService } = await import('./ethereum-state-service');
       const ethereumStateService = new EthereumStateService(mockProvider, '0xContract');
@@ -102,8 +100,7 @@ describe('Strategy Selection Logic', () => {
 
     it('is selected when signer does not support parallel signing', () => {
       const mockSigner = createMockSigner({
-        supportsParallelSigning: false,
-        requiresUserInteraction: true
+        supportsParallelSigning: false
         });
 
       expect(mockSigner.capabilities.supportsParallelSigning).toBe(false);
@@ -114,8 +111,7 @@ describe('Strategy Selection Logic', () => {
     it('fetches genesis time from beacon API', async () => {
       mockFetch.mockResolvedValueOnce(createMockFetchResponse());
 
-      const beaconService = new BeaconService('http://localhost:5052');
-      await beaconService.initialize();
+      await BeaconService.create('http://localhost:5052');
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(mockFetch).toHaveBeenCalledWith(
@@ -125,13 +121,11 @@ describe('Strategy Selection Logic', () => {
 
     it('is only needed for sequential strategy (Ledger)', async () => {
       const walletSigner = createMockSigner({
-        supportsParallelSigning: true,
-        requiresUserInteraction: false
+        supportsParallelSigning: true
         });
 
       const ledgerSigner = createMockSigner({
-        supportsParallelSigning: false,
-        requiresUserInteraction: true
+        supportsParallelSigning: false
         });
 
       expect(walletSigner.capabilities.supportsParallelSigning).toBe(true);

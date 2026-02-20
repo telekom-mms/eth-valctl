@@ -7,7 +7,6 @@ import {
   REPLACEMENT_UNDERPRICED_ERROR_CODE
 } from '../../../constants/application';
 import type {
-  ExecutionLayerRequestTransaction,
   MaxNetworkFees,
   PendingTransactionInfo,
   TransactionStatus
@@ -15,7 +14,6 @@ import type {
 import { TransactionStatusType } from '../../../model/ethereum';
 import type { ISigner } from '../signer';
 import type { EthereumStateService } from './ethereum-state-service';
-import type { TransactionBroadcaster } from './transaction-broadcaster';
 import type { TransactionMonitor } from './transaction-monitor';
 import type { TransactionProgressLogger } from './transaction-progress-logger';
 import { TransactionReplacer } from './transaction-replacer';
@@ -26,8 +24,7 @@ const createMockSigner = (overrides?: {
 }): ISigner => {
   return {
     capabilities: {
-      supportsParallelSigning: true,
-      requiresUserInteraction: false
+      supportsParallelSigning: true
       },
     address: '0xWalletAddress',
     sendTransaction:
@@ -56,26 +53,6 @@ const createMockBlockchainStateService = (
   return {
     getMaxNetworkFees: mock(() => Promise.resolve(maxNetworkFees))
   } as unknown as EthereumStateService;
-};
-
-const createMockTransactionBroadcaster = (): TransactionBroadcaster => {
-  return {
-    createElTransaction: mock(
-      (
-        data: string,
-        value: bigint,
-        maxFeePerGas?: bigint,
-        maxPriorityFeePerGas?: bigint
-      ): ExecutionLayerRequestTransaction => ({
-        to: '0xcontract',
-        data,
-        value,
-        gasLimit: 200000n,
-        maxFeePerGas,
-        maxPriorityFeePerGas
-      })
-    )
-  } as unknown as TransactionBroadcaster;
 };
 
 const createMockTransactionMonitor = (
@@ -148,7 +125,7 @@ describe('TransactionReplacer', () => {
         const replacer = new TransactionReplacer(
           createMockSigner(),
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -176,7 +153,7 @@ describe('TransactionReplacer', () => {
         const replacer = new TransactionReplacer(
           mockSigner,
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -201,7 +178,7 @@ describe('TransactionReplacer', () => {
         const replacer = new TransactionReplacer(
           mockSigner,
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -226,7 +203,7 @@ describe('TransactionReplacer', () => {
         const replacer = new TransactionReplacer(
           createMockSigner(),
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -255,7 +232,7 @@ describe('TransactionReplacer', () => {
         const replacer = new TransactionReplacer(
           mockSigner,
           createMockBlockchainStateService({ maxFeePerGas: 500n, maxPriorityFeePerGas: 50n }),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           createMockLogger()
         );
@@ -287,7 +264,7 @@ describe('TransactionReplacer', () => {
         const replacer = new TransactionReplacer(
           mockSigner,
           createMockBlockchainStateService({ maxFeePerGas: 1000n, maxPriorityFeePerGas: 100n }),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           createMockLogger()
         );
@@ -319,7 +296,7 @@ describe('TransactionReplacer', () => {
         const replacer = new TransactionReplacer(
           mockSigner,
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           createMockLogger()
         );
@@ -353,7 +330,7 @@ describe('TransactionReplacer', () => {
         const replacer = new TransactionReplacer(
           mockSigner,
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -379,7 +356,7 @@ describe('TransactionReplacer', () => {
         const replacer = new TransactionReplacer(
           mockSigner,
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -407,7 +384,7 @@ describe('TransactionReplacer', () => {
         const replacer = new TransactionReplacer(
           createMockSigner(),
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -438,7 +415,7 @@ describe('TransactionReplacer', () => {
         const replacer = new TransactionReplacer(
           createMockSigner(),
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -464,7 +441,7 @@ describe('TransactionReplacer', () => {
         const replacer = new TransactionReplacer(
           createMockSigner(),
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -496,7 +473,7 @@ describe('TransactionReplacer', () => {
         const replacer = new TransactionReplacer(
           mockSigner,
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -522,7 +499,7 @@ describe('TransactionReplacer', () => {
         const replacer = new TransactionReplacer(
           mockSigner,
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -551,7 +528,7 @@ describe('TransactionReplacer', () => {
         const replacer = new TransactionReplacer(
           mockSigner,
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           mockMonitor,
           mockLogger
         );
@@ -577,7 +554,7 @@ describe('TransactionReplacer', () => {
         const replacer = new TransactionReplacer(
           createMockSigner(),
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           createMockLogger()
         );
@@ -601,7 +578,7 @@ describe('TransactionReplacer', () => {
         const replacer = new TransactionReplacer(
           createMockSigner(),
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           createMockLogger()
         );

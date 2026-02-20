@@ -12,8 +12,7 @@ import type { ISigner, SignerCapabilities } from '../../../ports/signer.interfac
  */
 export class WalletSigner implements ISigner {
   readonly capabilities: SignerCapabilities = {
-    supportsParallelSigning: true,
-    requiresUserInteraction: false
+    supportsParallelSigning: true
   };
 
   readonly address: string;
@@ -28,15 +27,6 @@ export class WalletSigner implements ISigner {
     this.address = wallet.address;
   }
 
-  /**
-   * Get underlying wallet instance from nonce manager
-   *
-   * @returns The wrapped ethers Wallet instance
-   */
-  private getWallet(): Wallet {
-    return this.nonceManager.signer as Wallet;
-  }
-
   async sendTransaction(
     tx: ExecutionLayerRequestTransaction,
     _context?: SigningContext
@@ -49,7 +39,7 @@ export class WalletSigner implements ISigner {
     nonce: number,
     _context?: SigningContext
   ): Promise<TransactionResponse> {
-    const wallet = this.getWallet();
+    const wallet = this.nonceManager.signer as Wallet;
     return await wallet.sendTransaction({ ...tx, nonce });
   }
 
