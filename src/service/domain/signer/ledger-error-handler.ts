@@ -158,8 +158,13 @@ function classifyTransportStatusError(error: TransportStatusError): LedgerErrorI
 /**
  * Check if an error is a known Ledger error type
  *
+ * Ledger errors are logged with user-friendly messages at the point of origin
+ * (LedgerSigner via TransactionProgressLogger). Downstream error handlers use
+ * this guard to suppress duplicate logging: if `isLedgerError(error)` returns
+ * true, the error has already been reported and should not be logged again.
+ *
  * @param error - The error to check
- * @returns True if the error is a known Ledger error
+ * @returns True if the error is a known Ledger error (already logged at source)
  */
 export function isLedgerError(error: unknown): boolean {
   return (

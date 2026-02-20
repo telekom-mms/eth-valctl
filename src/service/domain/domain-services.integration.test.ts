@@ -7,12 +7,10 @@ import type { ISigner } from './signer';
 
 const mockProvider = {} as JsonRpcProvider;
 const mockSigner = {
-  capabilities: { supportsParallelSigning: true, requiresUserInteraction: false, signerType: 'wallet' },
+  capabilities: { supportsParallelSigning: true, requiresUserInteraction: false },
   address: '0xMockAddress',
   sendTransaction: mock(() => Promise.resolve({ hash: '0xhash', nonce: 1 })),
   sendTransactionWithNonce: mock(() => Promise.resolve({ hash: '0xhash', nonce: 1 })),
-  getCurrentNonce: mock(() => Promise.resolve(0)),
-  incrementNonce: mock(),
   dispose: mock(() => Promise.resolve())
 } as unknown as ISigner;
 

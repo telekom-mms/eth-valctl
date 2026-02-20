@@ -4,6 +4,7 @@ import { JsonRpcProvider, NonceManager, Wallet } from 'ethers';
 import * as logging from '../../constants/logging';
 import type { EthereumConnection, SignerType } from '../../model/ethereum';
 import { promptLedgerAddressSelection, promptSecret } from '../prompt';
+import { TransactionProgressLogger } from './request/transaction-progress-logger';
 import { LedgerSigner } from './signer/ledger-signer';
 import { WalletSigner } from './signer/wallet-signer';
 
@@ -51,7 +52,8 @@ async function createWalletConnection(provider: JsonRpcProvider): Promise<Ethere
 async function createLedgerConnection(provider: JsonRpcProvider): Promise<EthereumConnection> {
   try {
     const selection = await promptLedgerAddressSelection(provider);
-    const signer = await LedgerSigner.create(provider, selection.derivationPath);
+    const logger = new TransactionProgressLogger();
+    const signer = await LedgerSigner.create(provider, logger, selection.derivationPath);
     return { signer, provider };
   } catch (error) {
     if (error instanceof Error) {

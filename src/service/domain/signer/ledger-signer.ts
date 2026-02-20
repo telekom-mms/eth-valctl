@@ -3,17 +3,15 @@ import { createFeeMarket1559Tx } from '@ethereumjs/tx';
 import type { PrefixedHexString } from '@ethereumjs/util';
 import Eth, { ledgerService } from '@ledgerhq/hw-app-eth';
 import type Transport from '@ledgerhq/hw-transport';
-import TransportNodeHid from '@ledgerhq/hw-transport-node-hid';
-import chalk from 'chalk';
 import type { JsonRpcProvider, TransactionResponse } from 'ethers';
 
-import * as logging from '../../../constants/logging';
 import type { ExecutionLayerRequestTransaction, SigningContext } from '../../../model/ethereum';
-import type { IInteractiveSigner, SignerCapabilities } from '../../../ports/signer.interface';
+import type { ISigner, SignerCapabilities } from '../../../ports/signer.interface';
+import type { TransactionProgressLogger } from '../request/transaction-progress-logger';
 import { classifyLedgerError, isLedgerError } from './ledger-error-handler';
+import { connectWithTimeout } from './ledger-transport';
 
 const DEFAULT_DERIVATION_PATH = "44'/60'/0'/0/0";
-const CONNECTION_TIMEOUT_MS = 5000;
 
 /**
  * Ledger hardware wallet signer
@@ -21,11 +19,10 @@ const CONNECTION_TIMEOUT_MS = 5000;
  * Requires user interaction for each transaction signing.
  * Does not support parallel signing due to single-threaded device communication.
  */
-export class LedgerSigner implements IInteractiveSigner {
+export class LedgerSigner implements ISigner {
   readonly capabilities: SignerCapabilities = {
     supportsParallelSigning: false,
-    requiresUserInteraction: true,
-    signerType: 'ledger'
+    requiresUserInteraction: true
   };
 
   readonly address: string;
@@ -38,7 +35,8 @@ export class LedgerSigner implements IInteractiveSigner {
     private readonly chainId: bigint,
     address: string,
     initialNonce: number,
-    private readonly derivationPath: string
+    private readonly derivationPath: string,
+    private readonly logger: TransactionProgressLogger
   ) {
     this.address = address;
     this.nonce = initialNonce;
@@ -48,27 +46,24 @@ export class LedgerSigner implements IInteractiveSigner {
    * Create a Ledger signer by connecting to the device
    *
    * @param provider - JSON-RPC provider for nonce fetching and transaction broadcasting
+   * @param logger - Logger for Ledger connection and signing progress
    * @param derivationPath - HD derivation path (default: "44'/60'/0'/0/0")
    * @returns Connected Ledger signer instance
    * @throws Error if Ledger device is not connected or Ethereum app is not open
    */
   static async create(
     provider: JsonRpcProvider,
+    logger: TransactionProgressLogger,
     derivationPath: string = DEFAULT_DERIVATION_PATH
   ): Promise<LedgerSigner> {
-    console.log(chalk.cyan(logging.LEDGER_CONNECTING_INFO));
+    logger.logLedgerConnecting();
 
     let transport: Transport;
     try {
-      transport = await Promise.race([
-        TransportNodeHid.create(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Connection timeout')), CONNECTION_TIMEOUT_MS)
-        )
-      ]);
+      transport = await connectWithTimeout();
     } catch (error) {
       const errorInfo = classifyLedgerError(error);
-      console.error(chalk.red(errorInfo.message));
+      logger.logLedgerError(errorInfo.message);
       throw error;
     }
 
@@ -76,18 +71,18 @@ export class LedgerSigner implements IInteractiveSigner {
 
     try {
       const { address } = await eth.getAddress(derivationPath);
-      console.log(chalk.cyan(logging.LEDGER_CONNECTED_INFO(address)));
+      logger.logLedgerConnected(address);
 
       const network = await provider.getNetwork();
       const chainId = network.chainId;
 
       const nonce = await provider.getTransactionCount(address, 'pending');
 
-      return new LedgerSigner(transport, eth, provider, chainId, address, nonce, derivationPath);
+      return new LedgerSigner(transport, eth, provider, chainId, address, nonce, derivationPath, logger);
     } catch (error) {
       await transport.close();
       const errorInfo = classifyLedgerError(error);
-      console.error(chalk.red(errorInfo.message));
+      logger.logLedgerError(errorInfo.message);
       throw error;
     }
   }
@@ -107,17 +102,9 @@ export class LedgerSigner implements IInteractiveSigner {
     return this.signAndSend(tx, nonce, context);
   }
 
-  async getCurrentNonce(): Promise<number> {
-    return this.nonce;
-  }
-
-  incrementNonce(): void {
-    this.nonce++;
-  }
-
   async dispose(): Promise<void> {
     await this.transport.close();
-    console.log(chalk.cyan(logging.LEDGER_DISCONNECTED_INFO));
+    this.logger.logLedgerDisconnected();
   }
 
   /**
@@ -133,7 +120,7 @@ export class LedgerSigner implements IInteractiveSigner {
     nonce: number,
     context?: SigningContext
   ): Promise<TransactionResponse> {
-    this.promptUserForSigning(context);
+    this.logger.logLedgerSigningPrompt(context);
 
     try {
       const { txData, common } = await this.buildUnsignedTransaction(tx, nonce);
@@ -142,30 +129,9 @@ export class LedgerSigner implements IInteractiveSigner {
     } catch (error) {
       if (isLedgerError(error)) {
         const errorInfo = classifyLedgerError(error, { duringSigning: true });
-        console.error(chalk.red(errorInfo.message));
+        this.logger.logLedgerError(errorInfo.message);
       }
       throw error;
-    }
-  }
-
-  /**
-   * Display signing prompt to user with transaction context
-   *
-   * @param context - Optional signing context with validator info and progress
-   */
-  private promptUserForSigning(context?: SigningContext): void {
-    if (context) {
-      console.log(
-        chalk.cyan(
-          logging.LEDGER_SIGN_PROMPT(
-            context.currentIndex,
-            context.totalCount,
-            context.validatorPubkey
-          )
-        )
-      );
-    } else {
-      console.log(chalk.cyan(logging.LEDGER_SIGN_GENERIC_PROMPT));
     }
   }
 

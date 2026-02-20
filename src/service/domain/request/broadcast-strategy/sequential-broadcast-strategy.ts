@@ -5,7 +5,7 @@ import type {
 } from '../../../../model/ethereum';
 import type { IBroadcastStrategy } from '../../../../ports/broadcast-strategy.interface';
 import type { ISlotTimingService } from '../../../../ports/slot-timing.interface';
-import { type IInteractiveSigner, isFatalLedgerError, type ISigner } from '../../signer';
+import { isFatalLedgerError, type ISigner } from '../../signer';
 import { isInsufficientFundsError } from '../error-utils';
 import type { EthereumStateService } from '../ethereum-state-service';
 import type { TransactionProgressLogger } from '../transaction-progress-logger';
@@ -82,9 +82,7 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
           requestData,
           freshContractFee
         );
-        const response = signer.capabilities.requiresUserInteraction
-          ? await (signer as IInteractiveSigner).sendTransaction(freshTransaction, context)
-          : await signer.sendTransaction(freshTransaction);
+        const response = await signer.sendTransaction(freshTransaction, context);
         this.logger.logBroadcastingTransaction(response.hash);
         results.push(
           createSuccessBroadcastResult(response, requestData, this.systemContractAddress, blockNumber)

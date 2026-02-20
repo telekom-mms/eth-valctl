@@ -18,9 +18,8 @@ const createMockSigner = (overrides?: {
   return {
     capabilities: {
       supportsParallelSigning: true,
-      requiresUserInteraction: false,
-      signerType: 'wallet'
-    },
+      requiresUserInteraction: false
+      },
     address: '0xMockAddress',
     sendTransaction:
       overrides?.sendTransaction ??
@@ -36,8 +35,6 @@ const createMockSigner = (overrides?: {
         nonce: 1
       } as TransactionResponse)
     ),
-    getCurrentNonce: mock(() => Promise.resolve(0)),
-    incrementNonce: mock(),
     dispose: mock(() => Promise.resolve())
   } as unknown as ISigner;
 };

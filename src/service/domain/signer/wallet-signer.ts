@@ -1,7 +1,7 @@
 import type { TransactionResponse, Wallet } from 'ethers';
 import { NonceManager } from 'ethers';
 
-import type { ExecutionLayerRequestTransaction } from '../../../model/ethereum';
+import type { ExecutionLayerRequestTransaction, SigningContext } from '../../../model/ethereum';
 import type { ISigner, SignerCapabilities } from '../../../ports/signer.interface';
 
 /**
@@ -13,8 +13,7 @@ import type { ISigner, SignerCapabilities } from '../../../ports/signer.interfac
 export class WalletSigner implements ISigner {
   readonly capabilities: SignerCapabilities = {
     supportsParallelSigning: true,
-    requiresUserInteraction: false,
-    signerType: 'wallet'
+    requiresUserInteraction: false
   };
 
   readonly address: string;
@@ -38,24 +37,20 @@ export class WalletSigner implements ISigner {
     return this.nonceManager.signer as Wallet;
   }
 
-  async sendTransaction(tx: ExecutionLayerRequestTransaction): Promise<TransactionResponse> {
+  async sendTransaction(
+    tx: ExecutionLayerRequestTransaction,
+    _context?: SigningContext
+  ): Promise<TransactionResponse> {
     return await this.nonceManager.sendTransaction(tx);
   }
 
   async sendTransactionWithNonce(
     tx: ExecutionLayerRequestTransaction,
-    nonce: number
+    nonce: number,
+    _context?: SigningContext
   ): Promise<TransactionResponse> {
     const wallet = this.getWallet();
     return await wallet.sendTransaction({ ...tx, nonce });
-  }
-
-  async getCurrentNonce(): Promise<number> {
-    return await this.nonceManager.getNonce('pending');
-  }
-
-  incrementNonce(): void {
-    this.nonceManager.increment();
   }
 
   async dispose(): Promise<void> {

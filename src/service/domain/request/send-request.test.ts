@@ -42,8 +42,6 @@ const createMockSigner = (capabilities: SignerCapabilities): ISigner => {
     address: '0xMockAddress',
     sendTransaction: mock(() => Promise.resolve({ hash: '0xhash', nonce: 1 })),
     sendTransactionWithNonce: mock(() => Promise.resolve({ hash: '0xhash', nonce: 1 })),
-    getCurrentNonce: mock(() => Promise.resolve(0)),
-    incrementNonce: mock(),
     dispose: mock(() => Promise.resolve())
   } as unknown as ISigner;
 };
@@ -73,9 +71,8 @@ describe('Strategy Selection Logic', () => {
     it('is selected when signer supports parallel signing', () => {
       const mockSigner = createMockSigner({
         supportsParallelSigning: true,
-        requiresUserInteraction: false,
-        signerType: 'wallet'
-      });
+        requiresUserInteraction: false
+        });
 
       expect(mockSigner.capabilities.supportsParallelSigning).toBe(true);
     });
@@ -106,9 +103,8 @@ describe('Strategy Selection Logic', () => {
     it('is selected when signer does not support parallel signing', () => {
       const mockSigner = createMockSigner({
         supportsParallelSigning: false,
-        requiresUserInteraction: true,
-        signerType: 'ledger'
-      });
+        requiresUserInteraction: true
+        });
 
       expect(mockSigner.capabilities.supportsParallelSigning).toBe(false);
     });
@@ -130,15 +126,13 @@ describe('Strategy Selection Logic', () => {
     it('is only needed for sequential strategy (Ledger)', async () => {
       const walletSigner = createMockSigner({
         supportsParallelSigning: true,
-        requiresUserInteraction: false,
-        signerType: 'wallet'
-      });
+        requiresUserInteraction: false
+        });
 
       const ledgerSigner = createMockSigner({
         supportsParallelSigning: false,
-        requiresUserInteraction: true,
-        signerType: 'ledger'
-      });
+        requiresUserInteraction: true
+        });
 
       expect(walletSigner.capabilities.supportsParallelSigning).toBe(true);
       expect(ledgerSigner.capabilities.supportsParallelSigning).toBe(false);

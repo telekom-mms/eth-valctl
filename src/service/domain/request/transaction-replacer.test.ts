@@ -6,7 +6,6 @@ import {
   NONCE_EXPIRED_ERROR_CODE,
   REPLACEMENT_UNDERPRICED_ERROR_CODE
 } from '../../../constants/application';
-import { INSUFFICIENT_FUNDS_ERROR } from '../../../constants/logging';
 import type {
   ExecutionLayerRequestTransaction,
   MaxNetworkFees,
@@ -28,9 +27,8 @@ const createMockSigner = (overrides?: {
   return {
     capabilities: {
       supportsParallelSigning: true,
-      requiresUserInteraction: false,
-      signerType: 'wallet'
-    },
+      requiresUserInteraction: false
+      },
     address: '0xWalletAddress',
     sendTransaction:
       overrides?.sendTransaction ??
@@ -48,8 +46,6 @@ const createMockSigner = (overrides?: {
           nonce: 1
         } as TransactionResponse)
       ),
-    getCurrentNonce: mock(() => Promise.resolve(0)),
-    incrementNonce: mock(),
     dispose: mock(() => Promise.resolve())
   } as unknown as ISigner;
 };
@@ -95,7 +91,14 @@ const createMockTransactionMonitor = (
 const createMockLogger = (): TransactionProgressLogger => {
   return {
     logProgress: mock(),
-    logReplacementSummary: mock()
+    logReplacementSummary: mock(),
+    logBlockChangeReplacement: mock(),
+    logMinedTransaction: mock(),
+    logRevertedTransactionRetry: mock(),
+    logBroadcastingTransaction: mock(),
+    logTransactionReplaced: mock(),
+    logInsufficientFundsError: mock(),
+    logReplacementFailure: mock()
   } as unknown as TransactionProgressLogger;
 };
 
@@ -266,7 +269,8 @@ describe('TransactionReplacer', () => {
             maxFeePerGas: 1120n,
             maxPriorityFeePerGas: 112n
           }),
-          1
+          1,
+          undefined
         );
       });
 
@@ -297,7 +301,8 @@ describe('TransactionReplacer', () => {
             maxFeePerGas: 1120n,
             maxPriorityFeePerGas: 112n
           }),
-          1
+          1,
+          undefined
         );
       });
 
@@ -328,7 +333,8 @@ describe('TransactionReplacer', () => {
             maxFeePerGas: 1120n,
             maxPriorityFeePerGas: 112n
           }),
-          1
+          1,
+          undefined
         );
       });
     });
@@ -359,9 +365,7 @@ describe('TransactionReplacer', () => {
         expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
           expect.objectContaining({ failed: 1 })
         );
-        const errorCall = consoleErrorSpy.mock.calls[0];
-        expect(errorCall?.join(' ')).toContain(INSUFFICIENT_FUNDS_ERROR);
-        expect(errorCall).toHaveLength(1);
+        expect(mockLogger.logInsufficientFundsError).toHaveBeenCalled();
       });
 
       it('handles NONCE_EXPIRED by returning ALREADY_MINED', async () => {
@@ -527,7 +531,7 @@ describe('TransactionReplacer', () => {
 
         await replacer.replaceTransactions([tx], 1n, 101);
 
-        expect(mockSendTransactionWithNonce).toHaveBeenCalledWith(expect.anything(), 1);
+        expect(mockSendTransactionWithNonce).toHaveBeenCalledWith(expect.anything(), 1, undefined);
       });
     });
 

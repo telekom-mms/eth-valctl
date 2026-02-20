@@ -2,9 +2,11 @@ import chalk from 'chalk';
 
 import * as serviceConstants from '../../../constants/application';
 import * as logging from '../../../constants/logging';
-import type { PendingTransactionInfo, ReplacementSummary } from '../../../model/ethereum';
+import type { PendingTransactionInfo, ReplacementSummary, SigningContext } from '../../../model/ethereum';
 import { isLedgerError } from '../signer';
 import { isInsufficientFundsError, isNonceExpiredError } from './error-utils';
+
+type MinedTransactionNote = 'nonce consumed by original or competing replacement';
 
 /**
  * Service for logging transaction processing progress with consistent formatting.
@@ -145,9 +147,62 @@ export class TransactionProgressLogger {
   }
 
   /**
+   * Log that a Ledger connection attempt is starting
+   */
+  logLedgerConnecting(): void {
+    console.log(chalk.cyan(logging.LEDGER_CONNECTING_INFO));
+  }
+
+  /**
+   * Log successful Ledger connection with resolved address
+   *
+   * @param address - Ethereum address resolved from the Ledger device
+   */
+  logLedgerConnected(address: string): void {
+    console.log(chalk.cyan(logging.LEDGER_CONNECTED_INFO(address)));
+  }
+
+  /**
+   * Log Ledger device disconnection
+   */
+  logLedgerDisconnected(): void {
+    console.log(chalk.cyan(logging.LEDGER_DISCONNECTED_INFO));
+  }
+
+  /**
+   * Log Ledger signing prompt with optional transaction context
+   *
+   * @param context - Optional signing context with validator info and progress
+   */
+  logLedgerSigningPrompt(context?: SigningContext): void {
+    if (context) {
+      console.log(
+        chalk.cyan(
+          logging.LEDGER_SIGN_PROMPT(
+            context.currentIndex,
+            context.totalCount,
+            context.validatorPubkey
+          )
+        )
+      );
+    } else {
+      console.log(chalk.cyan(logging.LEDGER_SIGN_GENERIC_PROMPT));
+    }
+  }
+
+  /**
+   * Log a Ledger-specific error message
+   *
+   * @param message - Pre-classified error message from ledger-error-handler
+   */
+  logLedgerError(message: string): void {
+    console.error(chalk.red(message));
+  }
+
+  /**
    * Log broadcast failure
    *
-   * Ledger errors are already logged with user-friendly messages in LedgerSigner,
+   * Ledger errors are already logged with user-friendly messages via the logger,
    * so we only print the header without the stack trace.
    *
    * @param error - Error that occurred during broadcast
@@ -165,5 +220,69 @@ export class TransactionProgressLogger {
       return;
     }
     console.error(chalk.red(logging.FAILED_TO_BROADCAST_TRANSACTION_ERROR), error);
+  }
+
+  /**
+   * Log that pending transactions are being replaced for a new block
+   *
+   * @param nextBlock - Target block number
+   * @param count - Number of transactions being replaced
+   */
+  logBlockChangeReplacement(nextBlock: number, count: number): void {
+    console.log(chalk.yellow(logging.BLOCK_CHANGE_INFO(nextBlock, count)));
+  }
+
+  /**
+   * Log that a transaction has been mined
+   *
+   * @param hash - Transaction hash that was mined
+   * @param note - Optional note for context (e.g., nonce consumed by competitor)
+   */
+  logMinedTransaction(hash: string, note?: MinedTransactionNote): void {
+    if (note) {
+      console.log(chalk.green(logging.MINED_EL_REQUEST_INFO, hash), `(${note})`);
+    } else {
+      console.log(chalk.green(logging.MINED_EL_REQUEST_INFO, hash));
+    }
+  }
+
+  /**
+   * Log that a reverted transaction is being retried with a fresh nonce
+   *
+   * @param hash - Hash of the reverted transaction
+   */
+  logRevertedTransactionRetry(hash: string): void {
+    console.log(chalk.red(logging.EL_REQUEST_REVERTED_SENDING_NEW_INFO(hash)));
+  }
+
+  /**
+   * Log that a pending transaction was replaced with a new one
+   *
+   * @param oldHash - Hash of the original pending transaction
+   * @param newHash - Hash of the replacement transaction
+   */
+  logTransactionReplaced(oldHash: string, newHash: string): void {
+    console.log(chalk.yellow(logging.TRANSACTION_REPLACED_INFO(oldHash, newHash)));
+  }
+
+  /**
+   * Log insufficient funds error during replacement
+   */
+  logInsufficientFundsError(): void {
+    console.error(chalk.red(logging.INSUFFICIENT_FUNDS_ERROR));
+  }
+
+  /**
+   * Log replacement failure
+   *
+   * Ledger errors are already logged with user-friendly messages at source,
+   * so they are silently skipped here.
+   *
+   * @param error - Error that occurred during replacement
+   * @param hash - Transaction hash that failed to be replaced
+   */
+  logReplacementFailure(error: unknown, hash: string): void {
+    if (isLedgerError(error)) return;
+    console.error(chalk.red(logging.FAILED_TO_REPLACE_TRANSACTION_ERROR(hash)), error);
   }
 }

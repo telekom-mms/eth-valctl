@@ -10,8 +10,6 @@ export interface SignerCapabilities {
   supportsParallelSigning: boolean;
   /** Whether signing requires user interaction (e.g., hardware wallet confirmation) */
   requiresUserInteraction: boolean;
-  /** Type identifier for the signer */
-  signerType: 'wallet' | 'ledger';
 }
 
 /**
@@ -34,59 +32,7 @@ export interface ISigner {
    * For Ledger signers, nonce is fetched and tracked internally.
    *
    * @param tx - Transaction to sign and send
-   * @returns Transaction response from the network
-   */
-  sendTransaction(tx: ExecutionLayerRequestTransaction): Promise<TransactionResponse>;
-
-  /**
-   * Send a transaction with an explicit nonce
-   *
-   * Used for transaction replacement where the same nonce must be reused.
-   *
-   * @param tx - Transaction to sign and send
-   * @param nonce - Explicit nonce to use
-   * @returns Transaction response from the network
-   */
-  sendTransactionWithNonce(
-    tx: ExecutionLayerRequestTransaction,
-    nonce: number
-  ): Promise<TransactionResponse>;
-
-  /**
-   * Get the current nonce that would be used for the next transaction
-   *
-   * @returns Current nonce value
-   */
-  getCurrentNonce(): Promise<number>;
-
-  /**
-   * Manually increment the internal nonce counter
-   *
-   * Used after successful transaction broadcast to prepare for the next transaction.
-   */
-  incrementNonce(): void;
-
-  /**
-   * Release resources held by the signer
-   *
-   * For Ledger signers, this closes the USB transport connection.
-   * For wallet signers, this is typically a no-op.
-   */
-  dispose(): Promise<void>;
-}
-
-/**
- * Extended signer interface for signers that require user interaction
- *
- * Hardware wallets like Ledger need signing context to display progress information
- * to users during the confirmation process.
- */
-export interface IInteractiveSigner extends ISigner {
-  /**
-   * Send a transaction with optional signing context for user prompts
-   *
-   * @param tx - Transaction to sign and send
-   * @param context - Optional context for user prompts (e.g., validator info)
+   * @param context - Optional signing context for interactive signers (e.g., Ledger prompts)
    * @returns Transaction response from the network
    */
   sendTransaction(
@@ -95,11 +41,13 @@ export interface IInteractiveSigner extends ISigner {
   ): Promise<TransactionResponse>;
 
   /**
-   * Send a transaction with explicit nonce and optional signing context
+   * Send a transaction with an explicit nonce
+   *
+   * Used for transaction replacement where the same nonce must be reused.
    *
    * @param tx - Transaction to sign and send
    * @param nonce - Explicit nonce to use
-   * @param context - Optional context for user prompts
+   * @param context - Optional signing context for interactive signers (e.g., Ledger prompts)
    * @returns Transaction response from the network
    */
   sendTransactionWithNonce(
@@ -107,14 +55,12 @@ export interface IInteractiveSigner extends ISigner {
     nonce: number,
     context?: SigningContext
   ): Promise<TransactionResponse>;
-}
 
-/**
- * Type guard to check if a signer supports interactive signing with context
- *
- * @param signer - Signer to check
- * @returns True if signer requires user interaction and supports SigningContext
- */
-export function isInteractiveSigner(signer: ISigner): signer is IInteractiveSigner {
-  return signer.capabilities.requiresUserInteraction;
+  /**
+   * Release resources held by the signer
+   *
+   * For Ledger signers, this closes the USB transport connection.
+   * For wallet signers, this is typically a no-op.
+   */
+  dispose(): Promise<void>;
 }

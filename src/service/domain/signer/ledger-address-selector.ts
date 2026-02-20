@@ -1,12 +1,10 @@
 import Eth from '@ledgerhq/hw-app-eth';
-import TransportNodeHid from '@ledgerhq/hw-transport-node-hid';
 import type { JsonRpcProvider } from 'ethers';
 
+import { LEDGER_ADDRESSES_PER_PAGE } from '../../../constants/application';
 import type { AddressPageState, LedgerDerivedAddress } from '../../../model/ledger';
 import { classifyLedgerError } from './ledger-error-handler';
-
-const ADDRESSES_PER_PAGE = 5;
-const CONNECTION_TIMEOUT_MS = 5000;
+import { connectWithTimeout } from './ledger-transport';
 
 /**
  * Interface for Ethereum address derivation
@@ -49,12 +47,7 @@ export class LedgerAddressSelector {
    * @throws Error if Ledger device is not connected or Ethereum app is not open
    */
   static async create(provider: JsonRpcProvider): Promise<LedgerAddressSelector> {
-    const transport = await Promise.race([
-      TransportNodeHid.create(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Connection timeout')), CONNECTION_TIMEOUT_MS)
-      )
-    ]);
+    const transport = await connectWithTimeout();
 
     const eth = new Eth(transport);
     const selector = new LedgerAddressSelector(transport, eth, provider);
@@ -90,10 +83,10 @@ export class LedgerAddressSelector {
    * @returns Page state with addresses and navigation info
    */
   async getAddressPage(page: number): Promise<AddressPageState> {
-    const startIndex = page * ADDRESSES_PER_PAGE;
+    const startIndex = page * LEDGER_ADDRESSES_PER_PAGE;
     const addresses: LedgerDerivedAddress[] = [];
 
-    for (let i = 0; i < ADDRESSES_PER_PAGE; i++) {
+    for (let i = 0; i < LEDGER_ADDRESSES_PER_PAGE; i++) {
       const index = startIndex + i;
       const address = await this.getOrDeriveAddress(index);
       addresses.push(address);

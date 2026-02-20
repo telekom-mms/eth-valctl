@@ -1,4 +1,4 @@
-export type { IInteractiveSigner, ISigner, SignerCapabilities } from '../../../ports/signer.interface';
+export type { ISigner, SignerCapabilities } from '../../../ports/signer.interface';
 export { LedgerAddressSelector } from './ledger-address-selector';
 export {
   classifyLedgerError,

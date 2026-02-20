@@ -1,8 +1,6 @@
-import chalk from 'chalk';
 import type { TransactionResponse } from 'ethers';
 
 import * as serviceConstants from '../../../constants/application';
-import * as logging from '../../../constants/logging';
 import type {
   CategorizedTransactions,
   MaxNetworkFees,
@@ -13,7 +11,7 @@ import type {
   TransactionStatus
 } from '../../../model/ethereum';
 import { TransactionReplacementStatusType, TransactionStatusType } from '../../../model/ethereum';
-import { type IInteractiveSigner, type ISigner, isLedgerError } from '../signer';
+import type { ISigner } from '../signer';
 import { extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
 import {
   isInsufficientFundsError,
@@ -76,9 +74,7 @@ export class TransactionReplacer {
 
     const needsReplacement = categorized.pending.length + categorized.reverted.length;
     if (needsReplacement > 0) {
-      console.log(
-        chalk.yellow(logging.BLOCK_CHANGE_INFO(currentBlockNumber + 1, needsReplacement))
-      );
+      this.logger.logBlockChangeReplacement(currentBlockNumber + 1, needsReplacement);
     }
 
     const revertedResults = await this.processRevertedTransactions(
@@ -141,12 +137,12 @@ export class TransactionReplacer {
 
     for (const result of results) {
       if (result.status.type === TransactionStatusType.MINED) {
-        console.log(chalk.green(logging.MINED_EL_REQUEST_INFO, result.status.receipt.hash));
+        this.logger.logMinedTransaction(result.status.receipt.hash);
         mined.push({ status: TransactionReplacementStatusType.ALREADY_MINED });
       } else if (result.status.type === TransactionStatusType.MINED_BY_COMPETITOR) {
-        console.log(
-          chalk.green(logging.MINED_EL_REQUEST_INFO, result.transaction.response.hash),
-          '(nonce consumed by original or competing replacement)'
+        this.logger.logMinedTransaction(
+          result.transaction.response.hash,
+          'nonce consumed by original or competing replacement'
         );
         mined.push({ status: TransactionReplacementStatusType.ALREADY_MINED });
       } else if (result.status.type === TransactionStatusType.REVERTED) {
@@ -194,12 +190,9 @@ export class TransactionReplacer {
         results.push({ status: TransactionReplacementStatusType.SUCCESS, transaction });
       } catch (error) {
         if (isInsufficientFundsError(error)) {
-          console.error(chalk.red(logging.INSUFFICIENT_FUNDS_ERROR));
-        } else if (!isLedgerError(error)) {
-          console.error(
-            chalk.red(logging.FAILED_TO_REPLACE_TRANSACTION_ERROR(tx.response.hash)),
-            error
-          );
+          this.logger.logInsufficientFundsError();
+        } else {
+          this.logger.logReplacementFailure(error, tx.response.hash);
         }
         results.push({
           status: TransactionReplacementStatusType.FAILED,
@@ -327,21 +320,15 @@ export class TransactionReplacer {
     currentBlockNumber: number,
     context?: SigningContext
   ): Promise<PendingTransactionInfo> {
-    console.log(
-      chalk.red(logging.EL_REQUEST_REVERTED_SENDING_NEW_INFO(pendingTransaction.response.hash))
-    );
+    this.logger.logRevertedTransactionRetry(pendingTransaction.response.hash);
 
     const replacementTransaction = this.transactionBroadcaster.createElTransaction(
       pendingTransaction.data,
       newContractFee
     );
 
-    const replacementResponse = this.signer.capabilities.requiresUserInteraction
-      ? await (this.signer as IInteractiveSigner).sendTransaction(replacementTransaction, context)
-      : await this.signer.sendTransaction(replacementTransaction);
-    console.log(
-      chalk.yellow(logging.BROADCASTING_EL_REQUEST_INFO, replacementResponse.hash, '...')
-    );
+    const replacementResponse = await this.signer.sendTransaction(replacementTransaction, context);
+    this.logger.logBroadcastingTransaction(replacementResponse.hash);
 
     return this.buildPendingTransactionInfo(
       replacementResponse,
@@ -378,25 +365,13 @@ export class TransactionReplacer {
       increasedMaxNetworkFees.maxPriorityFeePerGas
     );
 
-    const replacementResponse = this.signer.capabilities.requiresUserInteraction
-      ? await (this.signer as IInteractiveSigner).sendTransactionWithNonce(
-          replacementTransaction,
-          pendingTransaction.nonce,
-          context
-        )
-      : await this.signer.sendTransactionWithNonce(
-          replacementTransaction,
-          pendingTransaction.nonce
-        );
-
-    console.log(
-      chalk.yellow(
-        logging.TRANSACTION_REPLACED_INFO(
-          pendingTransaction.response.hash,
-          replacementResponse.hash
-        )
-      )
+    const replacementResponse = await this.signer.sendTransactionWithNonce(
+      replacementTransaction,
+      pendingTransaction.nonce,
+      context
     );
+
+    this.logger.logTransactionReplaced(pendingTransaction.response.hash, replacementResponse.hash);
 
     return this.buildPendingTransactionInfo(
       replacementResponse,
@@ -432,24 +407,19 @@ export class TransactionReplacer {
     }
 
     if (isNonceExpiredError(error)) {
-      console.log(
-        chalk.green(logging.MINED_EL_REQUEST_INFO, tx.response.hash),
-        '(nonce consumed by original or competing replacement)'
+      this.logger.logMinedTransaction(
+        tx.response.hash,
+        'nonce consumed by original or competing replacement'
       );
       return { status: TransactionReplacementStatusType.ALREADY_MINED };
     }
 
     if (isInsufficientFundsError(error)) {
-      console.error(chalk.red(logging.INSUFFICIENT_FUNDS_ERROR));
+      this.logger.logInsufficientFundsError();
       return { status: TransactionReplacementStatusType.FAILED, transaction: tx, error };
     }
 
-    if (!isLedgerError(error)) {
-      console.error(
-        chalk.red(logging.FAILED_TO_REPLACE_TRANSACTION_ERROR(tx.response.hash)),
-        error
-      );
-    }
+    this.logger.logReplacementFailure(error, tx.response.hash);
     return { status: TransactionReplacementStatusType.FAILED, transaction: tx, error };
   }
 
