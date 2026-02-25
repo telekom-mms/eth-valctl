@@ -2,6 +2,9 @@
 participants:
   - el_type: "geth"
     el_image: "ethereum/client-go:${GETH_IMAGE_TAG}"
+    el_extra_params:
+      - "--http.addr=0.0.0.0"
+      - "--http.vhosts=*"
     cl_type: "lighthouse"
     cl_image: "sigp/lighthouse:${LIGHTHOUSE_IMAGE_TAG}"
   - el_type: "geth"
@@ -16,6 +19,9 @@ participants:
     el_image: "ghcr.io/paradigmxyz/reth:${RETH_IMAGE_TAG}"
     cl_type: "nimbus"
     cl_image: "statusim/nimbus-eth2:${NIMBUS_IMAGE_TAG}"
+    cl_extra_params:
+      - "--rest-address=0.0.0.0"
+      - "--rest-allow-origin=*"
   - el_type: "nethermind"
     el_image: "nethermind/nethermind:${NETHERMIND_IMAGE_TAG}"
     cl_type: "nimbus"
