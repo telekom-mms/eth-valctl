@@ -4,6 +4,7 @@ import { JsonRpcProvider } from 'ethers';
 import { exit } from 'process';
 
 import {
+  ECONNREFUSED_ERROR_CODE,
   MAX_NUMBER_OF_REQUESTS_PER_BLOCK,
   PREFIX_0x,
   VALID_URL_PREFIXES
@@ -19,8 +20,7 @@ import { networkConfig } from '../../network-config';
  */
 export function parseAndValidateNodeUrl(nodeUrl: string): string {
   if (!VALID_URL_PREFIXES.some((prefix) => nodeUrl.startsWith(prefix))) {
-    console.error(chalk.red(logging.INVALID_URL_FORMAT_ERROR));
-    exit(1);
+    exitWithValidationError(logging.INVALID_URL_FORMAT_ERROR);
   }
   return nodeUrl;
 }
@@ -34,12 +34,10 @@ export function parseAndValidateNodeUrl(nodeUrl: string): string {
 export function parseAndValidateWithdrawAmount(amount: string): number {
   const parsedAmount = parseFloat(amount);
   if (isNaN(parsedAmount)) {
-    console.error(chalk.red(logging.INVALID_AMOUNT_ERROR));
-    exit(1);
+    exitWithValidationError(logging.INVALID_AMOUNT_ERROR);
   }
   if (parsedAmount < 0.000001) {
-    console.error(chalk.red(logging.AMOUNT_TOO_LOW_ERROR));
-    exit(1);
+    exitWithValidationError(logging.AMOUNT_TOO_LOW_ERROR);
   }
   return parsedAmount;
 }
@@ -55,8 +53,7 @@ export function parseAndValidateValidatorPubKey(validatorPubKey: string): string
     PublicKey.fromHex(validatorPubKey).keyValidate();
     return addPubKeyPrefix(validatorPubKey);
   } catch {
-    console.error(chalk.red(logging.INVALID_VALIDATOR_PUBKEY_ERROR));
-    exit(1);
+    exitWithValidationError(logging.INVALID_VALIDATOR_PUBKEY_ERROR);
   }
 }
 
@@ -75,8 +72,7 @@ export function parseAndValidateValidatorPubKeys(
     PublicKey.fromHex(validatorPubKey).keyValidate();
     return [...previous, addPubKeyPrefix(validatorPubKey)];
   } catch {
-    console.error(chalk.red(logging.INVALID_VALIDATORS_PUBKEY_ERROR));
-    exit(1);
+    exitWithValidationError(logging.INVALID_VALIDATORS_PUBKEY_ERROR);
   }
 }
 
@@ -90,26 +86,28 @@ export async function validateNetwork(jsonRpcUrl: string, network: string): Prom
   try {
     const config = networkConfig[network];
     if (!config) {
-      console.error(chalk.red(`Invalid network: ${network}`));
-      exit(1);
+      exitWithValidationError(logging.INVALID_NETWORK_ERROR(network));
     }
     const jsonRpcProvider = new JsonRpcProvider(jsonRpcUrl);
     const connectedNetwork = await jsonRpcProvider.getNetwork();
     if (connectedNetwork.chainId != config.chainId) {
-      console.error(
-        chalk.red(
-          logging.WRONG_CONNECTED_NETWORK_ERROR(
-            network,
-            connectedNetwork.name,
-            connectedNetwork.chainId
-          )
+      exitWithValidationError(
+        logging.WRONG_CONNECTED_NETWORK_ERROR(
+          network,
+          connectedNetwork.name,
+          connectedNetwork.chainId
         )
       );
-      exit(1);
     }
   } catch (error) {
-    console.error(chalk.red(logging.GENERAL_JSON_RPC_ERROR), error);
-    exit(1);
+    if (
+      error instanceof Error &&
+      'message' in error &&
+      error.message.includes(ECONNREFUSED_ERROR_CODE)
+    ) {
+      console.error(chalk.red(logging.GENERAL_JSON_RPC_ERROR(jsonRpcUrl)), error.message);
+      exit(1);
+    }
   }
 }
 
@@ -123,12 +121,10 @@ export async function validateNetwork(jsonRpcUrl: string, network: string): Prom
 export function parseAndValidateMaxNumberOfRequestsPerBlock(maxNumberOfRequests: string): number {
   const parsedNumber = parseInt(maxNumberOfRequests);
   if (isNaN(parsedNumber)) {
-    console.error(chalk.red(logging.INVALID_REQUESTS_PER_BLOCK_ERROR));
-    exit(1);
+    exitWithValidationError(logging.INVALID_REQUESTS_PER_BLOCK_ERROR);
   }
   if (parsedNumber > MAX_NUMBER_OF_REQUESTS_PER_BLOCK) {
-    console.error(chalk.red(logging.TOO_MANY_REQUESTS_PER_BLOCK_ERROR));
-    exit(1);
+    exitWithValidationError(logging.TOO_MANY_REQUESTS_PER_BLOCK_ERROR);
   }
   return parsedNumber;
 }
@@ -144,4 +140,14 @@ function addPubKeyPrefix(validatorPubKey: string): string {
     validatorPubKey = PREFIX_0x.concat(validatorPubKey);
   }
   return validatorPubKey;
+}
+
+/**
+ * Exit with a validation error message
+ *
+ * @param message - Error message
+ */
+function exitWithValidationError(message: string): never {
+  console.error(chalk.red(message));
+  exit(1);
 }

@@ -30,19 +30,13 @@ process.on('unhandledRejection', (reason) => {
 
 const program = new Command();
 
-const networkOptionName = 'network';
-const jsonRpcOptionName = 'json-rpc-url';
-const beaconApiOptionName = 'beacon-api-url';
-const maxRequestsPerBlockOptionName = 'max-requests-per-block';
-const ledgerOptionName = 'ledger';
-
 program
   .name('eth-valctl')
   .description(`CLI tool for managing Ethereum validators.\n${chalk.yellow(DISCLAIMER_INFO)}`)
   .version(packageJson.version)
   .addOption(
     new Option(
-      `-n, --${networkOptionName} <network>`,
+      `-n, --network <network>`,
       'Ethereum network which will be used for request processing'
     )
       .choices(['mainnet', 'hoodi', 'sepolia', 'kurtosis_devnet'])
@@ -50,25 +44,25 @@ program
       .default('mainnet')
   )
   .requiredOption(
-    `-r, --${jsonRpcOptionName} <jsonRpcUrl>`,
+    `-r, --json-rpc-url <jsonRpcUrl>`,
     'Json rpc url which is used to connect to the defined network',
     parseAndValidateNodeUrl,
     'http://localhost:8545'
   )
   .requiredOption(
-    `-b, --${beaconApiOptionName} <beaconApiUrl>`,
+    `-b, --beacon-api-url <beaconApiUrl>`,
     'Beacon api url which is used for pre transaction checks',
     parseAndValidateNodeUrl,
     'http://localhost:5052'
   )
   .requiredOption(
-    `-m, --${maxRequestsPerBlockOptionName} <number>`,
+    `-m, --max-requests-per-block <number>`,
     'Max. number of sent execution layer requests per block',
     parseAndValidateMaxNumberOfRequestsPerBlock,
     10
   )
   .option(
-    `-l, --${ledgerOptionName}`,
+    `-l, --ledger`,
     'Use Ledger hardware wallet for transaction signing (requires device connection)',
     false
   )

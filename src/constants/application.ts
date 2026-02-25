@@ -20,9 +20,9 @@ export const NUMBER_OF_BLOCKS_FOR_LOG_LOOKUP = 50;
 export const TRANSACTION_GAS_LIMIT = 200000n;
 
 /**
- * Maximum execution layer requests per block - EIP-7002 and EIP-7251 combined limit
+ * Maximum execution layer requests accepted per block - EIP-7002 and EIP-7251 combined limit
  */
-export const MAX_NUMBER_OF_REQUESTS_PER_BLOCK = 220;
+export const MAX_NUMBER_OF_REQUESTS_PER_BLOCK = 50;
 
 /** Transaction retry configuration */
 export const MAX_TRANSACTION_RETRIES = 3;
@@ -38,6 +38,7 @@ export const TRANSACTION_FEE_INCREASE_PERCENTAGE = 112n;
 
 /** Withdrawal credential types */
 export const WITHDRAWAL_CREDENTIALS_0x00 = '0x00';
+export const WITHDRAWAL_CREDENTIALS_0x01 = '0x01';
 export const WITHDRAWAL_CREDENTIALS_0x02 = '0x02';
 
 /** Beacon API endpoints */
@@ -74,3 +75,4 @@ export const LEDGER_ADDRESSES_PER_PAGE = 5;
 export const REPLACEMENT_UNDERPRICED_ERROR_CODE = 'REPLACEMENT_UNDERPRICED';
 export const NONCE_EXPIRED_ERROR_CODE = 'NONCE_EXPIRED';
 export const INSUFFICIENT_FUNDS_ERROR_CODE = 'INSUFFICIENT_FUNDS';
+export const ECONNREFUSED_ERROR_CODE = 'ECONNREFUSED';
