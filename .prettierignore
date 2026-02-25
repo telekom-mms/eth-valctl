@@ -1,2 +1,4 @@
 *.yaml
 *.yml
+*.md
+.claude/**/*
