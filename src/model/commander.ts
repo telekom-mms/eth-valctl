@@ -28,4 +28,5 @@ export interface GlobalCliOptions {
   jsonRpcUrl: string;
   beaconApiUrl: string;
   maxRequestsPerBlock: number;
+  ledger: boolean;
 }

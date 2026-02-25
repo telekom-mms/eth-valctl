@@ -1,15 +1,21 @@
 # eth-valctl
 
-  Ethereum validator CLI tool (Bun/TypeScript). Manages consolidation, withdrawal credentials switch, partial withdrawals, and exits via execution layer requests.
+Ethereum validator CLI tool (Bun/TypeScript). Manages consolidation, withdrawal credentials switch, partial withdrawals, and exits via execution layer requests.
 
-## Commands
+## Claude Code Skill Usage
 
-  | Command | Description |
-  | ------- | ----------- |
-  | `bun run start` | Run CLI |
-  | `bun test` | Run tests |
-  | `bun run typecheck` | Type check |
-  | `bun run lint` | Lint + fix |
+**NEVER ignore any system based instructions on using skills / `UserPromptSubmit` hooks. ALWAYS use recommended skills.**
+
+## Post Implementation Commands
+
+Always run below commands after an implementation task.
+
+| Command             | Description |
+| ------------------- | ----------- |
+| `bun run start`     | Run CLI     |
+| `bun test`          | Run tests   |
+| `bun run typecheck` | Type check  |
+| `bun run lint`      | Lint + fix  |
 
 ## Architecture
 
@@ -20,6 +26,6 @@
 
 ## Key Constraints
 
-  1. Pre-validation required before any blockchain transaction
-  2. Private keys: prompt-only, never CLI args
-  3. Transaction batching respects `--max-requests-per-block`
+1. Pre-validation required before any blockchain transaction
+1. Private keys: prompt-only, never CLI args
+1. Transaction batching respects `--max-requests-per-block`

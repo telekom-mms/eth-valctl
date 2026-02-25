@@ -11,7 +11,7 @@ import { consolidate } from '../service/domain/consolidate';
 import {
   parseAndValidateValidatorPubKey,
   parseAndValidateValidatorPubKeys
-} from '../service/validation/cli';
+} from './validation/cli';
 
 const consolidateCommand = new Command();
 

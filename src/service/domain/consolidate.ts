@@ -3,10 +3,8 @@ import chalk from 'chalk';
 import { PREFIX_0x } from '../../constants/application';
 import * as logging from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
-import { networkConfig } from '../../network-config';
-import { checkWithdrawalCredentialType } from '../validation/pre-request';
-import { createEthereumConnection } from './ethereum';
-import { sendExecutionLayerRequests } from './request/send-request';
+import { executeRequestPipeline } from './execution-layer-request-pipeline';
+import { checkWithdrawalCredentialType } from './pre-request-validation';
 
 /**
  * Consolidate one or many validators to one target validator / Switch withdrawal credential type from 0x01 to 0x02 for one or many validators
@@ -20,23 +18,18 @@ export async function consolidate(
   sourceValidatorPubkeys: string[],
   targetValidatorPubkey?: string
 ): Promise<void> {
-  if (targetValidatorPubkey) {
-    await checkWithdrawalCredentialType(globalOptions.beaconApiUrl, [targetValidatorPubkey]);
-    logConsolidationWarning();
-  }
-  const ethereumConnection = await createEthereumConnection(globalOptions.jsonRpcUrl);
-  const consolidationRequestData: string[] = [];
-  for (const sourceValidator of sourceValidatorPubkeys) {
-    const request = createConsolidationRequestData(sourceValidator, targetValidatorPubkey);
-    consolidationRequestData.push(request);
-  }
-  await sendExecutionLayerRequests(
-    networkConfig[globalOptions.network]!.consolidationContractAddress,
-    ethereumConnection.provider,
-    ethereumConnection.wallet,
-    consolidationRequestData,
-    globalOptions.maxRequestsPerBlock
-  );
+  await executeRequestPipeline({
+    globalOptions,
+    validatorPubkeys: sourceValidatorPubkeys,
+    encodeRequestData: (pubkey) => createConsolidationRequestData(pubkey, targetValidatorPubkey),
+    resolveContractAddress: (config) => config.consolidationContractAddress,
+    validate: targetValidatorPubkey
+      ? async () => {
+          await checkWithdrawalCredentialType(globalOptions.beaconApiUrl, [targetValidatorPubkey]);
+          logConsolidationWarning();
+        }
+      : undefined
+  });
 }
 
 /**
@@ -50,13 +43,8 @@ function createConsolidationRequestData(
   sourceValidatorPubkey: string,
   targetValidatorPubkey?: string
 ): string {
-  let consolidationRequestData = PREFIX_0x.concat(sourceValidatorPubkey.substring(2));
-  if (targetValidatorPubkey) {
-    consolidationRequestData = consolidationRequestData.concat(targetValidatorPubkey.substring(2));
-  } else {
-    consolidationRequestData = consolidationRequestData.concat(sourceValidatorPubkey.substring(2));
-  }
-  return consolidationRequestData;
+  const target = targetValidatorPubkey ?? sourceValidatorPubkey;
+  return PREFIX_0x.concat(sourceValidatorPubkey.substring(2)).concat(target.substring(2));
 }
 
 /**

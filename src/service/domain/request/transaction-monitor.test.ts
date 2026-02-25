@@ -15,29 +15,30 @@ const createMockProvider = (overrides?: {
   } as unknown as JsonRpcProvider;
 };
 
-const createMockReceipt = (status: number, hash = '0xabc123'): TransactionReceipt => {
-  return { status, hash } as unknown as TransactionReceipt;
+const createMockReceipt = (
+  status: number,
+  hash = '0xabc123',
+  blockNumber = 100
+): TransactionReceipt => {
+  return { status, hash, blockNumber } as unknown as TransactionReceipt;
 };
 
 const createMockTransactionResponse = (
   hash: string,
-  nonce: number,
-  waitResult?: TransactionReceipt | null
+  nonce: number
 ): TransactionResponse => {
   return {
     hash,
-    nonce,
-    wait: mock(() => Promise.resolve(waitResult))
+    nonce
   } as unknown as TransactionResponse;
 };
 
 const createMockPendingTransaction = (
   nonce: number,
-  hash: string,
-  waitResult?: TransactionReceipt | null
+  hash: string
 ): PendingTransactionInfo => {
   return {
-    response: createMockTransactionResponse(hash, nonce, waitResult),
+    response: createMockTransactionResponse(hash, nonce),
     nonce,
     data: '0xdata',
     systemContractAddress: '0xcontract',
@@ -119,17 +120,49 @@ describe('TransactionMonitor', () => {
 
       expect(result.type).toBe(TransactionStatusType.PENDING);
     });
+
+    it('returns PENDING when getTransactionReceipt throws', async () => {
+      const mockProvider = createMockProvider({
+        getTransactionReceipt: mock(() => Promise.reject(new Error('RPC error')))
+      });
+      const monitor = new TransactionMonitor(mockProvider);
+
+      const result = await monitor.getTransactionStatus('0xtxhash');
+
+      expect(result.type).toBe(TransactionStatusType.PENDING);
+    });
+
+    it('returns PENDING when getTransactionCount throws', async () => {
+      const mockProvider = createMockProvider({
+        getTransactionReceipt: mock(() => Promise.resolve(null)),
+        getTransactionCount: mock(() => Promise.reject(new Error('RPC error')))
+      });
+      const monitor = new TransactionMonitor(mockProvider);
+
+      const result = await monitor.getTransactionStatus('0xtxhash', '0xwallet', 3);
+
+      expect(result.type).toBe(TransactionStatusType.PENDING);
+    });
   });
 
   describe('waitForTransactionReceipts', () => {
+    const FAST_TIMEOUT = 100;
+    const FAST_POLL_INTERVAL = 10;
+
     it('processes multiple transactions in parallel', async () => {
       const receipt1 = createMockReceipt(1, '0xhash1');
       const receipt2 = createMockReceipt(1, '0xhash2');
-      const mockProvider = createMockProvider();
-      const monitor = new TransactionMonitor(mockProvider);
+      const mockProvider = createMockProvider({
+        getTransactionReceipt: mock((hash: string) => {
+          if (hash === '0xhash1') return Promise.resolve(receipt1);
+          if (hash === '0xhash2') return Promise.resolve(receipt2);
+          return Promise.resolve(null);
+        })
+      });
+      const monitor = new TransactionMonitor(mockProvider, FAST_TIMEOUT, FAST_POLL_INTERVAL);
 
-      const tx1 = createMockPendingTransaction(1, '0xhash1', receipt1);
-      const tx2 = createMockPendingTransaction(2, '0xhash2', receipt2);
+      const tx1 = createMockPendingTransaction(1, '0xhash1');
+      const tx2 = createMockPendingTransaction(2, '0xhash2');
 
       const results = await monitor.waitForTransactionReceipts([tx1, tx2]);
 
@@ -140,10 +173,12 @@ describe('TransactionMonitor', () => {
 
     it('returns MINED status for successful transactions', async () => {
       const receipt = createMockReceipt(1, '0xhash');
-      const mockProvider = createMockProvider();
-      const monitor = new TransactionMonitor(mockProvider);
+      const mockProvider = createMockProvider({
+        getTransactionReceipt: mock(() => Promise.resolve(receipt))
+      });
+      const monitor = new TransactionMonitor(mockProvider, FAST_TIMEOUT, FAST_POLL_INTERVAL);
 
-      const tx = createMockPendingTransaction(1, '0xhash', receipt);
+      const tx = createMockPendingTransaction(1, '0xhash');
 
       const results = await monitor.waitForTransactionReceipts([tx]);
 
@@ -153,32 +188,26 @@ describe('TransactionMonitor', () => {
       }
     });
 
-    it('returns PENDING status on timeout (when wait returns null)', async () => {
-      const mockProvider = createMockProvider();
-      const monitor = new TransactionMonitor(mockProvider);
+    it('returns PENDING status when receipt is null after timeout', async () => {
+      const mockProvider = createMockProvider({
+        getTransactionReceipt: mock(() => Promise.resolve(null))
+      });
+      const monitor = new TransactionMonitor(mockProvider, FAST_TIMEOUT, FAST_POLL_INTERVAL);
 
-      const tx = createMockPendingTransaction(1, '0xhash', null);
+      const tx = createMockPendingTransaction(1, '0xhash');
 
       const results = await monitor.waitForTransactionReceipts([tx]);
 
       expect(results[0]!.status.type).toBe(TransactionStatusType.PENDING);
     });
 
-    it('returns PENDING status when wait throws an error', async () => {
-      const mockProvider = createMockProvider();
-      const monitor = new TransactionMonitor(mockProvider);
+    it('returns PENDING status when getTransactionReceipt throws until timeout', async () => {
+      const mockProvider = createMockProvider({
+        getTransactionReceipt: mock(() => Promise.reject(new Error('RPC error')))
+      });
+      const monitor = new TransactionMonitor(mockProvider, FAST_TIMEOUT, FAST_POLL_INTERVAL);
 
-      const tx: PendingTransactionInfo = {
-        response: {
-          hash: '0xhash',
-          nonce: 1,
-          wait: mock(() => Promise.reject(new Error('Timeout')))
-        } as unknown as TransactionResponse,
-        nonce: 1,
-        data: '0xdata',
-        systemContractAddress: '0xcontract',
-        blockNumber: 100
-      };
+      const tx = createMockPendingTransaction(1, '0xhash');
 
       const results = await monitor.waitForTransactionReceipts([tx]);
 
@@ -187,10 +216,12 @@ describe('TransactionMonitor', () => {
 
     it('returns REVERTED status for reverted transactions', async () => {
       const receipt = createMockReceipt(0, '0xhash');
-      const mockProvider = createMockProvider();
-      const monitor = new TransactionMonitor(mockProvider);
+      const mockProvider = createMockProvider({
+        getTransactionReceipt: mock(() => Promise.resolve(receipt))
+      });
+      const monitor = new TransactionMonitor(mockProvider, FAST_TIMEOUT, FAST_POLL_INTERVAL);
 
-      const tx = createMockPendingTransaction(1, '0xhash', receipt);
+      const tx = createMockPendingTransaction(1, '0xhash');
 
       const results = await monitor.waitForTransactionReceipts([tx]);
 
@@ -199,6 +230,26 @@ describe('TransactionMonitor', () => {
         expect(results[0]!.status.receipt).toBe(receipt);
       }
     });
+
+    it('discovers receipt after multiple poll attempts', async () => {
+      let callCount = 0;
+      const receipt = createMockReceipt(1, '0xhash');
+      const mockProvider = createMockProvider({
+        getTransactionReceipt: mock(() => {
+          callCount++;
+          if (callCount >= 3) return Promise.resolve(receipt);
+          return Promise.resolve(null);
+        })
+      });
+      const monitor = new TransactionMonitor(mockProvider, FAST_TIMEOUT, FAST_POLL_INTERVAL);
+
+      const tx = createMockPendingTransaction(1, '0xhash');
+
+      const results = await monitor.waitForTransactionReceipts([tx]);
+
+      expect(results[0]!.status.type).toBe(TransactionStatusType.MINED);
+      expect(callCount).toBeGreaterThanOrEqual(3);
+    });
   });
 
   describe('extractPendingTransactions', () => {
@@ -206,7 +257,7 @@ describe('TransactionMonitor', () => {
       const mockProvider = createMockProvider();
       const monitor = new TransactionMonitor(mockProvider);
 
-      const minedTx = createMockPendingTransaction(1, '0xmined', createMockReceipt(1));
+      const minedTx = createMockPendingTransaction(1, '0xmined');
       const pendingTx = createMockPendingTransaction(2, '0xpending');
 
       const results: ReceiptCheckResult[] = [

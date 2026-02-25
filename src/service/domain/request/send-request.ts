@@ -1,11 +1,7 @@
-import { JsonRpcProvider, NonceManager } from 'ethers';
+import type { JsonRpcProvider } from 'ethers';
 
-import { EthereumStateService } from './ethereum-state-service';
-import { TransactionBatchOrchestrator } from './transaction-batch-orchestrator';
-import { TransactionBroadcaster } from './transaction-broadcaster';
-import { TransactionMonitor } from './transaction-monitor';
-import { TransactionProgressLogger } from './transaction-progress-logger';
-import { TransactionReplacer } from './transaction-replacer';
+import type { ISigner } from '../../../ports/signer.interface';
+import { createTransactionBatchOrchestrator } from './execution-layer-request-factory';
 
 /**
  * Send execution layer requests via JSON-RPC connection
@@ -15,40 +11,29 @@ import { TransactionReplacer } from './transaction-replacer';
  *
  * @param systemContractAddress - System contract address for execution layer requests
  * @param jsonRpcProvider - JSON-RPC provider for blockchain interaction
- * @param wallet - Nonce-managed wallet for transaction signing
+ * @param signer - Signer for transaction signing (wallet or Ledger)
  * @param requestData - Array of encoded request data to send
  * @param executionLayerRequestBatchSize - Maximum number of requests per batch
+ * @param beaconApiUrl - Beacon API URL for slot-aware broadcasting (required for Ledger)
  */
 export async function sendExecutionLayerRequests(
   systemContractAddress: string,
   jsonRpcProvider: JsonRpcProvider,
-  wallet: NonceManager,
+  signer: ISigner,
   requestData: string[],
-  executionLayerRequestBatchSize: number
+  executionLayerRequestBatchSize: number,
+  beaconApiUrl: string
 ): Promise<void> {
-  const ethereumStateService = new EthereumStateService(jsonRpcProvider, systemContractAddress);
-  const logger = new TransactionProgressLogger();
-  const transactionBroadcaster = new TransactionBroadcaster(
-    wallet,
+  const orchestrator = await createTransactionBatchOrchestrator(
     systemContractAddress,
-    ethereumStateService,
-    logger
-  );
-  const transactionMonitor = new TransactionMonitor(jsonRpcProvider);
-  const transactionReplacer = new TransactionReplacer(
-    wallet,
-    ethereumStateService,
-    transactionBroadcaster,
-    transactionMonitor,
-    logger
-  );
-  const orchestrator = new TransactionBatchOrchestrator(
-    ethereumStateService,
-    transactionBroadcaster,
-    transactionMonitor,
-    transactionReplacer,
-    logger
+    jsonRpcProvider,
+    signer,
+    beaconApiUrl
   );
 
-  await orchestrator.sendExecutionLayerRequests(requestData, executionLayerRequestBatchSize);
+  try {
+    await orchestrator.sendExecutionLayerRequests(requestData, executionLayerRequestBatchSize);
+  } finally {
+    await signer.dispose();
+  }
 }

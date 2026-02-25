@@ -1,18 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
-import type { NonceManager, TransactionResponse } from 'ethers';
+import type { TransactionResponse } from 'ethers';
 
-import { TRANSACTION_GAS_LIMIT } from '../../../constants/application';
 import type { MaxNetworkFees } from '../../../model/ethereum';
+import { BroadcastStatusType } from '../../../model/ethereum';
+import type { ISigner } from '../signer';
+import type { IBroadcastStrategy } from './broadcast-strategy';
+import { ParallelBroadcastStrategy } from './broadcast-strategy';
 import type { EthereumStateService } from './ethereum-state-service';
 import { TransactionBroadcaster } from './transaction-broadcaster';
 import type { TransactionProgressLogger } from './transaction-progress-logger';
 
 const SYSTEM_CONTRACT_ADDRESS = '0xSystemContract';
 
-const createMockWallet = (overrides?: {
-  sendTransaction?: ReturnType<typeof mock>;
-}): NonceManager => {
+const createMockSigner = (overrides?: { sendTransaction?: ReturnType<typeof mock> }): ISigner => {
   return {
+    capabilities: {
+      supportsParallelSigning: true
+    },
+    address: '0xMockAddress',
     sendTransaction:
       overrides?.sendTransaction ??
       mock(() =>
@@ -20,8 +25,15 @@ const createMockWallet = (overrides?: {
           hash: '0xtxhash',
           nonce: 1
         } as TransactionResponse)
-      )
-  } as unknown as NonceManager;
+      ),
+    sendTransactionWithNonce: mock(() =>
+      Promise.resolve({
+        hash: '0xtxhash',
+        nonce: 1
+      } as TransactionResponse)
+    ),
+    dispose: mock(() => Promise.resolve())
+  } as unknown as ISigner;
 };
 
 const createMockBlockchainStateService = (
@@ -35,8 +47,14 @@ const createMockBlockchainStateService = (
 const createMockLogger = (): TransactionProgressLogger => {
   return {
     logBroadcastStart: mock(),
-    logBroadcastFeesFetchError: mock()
+    logBroadcastFeesFetchError: mock(),
+    logBroadcastingTransaction: mock(),
+    logBroadcastFailure: mock()
   } as unknown as TransactionProgressLogger;
+};
+
+const createMockBroadcastStrategy = (logger: TransactionProgressLogger): IBroadcastStrategy => {
+  return new ParallelBroadcastStrategy(logger);
 };
 
 describe('TransactionBroadcaster', () => {
@@ -53,76 +71,18 @@ describe('TransactionBroadcaster', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  describe('createElTransaction', () => {
-    it('creates transaction with required fields', () => {
-      const broadcaster = new TransactionBroadcaster(
-        createMockWallet(),
-        SYSTEM_CONTRACT_ADDRESS,
-        createMockBlockchainStateService(),
-        createMockLogger()
-      );
-
-      const transaction = broadcaster.createElTransaction('0xdata', 1000n);
-
-      expect(transaction.to).toBe(SYSTEM_CONTRACT_ADDRESS);
-      expect(transaction.data).toBe('0xdata');
-      expect(transaction.value).toBe(1000n);
-      expect(transaction.gasLimit).toBe(TRANSACTION_GAS_LIMIT);
-    });
-
-    it('creates transaction without fee fields when not provided', () => {
-      const broadcaster = new TransactionBroadcaster(
-        createMockWallet(),
-        SYSTEM_CONTRACT_ADDRESS,
-        createMockBlockchainStateService(),
-        createMockLogger()
-      );
-
-      const transaction = broadcaster.createElTransaction('0xdata', 1000n);
-
-      expect(transaction.maxFeePerGas).toBeUndefined();
-      expect(transaction.maxPriorityFeePerGas).toBeUndefined();
-    });
-
-    it('includes maxFeePerGas when provided', () => {
-      const broadcaster = new TransactionBroadcaster(
-        createMockWallet(),
-        SYSTEM_CONTRACT_ADDRESS,
-        createMockBlockchainStateService(),
-        createMockLogger()
-      );
-
-      const transaction = broadcaster.createElTransaction('0xdata', 1000n, 2000n);
-
-      expect(transaction.maxFeePerGas).toBe(2000n);
-      expect(transaction.maxPriorityFeePerGas).toBeUndefined();
-    });
-
-    it('includes both fee fields when provided', () => {
-      const broadcaster = new TransactionBroadcaster(
-        createMockWallet(),
-        SYSTEM_CONTRACT_ADDRESS,
-        createMockBlockchainStateService(),
-        createMockLogger()
-      );
-
-      const transaction = broadcaster.createElTransaction('0xdata', 1000n, 2000n, 200n);
-
-      expect(transaction.maxFeePerGas).toBe(2000n);
-      expect(transaction.maxPriorityFeePerGas).toBe(200n);
-    });
-  });
-
   describe('broadcastExecutionLayerRequests', () => {
-    it('broadcasts all requests in parallel', async () => {
+    it('broadcasts all requests using strategy', async () => {
+      const mockLogger = createMockLogger();
       const mockSendTransaction = mock(() =>
         Promise.resolve({ hash: '0xhash', nonce: 1 } as TransactionResponse)
       );
       const broadcaster = new TransactionBroadcaster(
-        createMockWallet({ sendTransaction: mockSendTransaction }),
+        createMockSigner({ sendTransaction: mockSendTransaction }),
         SYSTEM_CONTRACT_ADDRESS,
         createMockBlockchainStateService(),
-        createMockLogger()
+        mockLogger,
+        createMockBroadcastStrategy(mockLogger)
       );
 
       const results = await broadcaster.broadcastExecutionLayerRequests(
@@ -136,21 +96,23 @@ describe('TransactionBroadcaster', () => {
     });
 
     it('returns success results for successful broadcasts', async () => {
+      const mockLogger = createMockLogger();
       const broadcaster = new TransactionBroadcaster(
-        createMockWallet({
+        createMockSigner({
           sendTransaction: mock(() =>
             Promise.resolve({ hash: '0xsuccesshash', nonce: 5 } as TransactionResponse)
           )
         }),
         SYSTEM_CONTRACT_ADDRESS,
         createMockBlockchainStateService(),
-        createMockLogger()
+        mockLogger,
+        createMockBroadcastStrategy(mockLogger)
       );
 
       const results = await broadcaster.broadcastExecutionLayerRequests(['0xdata'], 1000n, 100);
 
-      expect(results[0]!.status).toBe('success');
-      if (results[0]!.status === 'success') {
+      expect(results[0]!.status).toBe(BroadcastStatusType.SUCCESS);
+      if (results[0]!.status === BroadcastStatusType.SUCCESS) {
         expect(results[0]!.transaction.response.hash).toBe('0xsuccesshash');
         expect(results[0]!.transaction.nonce).toBe(5);
         expect(results[0]!.transaction.data).toBe('0xdata');
@@ -160,13 +122,15 @@ describe('TransactionBroadcaster', () => {
     });
 
     it('returns failed results for failed broadcasts', async () => {
+      const mockLogger = createMockLogger();
       const broadcaster = new TransactionBroadcaster(
-        createMockWallet({
+        createMockSigner({
           sendTransaction: mock(() => Promise.reject(new Error('Broadcast failed')))
         }),
         SYSTEM_CONTRACT_ADDRESS,
         createMockBlockchainStateService(),
-        createMockLogger()
+        mockLogger,
+        createMockBroadcastStrategy(mockLogger)
       );
 
       const results = await broadcaster.broadcastExecutionLayerRequests(
@@ -175,17 +139,18 @@ describe('TransactionBroadcaster', () => {
         100
       );
 
-      expect(results[0]!.status).toBe('failed');
-      if (results[0]!.status === 'failed') {
+      expect(results[0]!.status).toBe(BroadcastStatusType.FAILED);
+      if (results[0]!.status === BroadcastStatusType.FAILED) {
         expect(results[0]!.validatorPubkey).toBe('0x' + 'ab'.repeat(48));
         expect(results[0]!.error).toBeInstanceOf(Error);
       }
     });
 
     it('handles mixed success and failure results', async () => {
+      const mockLogger = createMockLogger();
       let callCount = 0;
       const broadcaster = new TransactionBroadcaster(
-        createMockWallet({
+        createMockSigner({
           sendTransaction: mock(() => {
             callCount++;
             if (callCount === 2) {
@@ -196,7 +161,8 @@ describe('TransactionBroadcaster', () => {
         }),
         SYSTEM_CONTRACT_ADDRESS,
         createMockBlockchainStateService(),
-        createMockLogger()
+        mockLogger,
+        createMockBroadcastStrategy(mockLogger)
       );
 
       const results = await broadcaster.broadcastExecutionLayerRequests(
@@ -205,8 +171,8 @@ describe('TransactionBroadcaster', () => {
         100
       );
 
-      const successCount = results.filter((r) => r.status === 'success').length;
-      const failedCount = results.filter((r) => r.status === 'failed').length;
+      const successCount = results.filter((r) => r.status === BroadcastStatusType.SUCCESS).length;
+      const failedCount = results.filter((r) => r.status === BroadcastStatusType.FAILED).length;
 
       expect(successCount).toBe(2);
       expect(failedCount).toBe(1);
@@ -215,10 +181,14 @@ describe('TransactionBroadcaster', () => {
     it('logs broadcast start with network fees', async () => {
       const mockLogger = createMockLogger();
       const broadcaster = new TransactionBroadcaster(
-        createMockWallet(),
+        createMockSigner(),
         SYSTEM_CONTRACT_ADDRESS,
-        createMockBlockchainStateService({ maxFeePerGas: 25000000000n, maxPriorityFeePerGas: 100n }),
-        mockLogger
+        createMockBlockchainStateService({
+          maxFeePerGas: 25000000000n,
+          maxPriorityFeePerGas: 100n
+        }),
+        mockLogger,
+        createMockBroadcastStrategy(mockLogger)
       );
 
       await broadcaster.broadcastExecutionLayerRequests(['0xdata'], 1000n, 100);
@@ -233,10 +203,11 @@ describe('TransactionBroadcaster', () => {
       } as unknown as EthereumStateService;
 
       const broadcaster = new TransactionBroadcaster(
-        createMockWallet(),
+        createMockSigner(),
         SYSTEM_CONTRACT_ADDRESS,
         mockBlockchainStateService,
-        mockLogger
+        mockLogger,
+        createMockBroadcastStrategy(mockLogger)
       );
 
       await broadcaster.broadcastExecutionLayerRequests(['0xdata'], 1000n, 100);
@@ -246,26 +217,24 @@ describe('TransactionBroadcaster', () => {
     });
 
     it('extracts source validator pubkey correctly from request data', async () => {
+      const mockLogger = createMockLogger();
       const pubkey = 'ab'.repeat(48);
       const requestData = '0x' + pubkey + 'cd'.repeat(48);
 
       const broadcaster = new TransactionBroadcaster(
-        createMockWallet({
+        createMockSigner({
           sendTransaction: mock(() => Promise.reject(new Error('Failed')))
         }),
         SYSTEM_CONTRACT_ADDRESS,
         createMockBlockchainStateService(),
-        createMockLogger()
+        mockLogger,
+        createMockBroadcastStrategy(mockLogger)
       );
 
-      const results = await broadcaster.broadcastExecutionLayerRequests(
-        [requestData],
-        1000n,
-        100
-      );
+      const results = await broadcaster.broadcastExecutionLayerRequests([requestData], 1000n, 100);
 
-      expect(results[0]!.status).toBe('failed');
-      if (results[0]!.status === 'failed') {
+      expect(results[0]!.status).toBe(BroadcastStatusType.FAILED);
+      if (results[0]!.status === BroadcastStatusType.FAILED) {
         expect(results[0]!.validatorPubkey).toBe('0x' + pubkey);
       }
     });

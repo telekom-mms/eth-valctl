@@ -14,15 +14,19 @@ import { Command, Option } from 'commander';
 import packageJson from '../../package.json';
 import { DISCLAIMER_INFO } from '../constants/logging';
 import type { GlobalCliOptions } from '../model/commander';
+import { consolidateCommand } from './consolidate';
+import { exitCommand } from './exit';
+import { switchWithdrawalCredentialTypeCommand } from './switch';
 import {
   parseAndValidateMaxNumberOfRequestsPerBlock,
   parseAndValidateNodeUrl,
   validateNetwork
-} from '../service/validation/cli';
-import { consolidateCommand } from './consolidate';
-import { exitCommand } from './exit';
-import { switchWithdrawalCredentialTypeCommand } from './switch';
+} from './validation/cli';
 import { withdrawCommand } from './withdraw';
+
+process.on('unhandledRejection', (reason) => {
+  console.error(chalk.red('Unhandled promise rejection:'), reason);
+});
 
 const program = new Command();
 
@@ -30,6 +34,7 @@ const networkOptionName = 'network';
 const jsonRpcOptionName = 'json-rpc-url';
 const beaconApiOptionName = 'beacon-api-url';
 const maxRequestsPerBlockOptionName = 'max-requests-per-block';
+const ledgerOptionName = 'ledger';
 
 program
   .name('eth-valctl')
@@ -62,6 +67,11 @@ program
     parseAndValidateMaxNumberOfRequestsPerBlock,
     10
   )
+  .option(
+    `-l, --${ledgerOptionName}`,
+    'Use Ledger hardware wallet for transaction signing (requires device connection)',
+    false
+  )
   .hook('preAction', (thisCommand) => {
     console.log(chalk.yellow(DISCLAIMER_INFO));
     const globalOptions: GlobalCliOptions = thisCommand.opts();
@@ -72,4 +82,7 @@ program
   .addCommand(withdrawCommand)
   .addCommand(exitCommand);
 
-program.parseAsync(process.argv).then(() => {});
+program.parseAsync(process.argv).catch((error: unknown) => {
+  console.error(chalk.red('Fatal error:'), error);
+  process.exit(1);
+});

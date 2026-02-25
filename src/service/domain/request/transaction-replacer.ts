@@ -1,19 +1,24 @@
-import chalk from 'chalk';
 import type { TransactionResponse } from 'ethers';
-import { NonceManager, Wallet } from 'ethers';
 
 import * as serviceConstants from '../../../constants/application';
-import * as logging from '../../../constants/logging';
 import type {
   CategorizedTransactions,
   MaxNetworkFees,
   PendingTransactionInfo,
   ReplacementSummary,
-  TransactionReplacementResult
+  SigningContext,
+  TransactionReplacementResult,
+  TransactionStatus
 } from '../../../model/ethereum';
 import { TransactionReplacementStatusType, TransactionStatusType } from '../../../model/ethereum';
+import { type ISigner, isUserRejectedError } from '../signer';
+import { createElTransaction, extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
+import {
+  isInsufficientFundsError,
+  isNonceExpiredError,
+  isReplacementUnderpricedError
+} from './error-utils';
 import { EthereumStateService } from './ethereum-state-service';
-import { TransactionBroadcaster } from './transaction-broadcaster';
 import { TransactionMonitor } from './transaction-monitor';
 import { TransactionProgressLogger } from './transaction-progress-logger';
 
@@ -24,16 +29,16 @@ export class TransactionReplacer {
   /**
    * Creates a transaction replacer
    *
-   * @param wallet - Nonce-managed wallet for transaction signing
+   * @param signer - Signer for transaction signing (wallet or Ledger)
    * @param blockchainStateService - Service for fetching blockchain state
-   * @param transactionBroadcaster - Service for creating transactions
+   * @param systemContractAddress - Target system contract address for requests
    * @param transactionMonitor - Service for checking transaction status
    * @param logger - Service for logging progress
    */
   constructor(
-    private readonly wallet: NonceManager,
+    private readonly signer: ISigner,
     private readonly blockchainStateService: EthereumStateService,
-    private readonly transactionBroadcaster: TransactionBroadcaster,
+    private readonly systemContractAddress: string,
     private readonly transactionMonitor: TransactionMonitor,
     private readonly logger: TransactionProgressLogger
   ) {}
@@ -44,7 +49,7 @@ export class TransactionReplacer {
    * Uses staged processing to avoid nonce conflicts:
    * 1. Check all transaction statuses (parallel)
    * 2. Process reverted transactions first (sequential, uses fresh nonces)
-   * 3. Process pending transactions (parallel, uses explicit old nonces)
+   * 3. Process pending transactions (parallel for wallet, sequential for Ledger)
    * 4. Aggregate and return results
    *
    * @param pendingTransactions - Transactions that need to be replaced
@@ -56,23 +61,22 @@ export class TransactionReplacer {
     pendingTransactions: PendingTransactionInfo[],
     newContractFee: bigint,
     currentBlockNumber: number
-  ): Promise<PendingTransactionInfo[]> {
+  ): Promise<{
+    pendingTransactions: PendingTransactionInfo[];
+    rejectedValidatorPubkeys: string[];
+  }> {
     const maxNetworkFees = await this.blockchainStateService.getMaxNetworkFees();
 
     const categorized = await this.categorizeTransactionsByStatus(pendingTransactions);
 
-    if (categorized.mined.length > 0) {
-      this.logger.logProgress(
-        categorized.mined.length,
-        categorized.reverted.length + categorized.pending.length
-      );
+    const remainingCount = categorized.reverted.length + categorized.pending.length;
+    if (categorized.mined.length > 0 && remainingCount > 0) {
+      this.logger.logProgress(categorized.mined.length, remainingCount);
     }
 
     const needsReplacement = categorized.pending.length + categorized.reverted.length;
     if (needsReplacement > 0) {
-      console.log(
-        chalk.yellow(logging.BLOCK_CHANGE_INFO(currentBlockNumber, needsReplacement))
-      );
+      this.logger.logBlockChangeReplacement(currentBlockNumber + 1, needsReplacement);
     }
 
     const revertedResults = await this.processRevertedTransactions(
@@ -93,7 +97,10 @@ export class TransactionReplacer {
 
     this.logger.logReplacementSummary(summary);
 
-    return this.extractPendingTransactions(allResults);
+    return {
+      pendingTransactions: this.extractPendingTransactions(allResults),
+      rejectedValidatorPubkeys: this.extractRejectedValidatorPubkeys(allResults)
+    };
   }
 
   /**
@@ -109,15 +116,22 @@ export class TransactionReplacer {
   private async categorizeTransactionsByStatus(
     pendingTransactions: PendingTransactionInfo[]
   ): Promise<CategorizedTransactions> {
-    const walletAddress = (this.wallet.signer as Wallet).address;
+    const walletAddress = this.signer.address;
 
     const statusChecks = pendingTransactions.map(async (tx) => {
-      const status = await this.transactionMonitor.getTransactionStatus(
-        tx.response.hash,
-        walletAddress,
-        tx.nonce
-      );
-      return { transaction: tx, status };
+      try {
+        const status = await this.transactionMonitor.getTransactionStatus(
+          tx.response.hash,
+          walletAddress,
+          tx.nonce
+        );
+        return { transaction: tx, status };
+      } catch {
+        return {
+          transaction: tx,
+          status: { type: TransactionStatusType.PENDING } as TransactionStatus
+        };
+      }
     });
 
     const results = await Promise.all(statusChecks);
@@ -128,13 +142,10 @@ export class TransactionReplacer {
 
     for (const result of results) {
       if (result.status.type === TransactionStatusType.MINED) {
-        console.log(chalk.green(logging.MINED_EL_REQUEST_INFO, result.status.receipt.hash));
+        this.logger.logMinedTransaction(result.status.receipt.hash);
         mined.push({ status: TransactionReplacementStatusType.ALREADY_MINED });
       } else if (result.status.type === TransactionStatusType.MINED_BY_COMPETITOR) {
-        console.log(
-          chalk.green(logging.MINED_EL_REQUEST_INFO, result.transaction.response.hash),
-          '(nonce consumed by original or competing replacement)'
-        );
+        this.logger.logNonceConsumed(result.transaction.nonce);
         mined.push({ status: TransactionReplacementStatusType.ALREADY_MINED });
       } else if (result.status.type === TransactionStatusType.REVERTED) {
         reverted.push(result.transaction);
@@ -150,8 +161,9 @@ export class TransactionReplacer {
    * Process reverted transactions sequentially
    *
    * Reverted transactions consume their nonce, so we send new transactions
-   * with fresh nonces from NonceManager. Sequential processing ensures
-   * nonces are assigned correctly without conflicts.
+   * with fresh nonces. Sequential processing ensures nonces are assigned
+   * correctly without conflicts. This is always sequential regardless of
+   * signer type because of the nonce dependency.
    *
    * @param revertedTransactions - Transactions that reverted
    * @param newContractFee - Updated system contract fee for new block
@@ -164,20 +176,30 @@ export class TransactionReplacer {
     currentBlockNumber: number
   ): Promise<TransactionReplacementResult[]> {
     const results: TransactionReplacementResult[] = [];
+    const total = revertedTransactions.length;
 
-    for (const tx of revertedTransactions) {
+    for (let index = 0; index < total; index++) {
+      const tx = revertedTransactions[index]!;
+      const context = this.createSigningContext(tx, index, total);
+
       try {
         const transaction = await this.handleRevertedTransaction(
           tx,
           newContractFee,
-          currentBlockNumber
+          currentBlockNumber,
+          context
         );
         results.push({ status: TransactionReplacementStatusType.SUCCESS, transaction });
       } catch (error) {
-        console.error(
-          chalk.red(logging.FAILED_TO_REPLACE_TRANSACTION_ERROR(tx.response.hash)),
-          error
-        );
+        if (isUserRejectedError(error)) {
+          results.push({ status: TransactionReplacementStatusType.USER_REJECTED, transaction: tx });
+          continue;
+        }
+        if (isInsufficientFundsError(error)) {
+          this.logger.logInsufficientFundsError();
+        } else {
+          this.logger.logReplacementFailure(error, tx.response.hash);
+        }
         results.push({
           status: TransactionReplacementStatusType.FAILED,
           transaction: tx,
@@ -190,10 +212,10 @@ export class TransactionReplacer {
   }
 
   /**
-   * Process pending transactions in parallel
+   * Process pending transactions
    *
-   * Pending transactions are replaced with same nonce but higher gas price.
-   * Can be processed in parallel since each uses explicit old nonce.
+   * For wallets (parallel signing), processes in parallel.
+   * For Ledger (sequential signing), processes one at a time with user prompts.
    *
    * @param pendingTransactions - Transactions still pending
    * @param newContractFee - Updated system contract fee for new block
@@ -202,6 +224,32 @@ export class TransactionReplacer {
    * @returns Array of replacement results
    */
   private async processPendingTransactions(
+    pendingTransactions: PendingTransactionInfo[],
+    newContractFee: bigint,
+    maxNetworkFees: MaxNetworkFees,
+    currentBlockNumber: number
+  ): Promise<TransactionReplacementResult[]> {
+    if (this.signer.capabilities.supportsParallelSigning) {
+      return this.processPendingTransactionsParallel(
+        pendingTransactions,
+        newContractFee,
+        maxNetworkFees,
+        currentBlockNumber
+      );
+    }
+
+    return this.processPendingTransactionsSequential(
+      pendingTransactions,
+      newContractFee,
+      maxNetworkFees,
+      currentBlockNumber
+    );
+  }
+
+  /**
+   * Process pending transactions in parallel (for wallet signers)
+   */
+  private async processPendingTransactionsParallel(
     pendingTransactions: PendingTransactionInfo[],
     newContractFee: bigint,
     maxNetworkFees: MaxNetworkFees,
@@ -218,28 +266,84 @@ export class TransactionReplacer {
           );
           return { status: TransactionReplacementStatusType.SUCCESS, transaction };
         } catch (error) {
-          if (this.isReplacementUnderpricedError(error)) {
-            return { status: TransactionReplacementStatusType.UNDERPRICED, transaction: tx };
-          }
-
-          if (this.isNonceExpiredError(error)) {
-            console.log(
-              chalk.green(logging.MINED_EL_REQUEST_INFO, tx.response.hash),
-              '(nonce consumed by original or competing replacement)'
-            );
-            return { status: TransactionReplacementStatusType.ALREADY_MINED };
-          }
-
-          console.error(
-            chalk.red(logging.FAILED_TO_REPLACE_TRANSACTION_ERROR(tx.response.hash)),
-            error
-          );
-          return { status: TransactionReplacementStatusType.FAILED, transaction: tx, error };
+          return this.handleReplacementError(error, tx);
         }
       }
     );
 
     return await Promise.all(replacementPromises);
+  }
+
+  /**
+   * Process pending transactions sequentially (for Ledger signers)
+   */
+  private async processPendingTransactionsSequential(
+    pendingTransactions: PendingTransactionInfo[],
+    newContractFee: bigint,
+    maxNetworkFees: MaxNetworkFees,
+    currentBlockNumber: number
+  ): Promise<TransactionReplacementResult[]> {
+    const results: TransactionReplacementResult[] = [];
+    const total = pendingTransactions.length;
+
+    for (let index = 0; index < total; index++) {
+      const tx = pendingTransactions[index]!;
+
+      const skipResult = await this.checkIfAlreadyMined(tx);
+      if (skipResult !== null) {
+        results.push(skipResult);
+        continue;
+      }
+
+      const context = this.createSigningContext(tx, index, total);
+
+      try {
+        const transaction = await this.handlePendingTransaction(
+          tx,
+          newContractFee,
+          maxNetworkFees,
+          currentBlockNumber,
+          context
+        );
+        results.push({ status: TransactionReplacementStatusType.SUCCESS, transaction });
+      } catch (error) {
+        results.push(this.handleReplacementError(error, tx));
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Re-check transaction status before sequential replacement
+   *
+   * During sequential Ledger signing, earlier nonces may get consumed while
+   * waiting for user confirmation. This avoids wasted Ledger interactions.
+   *
+   * @param tx - Transaction to check
+   * @returns Replacement result if already mined, null to proceed with replacement
+   */
+  private async checkIfAlreadyMined(
+    tx: PendingTransactionInfo
+  ): Promise<TransactionReplacementResult | null> {
+    try {
+      const status = await this.transactionMonitor.getTransactionStatus(
+        tx.response.hash,
+        this.signer.address,
+        tx.nonce
+      );
+      if (status.type === TransactionStatusType.MINED) {
+        this.logger.logMinedTransaction(status.receipt.hash);
+        return { status: TransactionReplacementStatusType.ALREADY_MINED };
+      }
+      if (status.type === TransactionStatusType.MINED_BY_COMPETITOR) {
+        this.logger.logNonceConsumed(tx.nonce);
+        return { status: TransactionReplacementStatusType.ALREADY_MINED };
+      }
+    } catch {
+      // Status check failed — proceed with replacement attempt
+    }
+    return null;
   }
 
   /**
@@ -252,26 +356,25 @@ export class TransactionReplacer {
    * @param pendingTransaction - The reverted transaction
    * @param newContractFee - Updated system contract fee for new block
    * @param currentBlockNumber - Current block number
+   * @param context - Optional signing context for Ledger prompts
    * @returns New pending transaction info with fresh nonce
    */
   private async handleRevertedTransaction(
     pendingTransaction: PendingTransactionInfo,
     newContractFee: bigint,
-    currentBlockNumber: number
+    currentBlockNumber: number,
+    context?: SigningContext
   ): Promise<PendingTransactionInfo> {
-    console.log(
-      chalk.red(logging.EL_REQUEST_REVERTED_SENDING_NEW_INFO(pendingTransaction.response.hash))
-    );
+    this.logger.logRevertedTransactionRetry(pendingTransaction.response.hash);
 
-    const replacementTransaction = this.transactionBroadcaster.createElTransaction(
+    const replacementTransaction = createElTransaction(
+      this.systemContractAddress,
       pendingTransaction.data,
       newContractFee
     );
 
-    const replacementResponse = await this.wallet.sendTransaction(replacementTransaction);
-    console.log(
-      chalk.yellow(logging.BROADCASTING_EL_REQUEST_INFO, replacementResponse.hash, '...')
-    );
+    const replacementResponse = await this.signer.sendTransaction(replacementTransaction, context);
+    this.logger.logBroadcastingTransaction(replacementResponse.hash);
 
     return this.buildPendingTransactionInfo(
       replacementResponse,
@@ -290,42 +393,82 @@ export class TransactionReplacer {
    * @param newContractFee - Updated system contract fee for new block
    * @param maxNetworkFees - Current max network fees per gas
    * @param currentBlockNumber - Current block number
+   * @param context - Optional signing context for Ledger prompts
    * @returns New pending transaction info with same nonce
    */
   private async handlePendingTransaction(
     pendingTransaction: PendingTransactionInfo,
     newContractFee: bigint,
     maxNetworkFees: MaxNetworkFees,
-    currentBlockNumber: number
+    currentBlockNumber: number,
+    context?: SigningContext
   ): Promise<PendingTransactionInfo> {
     const increasedMaxNetworkFees = this.increaseMaxNetworkFees(pendingTransaction, maxNetworkFees);
-    const replacementTransaction = this.transactionBroadcaster.createElTransaction(
+    const replacementTransaction = createElTransaction(
+      this.systemContractAddress,
       pendingTransaction.data,
       newContractFee,
       increasedMaxNetworkFees.maxFeePerGas,
       increasedMaxNetworkFees.maxPriorityFeePerGas
     );
 
-    const signer = this.wallet.signer as Wallet;
-    const replacementResponse = await signer.sendTransaction({
-      ...replacementTransaction,
-      nonce: pendingTransaction.nonce
-    });
-
-    console.log(
-      chalk.yellow(
-        logging.TRANSACTION_REPLACED_INFO(
-          pendingTransaction.response.hash,
-          replacementResponse.hash
-        )
-      )
+    const replacementResponse = await this.signer.sendTransactionWithNonce(
+      replacementTransaction,
+      pendingTransaction.nonce,
+      context
     );
+
+    this.logger.logTransactionReplaced(pendingTransaction.response.hash, replacementResponse.hash);
 
     return this.buildPendingTransactionInfo(
       replacementResponse,
       pendingTransaction,
       currentBlockNumber
     );
+  }
+
+  /**
+   * Create signing context for user prompts
+   */
+  private createSigningContext(
+    tx: PendingTransactionInfo,
+    index: number,
+    total: number
+  ): SigningContext {
+    return {
+      currentIndex: index + 1,
+      totalCount: total,
+      validatorPubkey: extractValidatorPubkey(tx.data)
+    };
+  }
+
+  /**
+   * Handle replacement errors and categorize them
+   */
+  private handleReplacementError(
+    error: unknown,
+    tx: PendingTransactionInfo
+  ): TransactionReplacementResult {
+    if (isUserRejectedError(error)) {
+      return { status: TransactionReplacementStatusType.USER_REJECTED, transaction: tx };
+    }
+
+    if (isReplacementUnderpricedError(error)) {
+      return { status: TransactionReplacementStatusType.UNDERPRICED, transaction: tx };
+    }
+
+    if (isNonceExpiredError(error)) {
+      this.logger.logNonceConsumed(tx.nonce);
+      return { status: TransactionReplacementStatusType.ALREADY_MINED };
+    }
+
+    if (isInsufficientFundsError(error)) {
+      this.logger.logInsufficientFundsError();
+      return { status: TransactionReplacementStatusType.FAILED, transaction: tx, error };
+    }
+
+    this.logger.logReplacementFailure(error, tx.response.hash);
+    return { status: TransactionReplacementStatusType.FAILED, transaction: tx, error };
   }
 
   /**
@@ -389,36 +532,6 @@ export class TransactionReplacer {
   }
 
   /**
-   * Check if error has a specific error code
-   *
-   * @param error - Error to check
-   * @param code - Error code to match
-   * @returns True if error has the specified code
-   */
-  private hasErrorCode(error: unknown, code: string): boolean {
-    return typeof error === 'object' && error !== null && 'code' in error && error.code === code;
-  }
-
-  /**
-   * @returns True if error is REPLACEMENT_UNDERPRICED
-   */
-  private isReplacementUnderpricedError(error: unknown): boolean {
-    return this.hasErrorCode(error, serviceConstants.REPLACEMENT_UNDERPRICED_ERROR_CODE);
-  }
-
-  /**
-   * Check if error indicates nonce was already consumed
-   *
-   * NONCE_EXPIRED occurs when a transaction with the same nonce was already mined.
-   * This can happen when the original transaction wins the race against a replacement.
-   *
-   * @returns True if error is NONCE_EXPIRED
-   */
-  private isNonceExpiredError(error: unknown): boolean {
-    return this.hasErrorCode(error, serviceConstants.NONCE_EXPIRED_ERROR_CODE);
-  }
-
-  /**
    * Aggregate replacement results into summary counts
    *
    * @param results - Array of replacement results
@@ -429,7 +542,8 @@ export class TransactionReplacer {
       [TransactionReplacementStatusType.SUCCESS]: 'successful',
       [TransactionReplacementStatusType.UNDERPRICED]: 'underpriced',
       [TransactionReplacementStatusType.FAILED]: 'failed',
-      [TransactionReplacementStatusType.ALREADY_MINED]: 'alreadyMined'
+      [TransactionReplacementStatusType.ALREADY_MINED]: 'alreadyMined',
+      [TransactionReplacementStatusType.USER_REJECTED]: 'userRejected'
     };
 
     return results.reduce<ReplacementSummary>(
@@ -437,7 +551,7 @@ export class TransactionReplacer {
         summary[statusToKey[status]]++;
         return summary;
       },
-      { successful: 0, underpriced: 0, failed: 0, alreadyMined: 0 }
+      { successful: 0, underpriced: 0, failed: 0, alreadyMined: 0, userRejected: 0 }
     );
   }
 
@@ -453,18 +567,43 @@ export class TransactionReplacer {
   private extractPendingTransactions(
     results: TransactionReplacementResult[]
   ): PendingTransactionInfo[] {
-    return results.filter(this.isNotAlreadyMined).map((result) => result.transaction);
+    return results.filter(this.needsRetry).map((result) => result.transaction);
   }
 
   /**
-   * Type guard to check if result is not already mined
+   * Type guard to check if result needs retry
+   *
+   * Filters out terminal states: already mined (nothing to do) and
+   * user rejected (intentional, should not be retried).
    *
    * @param result - Replacement result to check
-   * @returns True if result is not ALREADY_MINED status
+   * @returns True if result still needs retry processing
    */
-  private isNotAlreadyMined(
+  private needsRetry(
     result: TransactionReplacementResult
   ): result is Extract<TransactionReplacementResult, { transaction: PendingTransactionInfo }> {
-    return result.status !== TransactionReplacementStatusType.ALREADY_MINED;
+    return (
+      result.status !== TransactionReplacementStatusType.ALREADY_MINED &&
+      result.status !== TransactionReplacementStatusType.USER_REJECTED
+    );
+  }
+
+  /**
+   * Extract validator pubkeys from user-rejected replacement results
+   *
+   * @param results - Array of replacement results
+   * @returns Validator pubkeys that were rejected by the user
+   */
+  private extractRejectedValidatorPubkeys(results: TransactionReplacementResult[]): string[] {
+    return results
+      .filter(
+        (
+          result
+        ): result is Extract<
+          TransactionReplacementResult,
+          { status: TransactionReplacementStatusType.USER_REJECTED }
+        > => result.status === TransactionReplacementStatusType.USER_REJECTED
+      )
+      .map((result) => extractValidatorPubkey(result.transaction.data));
   }
 }

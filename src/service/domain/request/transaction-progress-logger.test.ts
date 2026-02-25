@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import type { TransactionResponse } from 'ethers';
 
+import {
+  EXECUTION_COMPLETED_SUCCESS_INFO,
+  EXECUTION_COMPLETED_WITH_FAILURES_ERROR,
+  INSUFFICIENT_FUNDS_ERROR,
+  INSUFFICIENT_FUNDS_SKIPPING_BATCHES_WARNING,
+  NONCE_EXPIRED_BROADCAST_ERROR,
+  REJECTED_VALIDATORS_HEADER,
+  REPLACEMENT_USER_REJECTED_INFO
+} from '../../../constants/logging';
 import type { PendingTransactionInfo, ReplacementSummary } from '../../../model/ethereum';
 import { TransactionProgressLogger } from './transaction-progress-logger';
 
@@ -79,7 +88,8 @@ describe('TransactionProgressLogger', () => {
         successful: 5,
         underpriced: 2,
         failed: 0,
-        alreadyMined: 1
+        alreadyMined: 1,
+        userRejected: 0
       };
 
       logger.logReplacementSummary(summary);
@@ -94,7 +104,8 @@ describe('TransactionProgressLogger', () => {
         successful: 5,
         underpriced: 0,
         failed: 3,
-        alreadyMined: 1
+        alreadyMined: 1,
+        userRejected: 0
       };
 
       logger.logReplacementSummary(summary);
@@ -109,7 +120,8 @@ describe('TransactionProgressLogger', () => {
         successful: 5,
         underpriced: 2,
         failed: 3,
-        alreadyMined: 1
+        alreadyMined: 1,
+        userRejected: 0
       };
 
       logger.logReplacementSummary(summary);
@@ -122,7 +134,8 @@ describe('TransactionProgressLogger', () => {
         successful: 5,
         underpriced: 0,
         failed: 0,
-        alreadyMined: 1
+        alreadyMined: 1,
+        userRejected: 0
       };
 
       logger.logReplacementSummary(summary);
@@ -154,6 +167,124 @@ describe('TransactionProgressLogger', () => {
       expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
       const callArgs = consoleErrorSpy.mock.calls[0];
       expect(callArgs?.join(' ')).toContain('3');
+    });
+  });
+
+  describe('logBroadcastFailure', () => {
+    it('logs clean message for INSUFFICIENT_FUNDS error', () => {
+      logger.logBroadcastFailure({ code: 'INSUFFICIENT_FUNDS' });
+
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+      const callArgs = consoleErrorSpy.mock.calls[0];
+      expect(callArgs?.join(' ')).toContain(INSUFFICIENT_FUNDS_ERROR);
+    });
+
+    it('does not pass raw error object for INSUFFICIENT_FUNDS error', () => {
+      const error = { code: 'INSUFFICIENT_FUNDS' };
+      logger.logBroadcastFailure(error);
+
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+      expect(consoleErrorSpy.mock.calls[0]).toHaveLength(1);
+    });
+
+    it('logs clean message for NONCE_EXPIRED error', () => {
+      logger.logBroadcastFailure({ code: 'NONCE_EXPIRED' });
+
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+      const callArgs = consoleErrorSpy.mock.calls[0];
+      expect(callArgs?.join(' ')).toContain(NONCE_EXPIRED_BROADCAST_ERROR);
+    });
+
+    it('does not pass raw error object for NONCE_EXPIRED error', () => {
+      logger.logBroadcastFailure({ code: 'NONCE_EXPIRED' });
+
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+      expect(consoleErrorSpy.mock.calls[0]).toHaveLength(1);
+    });
+
+    it('logs raw error for unrecognized errors', () => {
+      const error = new Error('some other error');
+      logger.logBroadcastFailure(error);
+
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+      expect(consoleErrorSpy.mock.calls[0]).toHaveLength(2);
+    });
+  });
+
+  describe('logSkippedBatchesDueToInsufficientFunds', () => {
+    it('logs warning with singular form for one batch', () => {
+      logger.logSkippedBatchesDueToInsufficientFunds(1);
+
+      expect(consoleSpy).toHaveBeenCalledTimes(1);
+      const callArgs = consoleSpy.mock.calls[0];
+      expect(callArgs?.join(' ')).toContain(INSUFFICIENT_FUNDS_SKIPPING_BATCHES_WARNING(1));
+    });
+
+    it('logs warning with plural form for multiple batches', () => {
+      logger.logSkippedBatchesDueToInsufficientFunds(3);
+
+      expect(consoleSpy).toHaveBeenCalledTimes(1);
+      const callArgs = consoleSpy.mock.calls[0];
+      expect(callArgs?.join(' ')).toContain(INSUFFICIENT_FUNDS_SKIPPING_BATCHES_WARNING(3));
+    });
+  });
+
+  describe('logExecutionSuccess', () => {
+    it('logs success message', () => {
+      logger.logExecutionSuccess();
+
+      expect(consoleSpy).toHaveBeenCalledTimes(1);
+      const callArgs = consoleSpy.mock.calls[0];
+      expect(callArgs?.join(' ')).toContain(EXECUTION_COMPLETED_SUCCESS_INFO);
+    });
+  });
+
+  describe('logExecutionFailure', () => {
+    it('logs failure message with correct counts', () => {
+      logger.logExecutionFailure(3, 10);
+
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+      const callArgs = consoleErrorSpy.mock.calls[0];
+      expect(callArgs?.join(' ')).toContain(EXECUTION_COMPLETED_WITH_FAILURES_ERROR(3, 10));
+    });
+  });
+
+  describe('logRejectedValidators', () => {
+    it('logs rejected validator pubkeys with header', () => {
+      const rejectedPubkeys = ['0xpubkey1', '0xpubkey2'];
+
+      logger.logRejectedValidators(rejectedPubkeys);
+
+      expect(consoleSpy).toHaveBeenCalledTimes(3);
+      const headerCall = consoleSpy.mock.calls[1];
+      expect(headerCall?.join(' ')).toContain(REJECTED_VALIDATORS_HEADER);
+    });
+
+    it('joins pubkeys with space separator', () => {
+      const rejectedPubkeys = ['0xpubkey1', '0xpubkey2', '0xpubkey3'];
+
+      logger.logRejectedValidators(rejectedPubkeys);
+
+      const lastCall = consoleSpy.mock.calls[2];
+      expect(lastCall?.join(' ')).toContain('0xpubkey1 0xpubkey2 0xpubkey3');
+    });
+  });
+
+  describe('logReplacementSummary with userRejected', () => {
+    it('logs warning when userRejected count is greater than 0', () => {
+      const summary: ReplacementSummary = {
+        successful: 5,
+        underpriced: 0,
+        failed: 0,
+        alreadyMined: 1,
+        userRejected: 2
+      };
+
+      logger.logReplacementSummary(summary);
+
+      expect(consoleSpy).toHaveBeenCalledTimes(1);
+      const callArgs = consoleSpy.mock.calls[0];
+      expect(callArgs?.join(' ')).toContain(REPLACEMENT_USER_REJECTED_INFO(2, 8));
     });
   });
 

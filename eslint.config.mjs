@@ -39,7 +39,8 @@ export default [...compat.extends(
         "import/first": "error",
         "import/newline-after-import": "error",
         "import/no-duplicates": "error",
-        'eslint-plugin-tsdoc/syntax': 'warn'
+        'eslint-plugin-tsdoc/syntax': 'warn',
+        '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }]
     },
 },
 {
