@@ -23,20 +23,14 @@ const createMockReceipt = (
   return { status, hash, blockNumber } as unknown as TransactionReceipt;
 };
 
-const createMockTransactionResponse = (
-  hash: string,
-  nonce: number
-): TransactionResponse => {
+const createMockTransactionResponse = (hash: string, nonce: number): TransactionResponse => {
   return {
     hash,
     nonce
   } as unknown as TransactionResponse;
 };
 
-const createMockPendingTransaction = (
-  nonce: number,
-  hash: string
-): PendingTransactionInfo => {
+const createMockPendingTransaction = (nonce: number, hash: string): PendingTransactionInfo => {
   return {
     response: createMockTransactionResponse(hash, nonce),
     nonce,

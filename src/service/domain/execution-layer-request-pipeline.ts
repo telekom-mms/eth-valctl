@@ -44,13 +44,8 @@ interface PipelineConfig {
  * @param config - Pipeline configuration with operation-specific callbacks
  */
 export async function executeRequestPipeline(config: PipelineConfig): Promise<void> {
-  const {
-    globalOptions,
-    validatorPubkeys,
-    encodeRequestData,
-    resolveContractAddress,
-    validate
-  } = config;
+  const { globalOptions, validatorPubkeys, encodeRequestData, resolveContractAddress, validate } =
+    config;
 
   const signerType = globalOptions.ledger ? 'ledger' : 'wallet';
   const ethereumConnection = await createEthereumConnection(globalOptions.jsonRpcUrl, signerType);

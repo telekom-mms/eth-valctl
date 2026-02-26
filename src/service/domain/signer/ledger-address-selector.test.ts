@@ -11,9 +11,7 @@ const createMockTransport = (): ITransportProvider => ({
   close: mock(() => Promise.resolve())
 });
 
-const createMockEth = (
-  addresses: Record<number, string> = {}
-): IEthAddressProvider => ({
+const createMockEth = (addresses: Record<number, string> = {}): IEthAddressProvider => ({
   getAddress: mock((path: string) => {
     const index = parseInt(path.split('/').pop() ?? '0');
     const address = addresses[index] ?? `0x${index.toString().padStart(40, '0')}`;
@@ -21,9 +19,7 @@ const createMockEth = (
   })
 });
 
-const createMockBalanceProvider = (
-  balances: Record<string, bigint> = {}
-): IBalanceProvider => ({
+const createMockBalanceProvider = (balances: Record<string, bigint> = {}): IBalanceProvider => ({
   getBalance: mock((address: string) => {
     const balance = balances[address] ?? 0n;
     return Promise.resolve(balance);

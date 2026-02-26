@@ -26,7 +26,7 @@ const createMockSigner = (overrides?: {
   return {
     capabilities: {
       supportsParallelSigning: true
-      },
+    },
     address: '0xWalletAddress',
     sendTransaction:
       overrides?.sendTransaction ??

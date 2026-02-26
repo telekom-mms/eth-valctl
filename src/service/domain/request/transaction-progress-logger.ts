@@ -2,7 +2,11 @@ import chalk from 'chalk';
 
 import * as serviceConstants from '../../../constants/application';
 import * as logging from '../../../constants/logging';
-import type { PendingTransactionInfo, ReplacementSummary, SigningContext } from '../../../model/ethereum';
+import type {
+  PendingTransactionInfo,
+  ReplacementSummary,
+  SigningContext
+} from '../../../model/ethereum';
 import { isLedgerError } from '../signer';
 import { isInsufficientFundsError, isNonceExpiredError } from './error-utils';
 
@@ -149,7 +153,9 @@ export class TransactionProgressLogger {
    * @param totalCount - Total number of requests attempted
    */
   logExecutionFailure(failedCount: number, totalCount: number): void {
-    console.error(chalk.red(logging.EXECUTION_COMPLETED_WITH_FAILURES_ERROR(failedCount, totalCount)));
+    console.error(
+      chalk.red(logging.EXECUTION_COMPLETED_WITH_FAILURES_ERROR(failedCount, totalCount))
+    );
   }
 
   /**

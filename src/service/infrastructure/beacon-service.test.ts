@@ -53,9 +53,7 @@ describe('BeaconService', () => {
       const service = await BeaconService.create('http://localhost:5052');
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:5052/eth/v1/beacon/genesis'
-      );
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:5052/eth/v1/beacon/genesis');
 
       const position = service.calculateSlotPosition();
       expect(position.currentSlot).toBeGreaterThan(0);

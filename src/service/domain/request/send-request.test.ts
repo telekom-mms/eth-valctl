@@ -71,7 +71,7 @@ describe('Strategy Selection Logic', () => {
     it('is selected when signer supports parallel signing', () => {
       const mockSigner = createMockSigner({
         supportsParallelSigning: true
-        });
+      });
 
       expect(mockSigner.capabilities.supportsParallelSigning).toBe(true);
     });
@@ -101,7 +101,7 @@ describe('Strategy Selection Logic', () => {
     it('is selected when signer does not support parallel signing', () => {
       const mockSigner = createMockSigner({
         supportsParallelSigning: false
-        });
+      });
 
       expect(mockSigner.capabilities.supportsParallelSigning).toBe(false);
     });
@@ -114,19 +114,17 @@ describe('Strategy Selection Logic', () => {
       await BeaconService.create('http://localhost:5052');
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:5052/eth/v1/beacon/genesis'
-      );
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:5052/eth/v1/beacon/genesis');
     });
 
     it('is only needed for sequential strategy (Ledger)', async () => {
       const walletSigner = createMockSigner({
         supportsParallelSigning: true
-        });
+      });
 
       const ledgerSigner = createMockSigner({
         supportsParallelSigning: false
-        });
+      });
 
       expect(walletSigner.capabilities.supportsParallelSigning).toBe(true);
       expect(ledgerSigner.capabilities.supportsParallelSigning).toBe(false);
