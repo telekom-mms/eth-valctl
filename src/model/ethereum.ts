@@ -1,4 +1,23 @@
-import { JsonRpcProvider, NonceManager, TransactionReceipt, TransactionResponse } from 'ethers';
+import type { JsonRpcProvider, TransactionReceipt, TransactionResponse } from 'ethers';
+
+import type { ISigner } from '../ports/signer.interface';
+
+/**
+ * Signer type for transaction signing
+ */
+export type SignerType = 'wallet' | 'ledger';
+
+/**
+ * Context for signing operations (used for user prompts with hardware wallets)
+ */
+export interface SigningContext {
+  /** Current transaction index (1-based) */
+  currentIndex: number;
+  /** Total number of transactions to sign */
+  totalCount: number;
+  /** Validator public key for this transaction */
+  validatorPubkey: string;
+}
 
 export enum TransactionStatusType {
   MINED = 'mined',
@@ -11,11 +30,15 @@ export enum TransactionReplacementStatusType {
   SUCCESS = 'success',
   UNDERPRICED = 'underpriced',
   FAILED = 'failed',
-  ALREADY_MINED = 'already_mined'
+  ALREADY_MINED = 'already_mined',
+  USER_REJECTED = 'user_rejected'
 }
 
+/**
+ * Connection to Ethereum network with signer abstraction
+ */
 export interface EthereumConnection {
-  wallet: NonceManager;
+  signer: ISigner;
   provider: JsonRpcProvider;
 }
 
@@ -46,14 +69,30 @@ export interface PendingTransactionInfo {
   blockNumber: number;
 }
 
+export enum BroadcastStatusType {
+  SUCCESS = 'success',
+  FAILED = 'failed',
+  REJECTED = 'rejected'
+}
+
 /**
  * Result of attempting to broadcast an execution layer request transaction
  */
 export type BroadcastResult =
   /** Transaction successfully broadcast to network */
-  | { status: 'success'; transaction: PendingTransactionInfo }
+  | { status: BroadcastStatusType.SUCCESS; transaction: PendingTransactionInfo }
   /** Transaction broadcast failed */
-  | { status: 'failed'; validatorPubkey: string; error: unknown };
+  | { status: BroadcastStatusType.FAILED; validatorPubkey: string; error: unknown }
+  /** Transaction rejected by user on hardware wallet */
+  | { status: BroadcastStatusType.REJECTED; validatorPubkey: string };
+
+/**
+ * Result of processing a single batch of transactions
+ */
+export interface BatchProcessingResult {
+  failedValidatorPubkeys: string[];
+  rejectedValidatorPubkeys: string[];
+}
 
 export interface ValidatorResponse {
   data: {
@@ -96,13 +135,16 @@ export type TransactionReplacementResult =
       error: unknown;
     }
   /** Original transaction already mined before replacement */
-  | { status: TransactionReplacementStatusType.ALREADY_MINED };
+  | { status: TransactionReplacementStatusType.ALREADY_MINED }
+  /** Replacement rejected by user on hardware wallet */
+  | { status: TransactionReplacementStatusType.USER_REJECTED; transaction: PendingTransactionInfo };
 
 export interface ReplacementSummary {
   successful: number;
   underpriced: number;
   failed: number;
   alreadyMined: number;
+  userRejected: number;
 }
 
 export interface MaxNetworkFees {
@@ -117,12 +159,33 @@ export interface TransactionRetryResult {
    * Whether to increment retry counter (false if progress was made)
    */
   incrementRetry: boolean;
+  rejectedValidatorPubkeys: string[];
 }
 
 export interface CategorizedTransactions {
   mined: TransactionReplacementResult[];
   reverted: PendingTransactionInfo[];
   pending: PendingTransactionInfo[];
+}
+
+/**
+ * Beacon API genesis response structure
+ */
+export interface GenesisResponse {
+  data: {
+    genesis_time: string;
+    genesis_validators_root: string;
+    genesis_fork_version: string;
+  };
+}
+
+/**
+ * Current slot position within the beacon chain
+ */
+export interface SlotPosition {
+  currentSlot: number;
+  secondInSlot: number;
+  secondsUntilNextSlot: number;
 }
 
 export class BlockchainStateError extends Error {
@@ -132,5 +195,15 @@ export class BlockchainStateError extends Error {
   ) {
     super(message);
     this.name = 'BlockchainStateError';
+  }
+}
+
+/**
+ * Thrown when INSUFFICIENT_FUNDS is detected during broadcast to abort remaining batches
+ */
+export class InsufficientFundsAbortError extends Error {
+  constructor(public readonly failedPubkeys: string[]) {
+    super('Insufficient funds detected - aborting remaining batches');
+    this.name = 'InsufficientFundsAbortError';
   }
 }

@@ -31,6 +31,8 @@ export const RESPONSE_ERROR = 'Response error:';
 export const BATCH_PROCESSING_ERROR = (batchIndex: number): string =>
   `Error processing batch ${batchIndex + 1} - marking all transactions in batch as failed`;
 export const FAILED_TO_BROADCAST_TRANSACTION_ERROR = 'Failed to broadcast execution layer request';
+export const INSUFFICIENT_FUNDS_ERROR =
+  'Insufficient ETH balance for transaction cost (gas fees + contract fee). Fund the wallet and retry.';
 export const FAILED_TO_FETCH_REQUIRED_FEE_ERROR = (contractAddress: string): string =>
   `Failed to fetch required fee from system contract: ${contractAddress}`;
 export const BATCH_INITIALIZATION_ERROR = (batchIndex: number): string =>
@@ -41,13 +43,23 @@ export const FAILED_TO_REPLACE_TRANSACTION_ERROR = (transactionHash: string): st
   `Failed to replace execution layer request ${transactionHash}:`;
 export const FAILED_TO_FETCH_NETWORK_FEES_FOR_LOG_ERROR =
   'Failed to fetch network fees for broadcast log. Continue without logging fees.';
+export const NONCE_EXPIRED_BROADCAST_ERROR =
+  'Nonce already used (stale pending transactions from a previous run were mined). Affected validators will appear in the retry list.';
 
 /** Info logs */
 export const BROADCASTING_EL_REQUEST_INFO = 'Broadcasting execution layer request:';
 export const MINED_EL_REQUEST_INFO = 'Mined execution layer request:';
+export const NONCE_CONSUMED_INFO = (nonce: number): string =>
+  `Nonce ${nonce} consumed - execution layer request fulfilled by original or competing transaction`;
+export const MINED_EL_REQUEST_WITH_BLOCK_INFO = (hash: string, blockNumber: number): string =>
+  `Mined execution layer request: ${hash} in block ${blockNumber}`;
+export const BROADCAST_START_SEQUENTIAL_INFO = (count: number, maxFeePerGasGwei: string): string =>
+  `📤 Broadcasting ${count} execution layer request${count > 1 ? 's' : ''} sequentially (max fee per gas: ${maxFeePerGasGwei} Gwei)...`;
+export const SLOT_BOUNDARY_WAIT_INFO = (secondsUntilNextSlot: number): string =>
+  `⏳ Near slot boundary, waiting ${secondsUntilNextSlot}s for next slot...`;
 export const PROMPT_PRIVATE_KEY_INFO = 'Private key for 0x01 or 0x02 withdrawal credentials:';
 export const DISCLAIMER_INFO =
-  'The eth-valctl is in active development and currently missing most pre-transaction checks (see here: https://github.com/TobiWo/eth-valctl/issues/14). Please double-check your inputs before executing a command.';
+  'The eth-valctl is in active development and currently missing most pre-transaction checks (see here: https://github.com/telekom-mms/eth-valctl/issues/14). Please double-check your inputs before executing a command.';
 export const EL_REQUEST_REVERTED_INFO = (transactionHash: string): string =>
   `Execution layer request ${transactionHash} was mined but REVERTED (likely due to incorrect fee)`;
 export const EL_REQUEST_REVERTED_SENDING_NEW_INFO = (transactionHash: string): string =>
@@ -68,6 +80,8 @@ export const TRANSACTION_REPLACED_INFO = (oldHash: string, newHash: string): str
   `Replaced pending execution layer request ${oldHash.slice(0, 6)}...${oldHash.slice(-5)} with ${newHash}`;
 export const FAILED_VALIDATORS_FOR_RETRY_HEADER =
   '📋 Failed validator pubkeys to retry in next eth-valctl call:';
+export const REJECTED_VALIDATORS_HEADER =
+  '⚠️ Rejected validator pubkeys (skipped by user on Ledger device):';
 
 /** Warnings */
 export const WITHDRAWAL_CREDENTIAL_WARNING =
@@ -84,6 +98,8 @@ export const REPLACEMENT_UNDERPRICED_WARNING = (underpriced: number, total: numb
   `⏳ ${underpriced} of ${total} execution layer requests couldn't be replaced yet - retry on next block`;
 export const REPLACEMENT_FAILED_WARNING = (failed: number, total: number): string =>
   `❌ ${failed} of ${total} execution layer requests failed to replace (unexpected error)`;
+export const REPLACEMENT_USER_REJECTED_INFO = (rejected: number, total: number): string =>
+  `⚠️ ${rejected} of ${total} replacement execution layer requests rejected by user on Ledger device`;
 
 /** Other errors */
 export const SYSTEM_CONTRACT_NOT_ACTIVATED_ERROR = (contractAddress: string): string =>
@@ -94,3 +110,62 @@ export const WRONG_WITHDRAWAL_CREDENTIALS_0x00_ERROR = `You cannot directly chan
 Please follow the instructions here: https://github.com/ethereum/staking-deposit-cli?tab=readme-ov-file#generate-bls-to-execution-change-arguments or other respective documentation.`;
 export const WRONG_WITHDRAWAL_CREDENTIALS_0X01_ERROR =
   "You can change the withdrawal credential type from 0x01 to 0x02 while using the 'switch' subcommand.";
+
+/** Ledger hardware wallet messages */
+export const LEDGER_CONNECTING_INFO = 'Connecting to Ledger device...';
+export const LEDGER_CONNECTED_INFO = (address: string): string =>
+  `Ledger connected. Using address: ${address}`;
+export const LEDGER_DISCONNECTED_INFO = 'Ledger device disconnected.';
+export const LEDGER_CONNECTION_ERROR =
+  'Failed to connect to Ledger device. Ensure the device is connected and the Ethereum app is open.';
+export const LEDGER_SIGN_PROMPT = (
+  currentIndex: number,
+  totalCount: number,
+  validatorPubkey: string
+): string =>
+  `[${currentIndex}/${totalCount}] Please confirm transaction on Ledger for validator ${validatorPubkey.slice(0, 10)}...${validatorPubkey.slice(-8)}`;
+export const LEDGER_SIGN_GENERIC_PROMPT = 'Please confirm transaction on Ledger device...';
+
+export const LEDGER_DEVICE_LOCKED_ERROR =
+  'Ledger device is locked. Please unlock your device with your PIN and try again.';
+
+export const LEDGER_DEVICE_DISCONNECTED_ERROR =
+  'Ledger device was disconnected. Please reconnect the device and try again.';
+
+export const LEDGER_DEVICE_DISCONNECTED_DURING_OPERATION_ERROR =
+  'Ledger device was disconnected during operation. The transaction was NOT signed. Please reconnect and retry.';
+
+export const LEDGER_ETH_APP_NOT_OPEN_ERROR =
+  'Ethereum app is not open on the Ledger device. Please open the Ethereum app and try again.';
+
+export const LEDGER_USER_REJECTED_ERROR = 'Transaction was rejected on the Ledger device.';
+
+export const LEDGER_BLIND_SIGNING_REQUIRED_ERROR =
+  'Transaction requires blind signing which is not enabled on your Ledger device. ' +
+  'Either enable "Blind signing" in the Ethereum app settings on your Ledger, ' +
+  'or upgrade to the latest firmware which natively displays transaction details without requiring blind signing.';
+
+export const LEDGER_UNKNOWN_ERROR = (code: number): string =>
+  `Unknown Ledger error (0x${code.toString(16)}). Please ensure the Ethereum app is open and try again.`;
+
+export const LEDGER_CONNECTION_TIMEOUT_ERROR =
+  'No Ledger device found. Please connect your device and ensure the Ethereum app is open.';
+
+/** Ledger address selection messages */
+export const LEDGER_ADDRESS_SELECTION_HEADER = 'Select Ledger address:';
+export const LEDGER_ADDRESS_FETCHING_INFO = (page: number): string =>
+  `Fetching addresses for page ${page + 1}...`;
+export const LEDGER_ADDRESS_SELECTION_CANCELLED = 'Address selection cancelled.';
+
+/** Execution status messages */
+export const INSUFFICIENT_FUNDS_SKIPPING_BATCHES_WARNING = (skippedCount: number): string =>
+  `⚠️ Skipping ${skippedCount} remaining batch${skippedCount === 1 ? '' : 'es'} due to insufficient funds`;
+
+export const EXECUTION_COMPLETED_SUCCESS_INFO =
+  '✅ All execution layer requests processed successfully';
+
+export const EXECUTION_COMPLETED_WITH_FAILURES_ERROR = (
+  failedCount: number,
+  totalCount: number
+): string =>
+  `❌ Execution finished with ${failedCount} of ${totalCount} execution layer requests failed`;

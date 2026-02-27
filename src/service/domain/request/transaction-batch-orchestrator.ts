@@ -3,11 +3,18 @@ import chalk from 'chalk';
 import * as serviceConstants from '../../../constants/application';
 import * as logging from '../../../constants/logging';
 import type {
+  BatchProcessingResult,
   BroadcastResult,
   PendingTransactionInfo,
   TransactionRetryResult
 } from '../../../model/ethereum';
-import { BlockchainStateError } from '../../../model/ethereum';
+import {
+  BlockchainStateError,
+  BroadcastStatusType,
+  InsufficientFundsAbortError
+} from '../../../model/ethereum';
+import { extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
+import { isInsufficientFundsError } from './error-utils';
 import { EthereumStateService } from './ethereum-state-service';
 import { TransactionBroadcaster } from './transaction-broadcaster';
 import { TransactionMonitor } from './transaction-monitor';
@@ -38,7 +45,9 @@ export class TransactionBatchOrchestrator {
   /**
    * Send execution layer requests with batch processing and retry logic
    *
-   * Processes each batch independently - failures in one batch don't prevent processing of other batches.
+   * Processes batches sequentially. Generic failures in one batch don't prevent processing of
+   * subsequent batches. However, if INSUFFICIENT_FUNDS is detected, remaining batches are aborted
+   * since they would fail for the same reason.
    *
    * @param requestData - Array of encoded request data to send
    * @param executionLayerRequestBatchSize - Maximum number of requests per batch
@@ -48,25 +57,53 @@ export class TransactionBatchOrchestrator {
     executionLayerRequestBatchSize: number
   ): Promise<void> {
     const allFailedValidators: string[] = [];
+    const allRejectedValidators: string[] = [];
 
     const executionLayerRequestBatches = this.splitToBatches(
       requestData,
       executionLayerRequestBatchSize
     );
 
-    for (const batch of executionLayerRequestBatches) {
+    for (let batchIndex = 0; batchIndex < executionLayerRequestBatches.length; batchIndex++) {
+      const batch = executionLayerRequestBatches[batchIndex]!;
       try {
-        const failedPubkeys = await this.processBatch(batch);
-        allFailedValidators.push(...failedPubkeys);
+        const { failedValidatorPubkeys, rejectedValidatorPubkeys } = await this.processBatch(batch);
+        allFailedValidators.push(...failedValidatorPubkeys);
+        allRejectedValidators.push(...rejectedValidatorPubkeys);
       } catch (error) {
-        if (error instanceof BlockchainStateError) {
-          allFailedValidators.push(...batch);
+        if (error instanceof InsufficientFundsAbortError) {
+          allFailedValidators.push(...error.failedPubkeys);
+          const skippedBatches = executionLayerRequestBatches.slice(batchIndex + 1);
+          if (skippedBatches.length > 0) {
+            this.logger.logSkippedBatchesDueToInsufficientFunds(skippedBatches.length);
+          }
+          allFailedValidators.push(
+            ...skippedBatches.flatMap((skippedBatch) => skippedBatch.map(extractValidatorPubkey))
+          );
+          break;
         }
+        if (!(error instanceof BlockchainStateError)) {
+          console.error(chalk.red('Unexpected error processing batch:'), error);
+        }
+        allFailedValidators.push(...batch.map(extractValidatorPubkey));
       }
     }
 
-    if (allFailedValidators.length > 0) {
+    const hasRejections = allRejectedValidators.length > 0;
+    const hasFailures = allFailedValidators.length > 0;
+
+    if (hasRejections) {
+      this.logger.logRejectedValidators(allRejectedValidators);
+    }
+
+    if (hasFailures) {
       this.logger.logFailedValidators(allFailedValidators);
+      this.logger.logExecutionFailure(allFailedValidators.length, requestData.length);
+      return;
+    }
+
+    if (!hasRejections) {
+      this.logger.logExecutionSuccess();
     }
   }
 
@@ -81,7 +118,7 @@ export class TransactionBatchOrchestrator {
    * @param batch - Array of request data strings for this batch
    * @returns Array of validator pubkeys that failed
    */
-  private async processBatch(batch: string[]): Promise<string[]> {
+  private async processBatch(batch: string[]): Promise<BatchProcessingResult> {
     const currentBlockNumber = await this.blockchainStateService.fetchBlockNumber();
     const contractFee = await this.blockchainStateService.fetchContractFee();
     const broadcastResults = await this.transactionBroadcaster.broadcastExecutionLayerRequests(
@@ -90,28 +127,44 @@ export class TransactionBatchOrchestrator {
       currentBlockNumber
     );
 
-    const failedValidatorPubkeys = broadcastResults
-      .filter(this.isFailedBroadcast)
+    const failedBroadcasts = broadcastResults.filter(this.isFailedBroadcast);
+    const failedValidatorPubkeys = failedBroadcasts.map((result) => result.validatorPubkey);
+    const hasInsufficientFunds = failedBroadcasts.some((result) =>
+      isInsufficientFundsError(result.error)
+    );
+
+    const rejectedValidatorPubkeys = broadcastResults
+      .filter(this.isRejectedBroadcast)
       .map((result) => result.validatorPubkey);
 
     const pendingTransactions = broadcastResults
       .filter(this.isSuccessfulBroadcast)
       .map((result) => result.transaction);
 
-    const exhaustedTransactions = await this.retryPendingTransactions(
-      pendingTransactions,
-      currentBlockNumber
-    );
-
-    if (exhaustedTransactions.length > 0) {
-      this.logger.logMaxRetriesExceeded(exhaustedTransactions);
-      const exhaustedRetryPubkeys = exhaustedTransactions.map((tx) =>
-        this.extractSourceValidatorPubkey(tx.data)
-      );
-      return [...failedValidatorPubkeys, ...exhaustedRetryPubkeys];
+    let retryBlockNumber: number;
+    try {
+      retryBlockNumber = await this.blockchainStateService.fetchBlockNumber();
+    } catch {
+      retryBlockNumber = currentBlockNumber;
     }
 
-    return failedValidatorPubkeys;
+    const retryResult = await this.retryPendingTransactions(pendingTransactions, retryBlockNumber);
+
+    if (retryResult.exhaustedTransactions.length > 0) {
+      this.logger.logMaxRetriesExceeded(retryResult.exhaustedTransactions);
+      const exhaustedRetryPubkeys = retryResult.exhaustedTransactions.map((tx) =>
+        extractValidatorPubkey(tx.data)
+      );
+      failedValidatorPubkeys.push(...exhaustedRetryPubkeys);
+    }
+
+    rejectedValidatorPubkeys.push(...retryResult.rejectedValidatorPubkeys);
+
+    if (hasInsufficientFunds) {
+      throw new InsufficientFundsAbortError(failedValidatorPubkeys);
+    }
+
+    return { failedValidatorPubkeys, rejectedValidatorPubkeys };
   }
 
   /**
@@ -127,17 +180,24 @@ export class TransactionBatchOrchestrator {
   private async retryPendingTransactions(
     initialTransactions: PendingTransactionInfo[],
     initialBlockNumber: number
-  ): Promise<PendingTransactionInfo[]> {
+  ): Promise<{
+    exhaustedTransactions: PendingTransactionInfo[];
+    rejectedValidatorPubkeys: string[];
+  }> {
     let pendingTransactions = initialTransactions;
     let currentBlockNumber = initialBlockNumber;
     let retryCount = 0;
+    const rejectedValidatorPubkeys: string[] = [];
 
-    while (this.shouldContinueRetrying(pendingTransactions.length, retryCount)) {
+    while (
+      pendingTransactions.length > 0 &&
+      retryCount < serviceConstants.MAX_TRANSACTION_RETRIES
+    ) {
       const unresolvedTransactions =
         await this.checkAndExtractUnresolvedTransactions(pendingTransactions);
 
       if (unresolvedTransactions === null) {
-        return [];
+        return { exhaustedTransactions: [], rejectedValidatorPubkeys };
       }
 
       const result = await this.handleTransactionRetryBasedOnBlockStatus(
@@ -147,12 +207,13 @@ export class TransactionBatchOrchestrator {
 
       pendingTransactions = result.pendingTransactions;
       currentBlockNumber = result.currentBlockNumber;
+      rejectedValidatorPubkeys.push(...result.rejectedValidatorPubkeys);
       if (result.incrementRetry) {
         retryCount++;
       }
     }
 
-    return pendingTransactions;
+    return { exhaustedTransactions: pendingTransactions, rejectedValidatorPubkeys };
   }
 
   /**
@@ -174,7 +235,8 @@ export class TransactionBatchOrchestrator {
     const basicTransactionRetryResult: TransactionRetryResult = {
       pendingTransactions: unresolvedTransactions,
       currentBlockNumber,
-      incrementRetry: true
+      incrementRetry: true,
+      rejectedValidatorPubkeys: []
     };
 
     try {
@@ -184,7 +246,7 @@ export class TransactionBatchOrchestrator {
       return basicTransactionRetryResult;
     }
 
-    if (this.hasBlockChanged(currentBlockNumber, newBlockNumber)) {
+    if (newBlockNumber > currentBlockNumber) {
       return await this.handleBlockChange(newBlockNumber, unresolvedTransactions);
     }
 
@@ -206,20 +268,25 @@ export class TransactionBatchOrchestrator {
     newBlockNumber: number,
     unresolvedTransactions: PendingTransactionInfo[]
   ): Promise<TransactionRetryResult> {
-    const baseResult = {
+    const baseResult: TransactionRetryResult = {
       pendingTransactions: unresolvedTransactions,
       currentBlockNumber: newBlockNumber,
-      incrementRetry: true
+      incrementRetry: true,
+      rejectedValidatorPubkeys: []
     };
 
     try {
       const newContractFee = await this.blockchainStateService.fetchContractFee();
-      const pendingTransactions = await this.transactionReplacer.replaceTransactions(
+      const replacerResult = await this.transactionReplacer.replaceTransactions(
         unresolvedTransactions,
         newContractFee,
         newBlockNumber
       );
-      return { ...baseResult, pendingTransactions };
+      return {
+        ...baseResult,
+        pendingTransactions: replacerResult.pendingTransactions,
+        rejectedValidatorPubkeys: replacerResult.rejectedValidatorPubkeys
+      };
     } catch (error) {
       console.error(
         chalk.red(logging.FAILED_TO_FETCH_NETWORK_FEES_ERROR(unresolvedTransactions.length)),
@@ -267,8 +334,8 @@ export class TransactionBatchOrchestrator {
    */
   private isSuccessfulBroadcast(
     result: BroadcastResult
-  ): result is Extract<BroadcastResult, { status: 'success' }> {
-    return result.status === 'success';
+  ): result is Extract<BroadcastResult, { status: BroadcastStatusType.SUCCESS }> {
+    return result.status === BroadcastStatusType.SUCCESS;
   }
 
   /**
@@ -279,19 +346,20 @@ export class TransactionBatchOrchestrator {
    */
   private isFailedBroadcast(
     result: BroadcastResult
-  ): result is Extract<BroadcastResult, { status: 'failed' }> {
-    return result.status === 'failed';
+  ): result is Extract<BroadcastResult, { status: BroadcastStatusType.FAILED }> {
+    return result.status === BroadcastStatusType.FAILED;
   }
 
   /**
-   * Determine if retry loop should continue
+   * Type guard to check if broadcast result was rejected by user
    *
-   * @param pendingTransactionCount - Number of pending transactions
-   * @param retryCount - Current retry attempt count
-   * @returns True if should continue retrying
+   * @param result - Broadcast result to check
+   * @returns True if result represents a user-rejected broadcast
    */
-  private shouldContinueRetrying(pendingTransactionCount: number, retryCount: number): boolean {
-    return pendingTransactionCount > 0 && retryCount < serviceConstants.MAX_TRANSACTION_RETRIES;
+  private isRejectedBroadcast(
+    result: BroadcastResult
+  ): result is Extract<BroadcastResult, { status: BroadcastStatusType.REJECTED }> {
+    return result.status === BroadcastStatusType.REJECTED;
   }
 
   /**
@@ -310,17 +378,6 @@ export class TransactionBatchOrchestrator {
   }
 
   /**
-   * Check if block number has changed
-   *
-   * @param currentBlockNumber - Previously known block number
-   * @param newBlockNumber - Newly fetched block number
-   * @returns True if block has advanced
-   */
-  private hasBlockChanged(currentBlockNumber: number, newBlockNumber: number): boolean {
-    return newBlockNumber > currentBlockNumber;
-  }
-
-  /**
    * Wait before retrying transaction checks
    *
    * Delays execution by configured retry delay to avoid excessive polling.
@@ -329,17 +386,5 @@ export class TransactionBatchOrchestrator {
     await new Promise((resolve) =>
       setTimeout(resolve, serviceConstants.TRANSACTION_RETRY_DELAY_MS)
     );
-  }
-
-  /**
-   * Extract source validator pubkey from execution layer request data
-   *
-   * Request data format: 0x + source_pubkey (96 hex chars) + optional target_pubkey (96 hex chars)
-   *
-   * @param encodedRequestData - Encoded execution layer request data
-   * @returns Source validator public key with 0x prefix
-   */
-  private extractSourceValidatorPubkey(encodedRequestData: string): string {
-    return encodedRequestData.slice(0, 98);
   }
 }

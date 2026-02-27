@@ -10,15 +10,6 @@
           }
         ],
         "matcher": "Edit|MultiEdit|Write"
-      },
-      {
-        "hooks": [
-          {
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/skill-usage-confirm.sh",
-            "type": "command"
-          }
-        ],
-        "matcher": "Skill"
       }
     ],
     "Stop": [

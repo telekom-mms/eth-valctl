@@ -133,6 +133,8 @@ bin
 
 # claude
 .claude/tsc-cache/**/*
+.claude/exports/**/*
+.claude/reminders/**/*
 dev
 
 # other

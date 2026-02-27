@@ -1,27 +1,32 @@
-import { afterEach,beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
-import type { NonceManager, TransactionResponse, Wallet } from 'ethers';
+import { UserRefusedOnDevice } from '@ledgerhq/errors';
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import type { TransactionResponse } from 'ethers';
 
 import {
+  INSUFFICIENT_FUNDS_ERROR_CODE,
   NONCE_EXPIRED_ERROR_CODE,
   REPLACEMENT_UNDERPRICED_ERROR_CODE
 } from '../../../constants/application';
 import type {
-  ExecutionLayerRequestTransaction,
   MaxNetworkFees,
   PendingTransactionInfo,
   TransactionStatus
 } from '../../../model/ethereum';
 import { TransactionStatusType } from '../../../model/ethereum';
+import type { ISigner } from '../signer';
 import type { EthereumStateService } from './ethereum-state-service';
-import type { TransactionBroadcaster } from './transaction-broadcaster';
 import type { TransactionMonitor } from './transaction-monitor';
 import type { TransactionProgressLogger } from './transaction-progress-logger';
 import { TransactionReplacer } from './transaction-replacer';
 
 const createMockSigner = (overrides?: {
   sendTransaction?: ReturnType<typeof mock>;
-}): Wallet => {
+  sendTransactionWithNonce?: ReturnType<typeof mock>;
+}): ISigner => {
   return {
+    capabilities: {
+      supportsParallelSigning: true
+      },
     address: '0xWalletAddress',
     sendTransaction:
       overrides?.sendTransaction ??
@@ -30,25 +35,17 @@ const createMockSigner = (overrides?: {
           hash: '0xnewhash',
           nonce: 1
         } as TransactionResponse)
-      )
-  } as unknown as Wallet;
-};
-
-const createMockWallet = (overrides?: {
-  signer?: Wallet;
-  sendTransaction?: ReturnType<typeof mock>;
-}): NonceManager => {
-  return {
-    signer: overrides?.signer ?? createMockSigner(),
-    sendTransaction:
-      overrides?.sendTransaction ??
+      ),
+    sendTransactionWithNonce:
+      overrides?.sendTransactionWithNonce ??
       mock(() =>
         Promise.resolve({
           hash: '0xnewhash',
           nonce: 1
         } as TransactionResponse)
-      )
-  } as unknown as NonceManager;
+      ),
+    dispose: mock(() => Promise.resolve())
+  } as unknown as ISigner;
 };
 
 const createMockBlockchainStateService = (
@@ -57,26 +54,6 @@ const createMockBlockchainStateService = (
   return {
     getMaxNetworkFees: mock(() => Promise.resolve(maxNetworkFees))
   } as unknown as EthereumStateService;
-};
-
-const createMockTransactionBroadcaster = (): TransactionBroadcaster => {
-  return {
-    createElTransaction: mock(
-      (
-        data: string,
-        value: bigint,
-        maxFeePerGas?: bigint,
-        maxPriorityFeePerGas?: bigint
-      ): ExecutionLayerRequestTransaction => ({
-        to: '0xcontract',
-        data,
-        value,
-        gasLimit: 200000n,
-        maxFeePerGas,
-        maxPriorityFeePerGas
-      })
-    )
-  } as unknown as TransactionBroadcaster;
 };
 
 const createMockTransactionMonitor = (
@@ -92,7 +69,15 @@ const createMockTransactionMonitor = (
 const createMockLogger = (): TransactionProgressLogger => {
   return {
     logProgress: mock(),
-    logReplacementSummary: mock()
+    logReplacementSummary: mock(),
+    logBlockChangeReplacement: mock(),
+    logMinedTransaction: mock(),
+    logNonceConsumed: mock(),
+    logRevertedTransactionRetry: mock(),
+    logBroadcastingTransaction: mock(),
+    logTransactionReplaced: mock(),
+    logInsufficientFundsError: mock(),
+    logReplacementFailure: mock()
   } as unknown as TransactionProgressLogger;
 };
 
@@ -140,9 +125,9 @@ describe('TransactionReplacer', () => {
 
         const mockLogger = createMockLogger();
         const replacer = new TransactionReplacer(
-          createMockWallet(),
+          createMockSigner(),
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -162,15 +147,15 @@ describe('TransactionReplacer', () => {
         statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
 
         const mockSigner = createMockSigner({
-          sendTransaction: mock(() =>
+          sendTransactionWithNonce: mock(() =>
             Promise.reject({ code: REPLACEMENT_UNDERPRICED_ERROR_CODE })
           )
         });
         const mockLogger = createMockLogger();
         const replacer = new TransactionReplacer(
-          createMockWallet({ signer: mockSigner }),
+          mockSigner,
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -189,13 +174,13 @@ describe('TransactionReplacer', () => {
         statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
 
         const mockSigner = createMockSigner({
-          sendTransaction: mock(() => Promise.reject(new Error('Unknown error')))
+          sendTransactionWithNonce: mock(() => Promise.reject(new Error('Unknown error')))
         });
         const mockLogger = createMockLogger();
         const replacer = new TransactionReplacer(
-          createMockWallet({ signer: mockSigner }),
+          mockSigner,
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -218,9 +203,9 @@ describe('TransactionReplacer', () => {
 
         const mockLogger = createMockLogger();
         const replacer = new TransactionReplacer(
-          createMockWallet(),
+          createMockSigner(),
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -240,11 +225,16 @@ describe('TransactionReplacer', () => {
         const statusMap = new Map<string, TransactionStatus>();
         statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
 
-        const mockSigner = createMockSigner();
+        const mockSendTransactionWithNonce = mock(() =>
+          Promise.resolve({ hash: '0xnewhash', nonce: 1 } as TransactionResponse)
+        );
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mockSendTransactionWithNonce
+        });
         const replacer = new TransactionReplacer(
-          createMockWallet({ signer: mockSigner }),
+          mockSigner,
           createMockBlockchainStateService({ maxFeePerGas: 500n, maxPriorityFeePerGas: 50n }),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           createMockLogger()
         );
@@ -253,11 +243,13 @@ describe('TransactionReplacer', () => {
 
         await replacer.replaceTransactions([tx], 1n, 101);
 
-        expect(mockSigner.sendTransaction).toHaveBeenCalledWith(
+        expect(mockSendTransactionWithNonce).toHaveBeenCalledWith(
           expect.objectContaining({
             maxFeePerGas: 1120n,
             maxPriorityFeePerGas: 112n
-          })
+          }),
+          1,
+          undefined
         );
       });
 
@@ -265,11 +257,16 @@ describe('TransactionReplacer', () => {
         const statusMap = new Map<string, TransactionStatus>();
         statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
 
-        const mockSigner = createMockSigner();
+        const mockSendTransactionWithNonce = mock(() =>
+          Promise.resolve({ hash: '0xnewhash', nonce: 1 } as TransactionResponse)
+        );
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mockSendTransactionWithNonce
+        });
         const replacer = new TransactionReplacer(
-          createMockWallet({ signer: mockSigner }),
+          mockSigner,
           createMockBlockchainStateService({ maxFeePerGas: 1000n, maxPriorityFeePerGas: 100n }),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           createMockLogger()
         );
@@ -278,11 +275,13 @@ describe('TransactionReplacer', () => {
 
         await replacer.replaceTransactions([tx], 1n, 101);
 
-        expect(mockSigner.sendTransaction).toHaveBeenCalledWith(
+        expect(mockSendTransactionWithNonce).toHaveBeenCalledWith(
           expect.objectContaining({
             maxFeePerGas: 1120n,
             maxPriorityFeePerGas: 112n
-          })
+          }),
+          1,
+          undefined
         );
       });
 
@@ -290,11 +289,16 @@ describe('TransactionReplacer', () => {
         const statusMap = new Map<string, TransactionStatus>();
         statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
 
-        const mockSigner = createMockSigner();
+        const mockSendTransactionWithNonce = mock(() =>
+          Promise.resolve({ hash: '0xnewhash', nonce: 1 } as TransactionResponse)
+        );
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mockSendTransactionWithNonce
+        });
         const replacer = new TransactionReplacer(
-          createMockWallet({ signer: mockSigner }),
+          mockSigner,
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           createMockLogger()
         );
@@ -303,28 +307,58 @@ describe('TransactionReplacer', () => {
 
         await replacer.replaceTransactions([tx], 1n, 101);
 
-        expect(mockSigner.sendTransaction).toHaveBeenCalledWith(
+        expect(mockSendTransactionWithNonce).toHaveBeenCalledWith(
           expect.objectContaining({
             maxFeePerGas: 1120n,
             maxPriorityFeePerGas: 112n
-          })
+          }),
+          1,
+          undefined
         );
       });
     });
 
     describe('error handling', () => {
+      it('logs clean message for INSUFFICIENT_FUNDS error and returns FAILED', async () => {
+        const statusMap = new Map<string, TransactionStatus>();
+        statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
+
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mock(() =>
+            Promise.reject({ code: INSUFFICIENT_FUNDS_ERROR_CODE })
+          )
+        });
+        const mockLogger = createMockLogger();
+        const replacer = new TransactionReplacer(
+          mockSigner,
+          createMockBlockchainStateService(),
+          '0xcontract',
+          createMockTransactionMonitor(statusMap),
+          mockLogger
+        );
+
+        const tx = createMockPendingTransaction(1, '0xhash1');
+
+        await replacer.replaceTransactions([tx], 1n, 101);
+
+        expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
+          expect.objectContaining({ failed: 1 })
+        );
+        expect(mockLogger.logInsufficientFundsError).toHaveBeenCalled();
+      });
+
       it('handles NONCE_EXPIRED by returning ALREADY_MINED', async () => {
         const statusMap = new Map<string, TransactionStatus>();
         statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
 
         const mockSigner = createMockSigner({
-          sendTransaction: mock(() => Promise.reject({ code: NONCE_EXPIRED_ERROR_CODE }))
+          sendTransactionWithNonce: mock(() => Promise.reject({ code: NONCE_EXPIRED_ERROR_CODE }))
         });
         const mockLogger = createMockLogger();
         const replacer = new TransactionReplacer(
-          createMockWallet({ signer: mockSigner }),
+          mockSigner,
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -333,10 +367,11 @@ describe('TransactionReplacer', () => {
 
         const result = await replacer.replaceTransactions([tx], 1n, 101);
 
+        expect(mockLogger.logNonceConsumed).toHaveBeenCalledWith(1);
         expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
           expect.objectContaining({ alreadyMined: 1 })
         );
-        expect(result).toHaveLength(0);
+        expect(result.pendingTransactions).toHaveLength(0);
       });
     });
 
@@ -350,9 +385,9 @@ describe('TransactionReplacer', () => {
 
         const mockLogger = createMockLogger();
         const replacer = new TransactionReplacer(
-          createMockWallet(),
+          createMockSigner(),
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -361,8 +396,44 @@ describe('TransactionReplacer', () => {
 
         const result = await replacer.replaceTransactions([tx], 1n, 101);
 
-        expect(result).toHaveLength(0);
-        expect(mockLogger.logProgress).toHaveBeenCalledWith(1, 0);
+        expect(result.pendingTransactions).toHaveLength(0);
+        expect(mockLogger.logProgress).not.toHaveBeenCalled();
+      });
+
+      it('does not log progress when all transactions are already mined', async () => {
+        const statusMap = new Map<string, TransactionStatus>();
+        statusMap.set('0xhash1', {
+          type: TransactionStatusType.MINED,
+          receipt: { hash: '0xhash1', status: 1 } as never
+        });
+        statusMap.set('0xhash2', {
+          type: TransactionStatusType.MINED,
+          receipt: { hash: '0xhash2', status: 1 } as never
+        });
+        statusMap.set('0xhash3', {
+          type: TransactionStatusType.MINED_BY_COMPETITOR
+        });
+
+        const mockLogger = createMockLogger();
+        const replacer = new TransactionReplacer(
+          createMockSigner(),
+          createMockBlockchainStateService(),
+          '0xcontract',
+          createMockTransactionMonitor(statusMap),
+          mockLogger
+        );
+
+        const tx1 = createMockPendingTransaction(1, '0xhash1');
+        const tx2 = createMockPendingTransaction(2, '0xhash2');
+        const tx3 = createMockPendingTransaction(3, '0xhash3');
+
+        const result = await replacer.replaceTransactions([tx1, tx2, tx3], 1n, 101);
+
+        expect(result.pendingTransactions).toHaveLength(0);
+        expect(mockLogger.logProgress).not.toHaveBeenCalled();
+        expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
+          expect.objectContaining({ alreadyMined: 3 })
+        );
       });
 
       it('categorizes MINED_BY_COMPETITOR as already mined', async () => {
@@ -371,9 +442,9 @@ describe('TransactionReplacer', () => {
 
         const mockLogger = createMockLogger();
         const replacer = new TransactionReplacer(
-          createMockWallet(),
+          createMockSigner(),
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -382,7 +453,8 @@ describe('TransactionReplacer', () => {
 
         const result = await replacer.replaceTransactions([tx], 1n, 101);
 
-        expect(result).toHaveLength(0);
+        expect(result.pendingTransactions).toHaveLength(0);
+        expect(mockLogger.logNonceConsumed).toHaveBeenCalledWith(1);
         expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
           expect.objectContaining({ alreadyMined: 1 })
         );
@@ -395,12 +467,17 @@ describe('TransactionReplacer', () => {
           receipt: { hash: '0xhash1', status: 0 } as never
         });
 
-        const mockWallet = createMockWallet();
+        const mockSendTransaction = mock(() =>
+          Promise.resolve({ hash: '0xnewhash', nonce: 1 } as TransactionResponse)
+        );
+        const mockSigner = createMockSigner({
+          sendTransaction: mockSendTransaction
+        });
         const mockLogger = createMockLogger();
         const replacer = new TransactionReplacer(
-          mockWallet,
+          mockSigner,
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -409,19 +486,24 @@ describe('TransactionReplacer', () => {
 
         await replacer.replaceTransactions([tx], 1n, 101);
 
-        expect(mockWallet.sendTransaction).toHaveBeenCalled();
+        expect(mockSendTransaction).toHaveBeenCalled();
       });
 
       it('categorizes PENDING transactions and replaces with same nonce', async () => {
         const statusMap = new Map<string, TransactionStatus>();
         statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
 
-        const mockSigner = createMockSigner();
+        const mockSendTransactionWithNonce = mock(() =>
+          Promise.resolve({ hash: '0xnewhash', nonce: 1 } as TransactionResponse)
+        );
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mockSendTransactionWithNonce
+        });
         const mockLogger = createMockLogger();
         const replacer = new TransactionReplacer(
-          createMockWallet({ signer: mockSigner }),
+          mockSigner,
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           mockLogger
         );
@@ -430,9 +512,37 @@ describe('TransactionReplacer', () => {
 
         await replacer.replaceTransactions([tx], 1n, 101);
 
-        expect(mockSigner.sendTransaction).toHaveBeenCalledWith(
-          expect.objectContaining({ nonce: 1 })
+        expect(mockSendTransactionWithNonce).toHaveBeenCalledWith(expect.anything(), 1, undefined);
+      });
+    });
+
+    describe('categorizeTransactionsByStatus error handling', () => {
+      it('treats transaction as PENDING when getTransactionStatus throws', async () => {
+        const mockMonitor = {
+          getTransactionStatus: mock(() => Promise.reject(new Error('RPC error')))
+        } as unknown as TransactionMonitor;
+
+        const mockSendTransactionWithNonce = mock(() =>
+          Promise.resolve({ hash: '0xnewhash', nonce: 1 } as TransactionResponse)
         );
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mockSendTransactionWithNonce
+        });
+        const mockLogger = createMockLogger();
+        const replacer = new TransactionReplacer(
+          mockSigner,
+          createMockBlockchainStateService(),
+          '0xcontract',
+          mockMonitor,
+          mockLogger
+        );
+
+        const tx = createMockPendingTransaction(1, '0xhash1');
+
+        const result = await replacer.replaceTransactions([tx], 1n, 101);
+
+        expect(result.pendingTransactions).toHaveLength(1);
+        expect(mockSendTransactionWithNonce).toHaveBeenCalled();
       });
     });
 
@@ -446,9 +556,9 @@ describe('TransactionReplacer', () => {
         });
 
         const replacer = new TransactionReplacer(
-          createMockWallet(),
+          createMockSigner(),
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           createMockLogger()
         );
@@ -458,8 +568,8 @@ describe('TransactionReplacer', () => {
 
         const result = await replacer.replaceTransactions([tx1, tx2], 1n, 101);
 
-        expect(result).toHaveLength(1);
-        expect(result[0]!.nonce).toBe(1);
+        expect(result.pendingTransactions).toHaveLength(1);
+        expect(result.pendingTransactions[0]!.nonce).toBe(1);
       });
 
       it('excludes already mined transactions from result', async () => {
@@ -470,9 +580,9 @@ describe('TransactionReplacer', () => {
         });
 
         const replacer = new TransactionReplacer(
-          createMockWallet(),
+          createMockSigner(),
           createMockBlockchainStateService(),
-          createMockTransactionBroadcaster(),
+          '0xcontract',
           createMockTransactionMonitor(statusMap),
           createMockLogger()
         );
@@ -481,7 +591,252 @@ describe('TransactionReplacer', () => {
 
         const result = await replacer.replaceTransactions([tx], 1n, 101);
 
-        expect(result).toHaveLength(0);
+        expect(result.pendingTransactions).toHaveLength(0);
+      });
+    });
+
+    describe('sequential Ledger pre-check', () => {
+      it('skips Ledger prompt when transaction mined before sequential replacement', async () => {
+        const tx1 = createMockPendingTransaction(1, '0xhash1');
+        const tx2 = createMockPendingTransaction(2, '0xhash2');
+
+        let callCount = 0;
+        const mockGetTransactionStatus = mock((hash: string) => {
+          callCount++;
+          if (hash === '0xhash1' && callCount <= 2) {
+            return Promise.resolve({ type: TransactionStatusType.PENDING } as TransactionStatus);
+          }
+          if (hash === '0xhash1' && callCount > 2) {
+            return Promise.resolve({
+              type: TransactionStatusType.MINED,
+              receipt: { hash: '0xhash1', status: 1 }
+            } as TransactionStatus);
+          }
+          if (hash === '0xhash2') {
+            return Promise.resolve({ type: TransactionStatusType.PENDING } as TransactionStatus);
+          }
+          return Promise.resolve({ type: TransactionStatusType.PENDING } as TransactionStatus);
+        });
+
+        const mockMonitor = {
+          getTransactionStatus: mockGetTransactionStatus
+        } as unknown as TransactionMonitor;
+
+        const mockSendTransactionWithNonce = mock(() =>
+          Promise.resolve({ hash: '0xnewhash', nonce: 2 } as TransactionResponse)
+        );
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mockSendTransactionWithNonce
+        });
+        (mockSigner as { capabilities: { supportsParallelSigning: boolean } }).capabilities = {
+          supportsParallelSigning: false
+        };
+
+        const mockLogger = createMockLogger();
+        const replacer = new TransactionReplacer(
+          mockSigner,
+          createMockBlockchainStateService(),
+          '0xcontract',
+          mockMonitor,
+          mockLogger
+        );
+
+        await replacer.replaceTransactions([tx1, tx2], 1n, 101);
+
+        expect(mockSendTransactionWithNonce).toHaveBeenCalledTimes(1);
+        expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
+          expect.objectContaining({ alreadyMined: 1 })
+        );
+      });
+
+      it('skips Ledger prompt when nonce consumed by competitor', async () => {
+        const tx1 = createMockPendingTransaction(1, '0xhash1');
+        const tx2 = createMockPendingTransaction(2, '0xhash2');
+
+        let callCount = 0;
+        const mockGetTransactionStatus = mock((hash: string) => {
+          callCount++;
+          if (hash === '0xhash1' && callCount <= 2) {
+            return Promise.resolve({ type: TransactionStatusType.PENDING } as TransactionStatus);
+          }
+          if (hash === '0xhash1' && callCount > 2) {
+            return Promise.resolve({
+              type: TransactionStatusType.MINED_BY_COMPETITOR
+            } as TransactionStatus);
+          }
+          if (hash === '0xhash2') {
+            return Promise.resolve({ type: TransactionStatusType.PENDING } as TransactionStatus);
+          }
+          return Promise.resolve({ type: TransactionStatusType.PENDING } as TransactionStatus);
+        });
+
+        const mockMonitor = {
+          getTransactionStatus: mockGetTransactionStatus
+        } as unknown as TransactionMonitor;
+
+        const mockSendTransactionWithNonce = mock(() =>
+          Promise.resolve({ hash: '0xnewhash', nonce: 2 } as TransactionResponse)
+        );
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mockSendTransactionWithNonce
+        });
+        (mockSigner as { capabilities: { supportsParallelSigning: boolean } }).capabilities = {
+          supportsParallelSigning: false
+        };
+
+        const mockLogger = createMockLogger();
+        const replacer = new TransactionReplacer(
+          mockSigner,
+          createMockBlockchainStateService(),
+          '0xcontract',
+          mockMonitor,
+          mockLogger
+        );
+
+        await replacer.replaceTransactions([tx1, tx2], 1n, 101);
+
+        expect(mockSendTransactionWithNonce).toHaveBeenCalledTimes(1);
+        expect(mockLogger.logNonceConsumed).toHaveBeenCalledWith(1);
+      });
+
+      it('proceeds with replacement when pre-check throws', async () => {
+        const tx1 = createMockPendingTransaction(1, '0xhash1');
+
+        let callCount = 0;
+        const mockGetTransactionStatus = mock(() => {
+          callCount++;
+          if (callCount === 1) {
+            return Promise.resolve({ type: TransactionStatusType.PENDING } as TransactionStatus);
+          }
+          return Promise.reject(new Error('RPC error'));
+        });
+
+        const mockMonitor = {
+          getTransactionStatus: mockGetTransactionStatus
+        } as unknown as TransactionMonitor;
+
+        const mockSendTransactionWithNonce = mock(() =>
+          Promise.resolve({ hash: '0xnewhash', nonce: 1 } as TransactionResponse)
+        );
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mockSendTransactionWithNonce
+        });
+        (mockSigner as { capabilities: { supportsParallelSigning: boolean } }).capabilities = {
+          supportsParallelSigning: false
+        };
+
+        const replacer = new TransactionReplacer(
+          mockSigner,
+          createMockBlockchainStateService(),
+          '0xcontract',
+          mockMonitor,
+          createMockLogger()
+        );
+
+        await replacer.replaceTransactions([tx1], 1n, 101);
+
+        expect(mockSendTransactionWithNonce).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('user rejection handling', () => {
+      it('returns USER_REJECTED status for pending transaction replacement', async () => {
+        const statusMap = new Map<string, TransactionStatus>();
+        statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
+
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mock(() => Promise.reject(new UserRefusedOnDevice()))
+        });
+        const mockLogger = createMockLogger();
+        const replacer = new TransactionReplacer(
+          mockSigner,
+          createMockBlockchainStateService(),
+          '0xcontract',
+          createMockTransactionMonitor(statusMap),
+          mockLogger
+        );
+
+        const tx = createMockPendingTransaction(1, '0xhash1');
+
+        await replacer.replaceTransactions([tx], 1n, 101);
+
+        expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
+          expect.objectContaining({ userRejected: 1 })
+        );
+      });
+
+      it('excludes USER_REJECTED transactions from pendingTransactions', async () => {
+        const statusMap = new Map<string, TransactionStatus>();
+        statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
+
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mock(() => Promise.reject(new UserRefusedOnDevice()))
+        });
+        const replacer = new TransactionReplacer(
+          mockSigner,
+          createMockBlockchainStateService(),
+          '0xcontract',
+          createMockTransactionMonitor(statusMap),
+          createMockLogger()
+        );
+
+        const tx = createMockPendingTransaction(1, '0xhash1');
+
+        const result = await replacer.replaceTransactions([tx], 1n, 101);
+
+        expect(result.pendingTransactions).toHaveLength(0);
+      });
+
+      it('returns rejected validator pubkeys', async () => {
+        const statusMap = new Map<string, TransactionStatus>();
+        statusMap.set('0xhash1', { type: TransactionStatusType.PENDING });
+
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mock(() => Promise.reject(new UserRefusedOnDevice()))
+        });
+        const replacer = new TransactionReplacer(
+          mockSigner,
+          createMockBlockchainStateService(),
+          '0xcontract',
+          createMockTransactionMonitor(statusMap),
+          createMockLogger()
+        );
+
+        const tx = createMockPendingTransaction(1, '0xhash1');
+
+        const result = await replacer.replaceTransactions([tx], 1n, 101);
+
+        expect(result.rejectedValidatorPubkeys).toHaveLength(1);
+      });
+
+      it('returns USER_REJECTED for reverted transaction replacement rejection', async () => {
+        const statusMap = new Map<string, TransactionStatus>();
+        statusMap.set('0xhash1', {
+          type: TransactionStatusType.REVERTED,
+          receipt: { hash: '0xhash1', status: 0 } as never
+        });
+
+        const mockSigner = createMockSigner({
+          sendTransaction: mock(() => Promise.reject(new UserRefusedOnDevice()))
+        });
+        const mockLogger = createMockLogger();
+        const replacer = new TransactionReplacer(
+          mockSigner,
+          createMockBlockchainStateService(),
+          '0xcontract',
+          createMockTransactionMonitor(statusMap),
+          mockLogger
+        );
+
+        const tx = createMockPendingTransaction(1, '0xhash1');
+
+        const result = await replacer.replaceTransactions([tx], 1n, 101);
+
+        expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
+          expect.objectContaining({ userRejected: 1 })
+        );
+        expect(result.pendingTransactions).toHaveLength(0);
+        expect(result.rejectedValidatorPubkeys).toHaveLength(1);
       });
     });
   });
