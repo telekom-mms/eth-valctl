@@ -171,6 +171,9 @@ export class TransactionBatchOrchestrator {
    * Retry pending transactions until they succeed or max retries exceeded
    *
    * Monitors transactions and replaces them with updated fees when blocks change.
+   * Each replacement bumps fees by 12%, so the budget also serves as cost protection.
+   * Network errors (block number or contract fee fetch failures) consume retry budget
+   * to prevent infinite loops on degraded networks.
    * Returns transactions that failed to complete after all retry attempts.
    *
    * @param initialTransactions - Transactions to retry
