@@ -8,17 +8,15 @@ import { Command } from 'commander';
 
 import type { GlobalCliOptions, ValidatorOption } from '../model/commander';
 import { exit } from '../service/domain/exit';
-import { parseAndValidateValidatorPubKeys } from '../service/validation/cli';
+import { parseAndValidateValidatorPubKeys } from './validation/cli';
 
 const exitCommand = new Command();
-
-const validatorOptionName = 'validator';
 
 exitCommand
   .name('exit')
   .description('Exit one or many validators')
   .requiredOption(
-    `-v, --${validatorOptionName} <validatorPubkey...>`,
+    `-v, --validator <validatorPubkey...>`,
     'Space separated list of validator pubkeys which will be exited',
     parseAndValidateValidatorPubKeys
   )

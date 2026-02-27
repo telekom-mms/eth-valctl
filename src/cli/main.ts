@@ -14,22 +14,21 @@ import { Command, Option } from 'commander';
 import packageJson from '../../package.json';
 import { DISCLAIMER_INFO } from '../constants/logging';
 import type { GlobalCliOptions } from '../model/commander';
+import { consolidateCommand } from './consolidate';
+import { exitCommand } from './exit';
+import { switchWithdrawalCredentialTypeCommand } from './switch';
 import {
   parseAndValidateMaxNumberOfRequestsPerBlock,
   parseAndValidateNodeUrl,
   validateNetwork
-} from '../service/validation/cli';
-import { consolidateCommand } from './consolidate';
-import { exitCommand } from './exit';
-import { switchWithdrawalCredentialTypeCommand } from './switch';
+} from './validation/cli';
 import { withdrawCommand } from './withdraw';
 
-const program = new Command();
+process.on('unhandledRejection', (reason) => {
+  console.error(chalk.red('Unhandled promise rejection:'), reason);
+});
 
-const networkOptionName = 'network';
-const jsonRpcOptionName = 'json-rpc-url';
-const beaconApiOptionName = 'beacon-api-url';
-const maxRequestsPerBlockOptionName = 'max-requests-per-block';
+const program = new Command();
 
 program
   .name('eth-valctl')
@@ -37,7 +36,7 @@ program
   .version(packageJson.version)
   .addOption(
     new Option(
-      `-n, --${networkOptionName} <network>`,
+      `-n, --network <network>`,
       'Ethereum network which will be used for request processing'
     )
       .choices(['mainnet', 'hoodi', 'sepolia', 'kurtosis_devnet'])
@@ -45,22 +44,27 @@ program
       .default('mainnet')
   )
   .requiredOption(
-    `-r, --${jsonRpcOptionName} <jsonRpcUrl>`,
+    `-r, --json-rpc-url <jsonRpcUrl>`,
     'Json rpc url which is used to connect to the defined network',
     parseAndValidateNodeUrl,
     'http://localhost:8545'
   )
   .requiredOption(
-    `-b, --${beaconApiOptionName} <beaconApiUrl>`,
+    `-b, --beacon-api-url <beaconApiUrl>`,
     'Beacon api url which is used for pre transaction checks',
     parseAndValidateNodeUrl,
     'http://localhost:5052'
   )
   .requiredOption(
-    `-m, --${maxRequestsPerBlockOptionName} <number>`,
+    `-m, --max-requests-per-block <number>`,
     'Max. number of sent execution layer requests per block',
     parseAndValidateMaxNumberOfRequestsPerBlock,
     10
+  )
+  .option(
+    `-l, --ledger`,
+    'Use Ledger hardware wallet for transaction signing (requires device connection)',
+    false
   )
   .hook('preAction', (thisCommand) => {
     console.log(chalk.yellow(DISCLAIMER_INFO));
@@ -72,4 +76,7 @@ program
   .addCommand(withdrawCommand)
   .addCommand(exitCommand);
 
-program.parseAsync(process.argv).then(() => {});
+program.parseAsync(process.argv).catch((error: unknown) => {
+  console.error(chalk.red('Fatal error:'), error);
+  process.exit(1);
+});

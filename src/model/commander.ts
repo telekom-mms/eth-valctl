@@ -11,6 +11,7 @@ export interface ValidatorOption {
 export interface ConsolidationOptions {
   source: string[];
   target: string;
+  skipTargetOwnershipCheck: boolean;
 }
 
 /**
@@ -28,4 +29,5 @@ export interface GlobalCliOptions {
   jsonRpcUrl: string;
   beaconApiUrl: string;
   maxRequestsPerBlock: number;
+  ledger: boolean;
 }

@@ -18,8 +18,14 @@ export class TransactionMonitor {
    * Creates a transaction monitor
    *
    * @param provider - JSON-RPC provider for blockchain interaction
+   * @param receiptTimeoutMs - Maximum time to poll for a receipt before considering pending
+   * @param receiptPollIntervalMs - Interval between receipt poll attempts
    */
-  constructor(private readonly provider: JsonRpcProvider) {}
+  constructor(
+    private readonly provider: JsonRpcProvider,
+    private readonly receiptTimeoutMs = serviceConstants.TRANSACTION_RECEIPT_TIMEOUT_MS,
+    private readonly receiptPollIntervalMs = serviceConstants.TRANSACTION_RECEIPT_POLL_INTERVAL_MS
+  ) {}
 
   /**
    * Wait for transaction receipts and categorize results
@@ -59,36 +65,36 @@ export class TransactionMonitor {
   private async checkTransactionReceipt(
     pendingTransaction: PendingTransactionInfo
   ): Promise<ReceiptCheckResult> {
-    try {
-      const receipt = await pendingTransaction.response.wait(
-        1,
-        serviceConstants.TRANSACTION_RECEIPT_TIMEOUT_MS
-      );
+    const deadline = Date.now() + this.receiptTimeoutMs;
 
-      if (receipt && receipt.status === 1) {
-        return {
-          pendingTransaction,
-          status: { type: TransactionStatusType.MINED, receipt }
-        };
+    while (Date.now() < deadline) {
+      try {
+        const receipt = await this.provider.getTransactionReceipt(pendingTransaction.response.hash);
+
+        if (receipt && receipt.status === 1) {
+          return {
+            pendingTransaction,
+            status: { type: TransactionStatusType.MINED, receipt }
+          };
+        }
+
+        if (receipt && receipt.status === 0) {
+          return {
+            pendingTransaction,
+            status: { type: TransactionStatusType.REVERTED, receipt }
+          };
+        }
+      } catch {
+        // Network error — continue polling until timeout
       }
 
-      if (receipt && receipt.status === 0) {
-        return {
-          pendingTransaction,
-          status: { type: TransactionStatusType.REVERTED, receipt }
-        };
-      }
-
-      return {
-        pendingTransaction,
-        status: { type: TransactionStatusType.PENDING }
-      };
-    } catch {
-      return {
-        pendingTransaction,
-        status: { type: TransactionStatusType.PENDING }
-      };
+      await new Promise((resolve) => setTimeout(resolve, this.receiptPollIntervalMs));
     }
+
+    return {
+      pendingTransaction,
+      status: { type: TransactionStatusType.PENDING }
+    };
   }
 
   /**
@@ -107,23 +113,27 @@ export class TransactionMonitor {
     walletAddress?: string,
     transactionNonce?: number
   ): Promise<TransactionStatus> {
-    const receipt = await this.provider.getTransactionReceipt(transactionHash);
+    try {
+      const receipt = await this.provider.getTransactionReceipt(transactionHash);
 
-    if (receipt) {
-      if (receipt.status === 1) {
-        return { type: TransactionStatusType.MINED, receipt };
+      if (receipt) {
+        if (receipt.status === 1) {
+          return { type: TransactionStatusType.MINED, receipt };
+        }
+        return { type: TransactionStatusType.REVERTED, receipt };
       }
-      return { type: TransactionStatusType.REVERTED, receipt };
-    }
 
-    if (walletAddress !== undefined && transactionNonce !== undefined) {
-      const currentNonce = await this.provider.getTransactionCount(walletAddress, 'latest');
-      if (currentNonce > transactionNonce) {
-        return { type: TransactionStatusType.MINED_BY_COMPETITOR };
+      if (walletAddress !== undefined && transactionNonce !== undefined) {
+        const currentNonce = await this.provider.getTransactionCount(walletAddress, 'latest');
+        if (currentNonce > transactionNonce) {
+          return { type: TransactionStatusType.MINED_BY_COMPETITOR };
+        }
       }
-    }
 
-    return { type: TransactionStatusType.PENDING };
+      return { type: TransactionStatusType.PENDING };
+    } catch {
+      return { type: TransactionStatusType.PENDING };
+    }
   }
 
   /**
@@ -137,11 +147,15 @@ export class TransactionMonitor {
    */
   private shouldRetryTransaction(result: ReceiptCheckResult): boolean {
     if (result.status.type === TransactionStatusType.MINED) {
-      console.log(chalk.green(logging.MINED_EL_REQUEST_INFO, result.status.receipt.hash));
+      console.log(
+        chalk.green(
+          logging.MINED_EL_REQUEST_WITH_BLOCK_INFO(
+            result.status.receipt.hash,
+            result.status.receipt.blockNumber
+          )
+        )
+      );
       return false;
-    }
-    if (result.status.type === TransactionStatusType.REVERTED) {
-      console.log(chalk.red(logging.EL_REQUEST_REVERTED_INFO(result.status.receipt.hash)));
     }
     return true;
   }

@@ -11,29 +11,36 @@ import { consolidate } from '../service/domain/consolidate';
 import {
   parseAndValidateValidatorPubKey,
   parseAndValidateValidatorPubKeys
-} from '../service/validation/cli';
+} from './validation/cli';
 
 const consolidateCommand = new Command();
-
-const sourceValidatorOptionName = 'source';
-const targetValidatorOptionName = 'target';
 
 consolidateCommand
   .name('consolidate')
   .description('Consolidate one or many source validators into one target validator')
   .requiredOption(
-    `-s, --${sourceValidatorOptionName} <validatorPubkey...>`,
+    `-s, --source <validatorPubkey...>`,
     'Space separated list of validator pubkeys which will be consolidated into the target validator',
     parseAndValidateValidatorPubKeys
   )
   .requiredOption(
-    `-t, --${targetValidatorOptionName} <validatorPubkey>`,
+    `-t, --target <validatorPubkey>`,
     'Target validator pubkey',
     parseAndValidateValidatorPubKey
   )
+  .option(
+    '--skip-target-ownership-check',
+    'Skip ownership validation for the target validator',
+    false
+  )
   .action(async (options: ConsolidationOptions, command) => {
     const globalOptions: GlobalCliOptions = command.parent.opts();
-    await consolidate(globalOptions, options.source, options.target);
+    await consolidate(
+      globalOptions,
+      options.source,
+      options.target,
+      options.skipTargetOwnershipCheck
+    );
   });
 
 export { consolidateCommand };

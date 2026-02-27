@@ -2,10 +2,11 @@ import { parseUnits } from 'ethers';
 
 import { PREFIX_0x } from '../../constants/application';
 import type { GlobalCliOptions } from '../../model/commander';
-import { networkConfig } from '../../network-config';
-import { checkWithdrawalCredentialType } from '../validation/pre-request';
-import { createEthereumConnection } from './ethereum';
-import { sendExecutionLayerRequests } from './request/send-request';
+import { executeRequestPipeline } from './execution-layer-request-pipeline';
+import {
+  checkCompoundingCredentials,
+  checkWithdrawalAddressOwnership
+} from './pre-request-validation';
 
 /**
  * Withdraw the provided amount from one or many validators / Exit one or many validators
@@ -19,21 +20,22 @@ export async function withdraw(
   validatorPubkeys: string[],
   amount: number
 ): Promise<void> {
-  if (amount > 0) {
-    checkWithdrawalCredentialType(globalOptions.beaconApiUrl, validatorPubkeys);
-  }
-  const ethereumConnection = await createEthereumConnection(globalOptions.jsonRpcUrl);
-  const withdrawalRequestData: string[] = [];
-  for (const validator of validatorPubkeys) {
-    withdrawalRequestData.push(createWithdrawRequestData(validator, amount));
-  }
-  await sendExecutionLayerRequests(
-    networkConfig[globalOptions.network]!.withdrawalContractAddress,
-    ethereumConnection.provider,
-    ethereumConnection.wallet,
-    withdrawalRequestData,
-    globalOptions.maxRequestsPerBlock
-  );
+  await executeRequestPipeline({
+    globalOptions,
+    validatorPubkeys,
+    encodeRequestData: (pubkey) => createWithdrawRequestData(pubkey, amount),
+    resolveContractAddress: (config) => config.withdrawalContractAddress,
+    validate: async (connection) => {
+      if (amount > 0) {
+        await checkCompoundingCredentials(globalOptions.beaconApiUrl, validatorPubkeys);
+      }
+      await checkWithdrawalAddressOwnership(
+        globalOptions.beaconApiUrl,
+        connection.signer.address,
+        validatorPubkeys
+      );
+    }
+  });
 }
 
 /**

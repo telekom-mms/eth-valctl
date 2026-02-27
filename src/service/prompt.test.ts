@@ -22,7 +22,7 @@ describe('Prompt Service', () => {
     });
 
     it('returns complex secret with special characters', async () => {
-      const complexSecret = 'aB3$%^&*()_+{}|:<>?~`-=[]\\;\',./';
+      const complexSecret = "aB3$%^&*()_+{}|:<>?~`-=[]\\;',./";
       Prompts.inject([complexSecret]);
 
       const result = await promptSecret('Enter secret:');
