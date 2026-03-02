@@ -47,7 +47,7 @@
   "license": "MIT",
   "name": "eth-valctl",
   "overrides": {
-    "axios": "1.13.5",
+    "axios": "1.13.6",
     "node-hid": "3.3.0"
   },
   "scripts": {
