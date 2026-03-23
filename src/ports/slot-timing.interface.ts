@@ -1,4 +1,4 @@
-import type { SlotPosition } from '../model/ethereum';
+import type { Disposable, SlotPosition } from '../model/ethereum';
 
 /**
  * Service interface for beacon chain slot timing operations
@@ -6,7 +6,7 @@ import type { SlotPosition } from '../model/ethereum';
  * Provides slot position calculations and timing-aware broadcasting
  * to prevent transactions from being affected by slot boundary fee changes.
  */
-export interface ISlotTimingService {
+export interface ISlotTimingService extends Disposable {
   /**
    * Calculate the current slot position within the beacon chain
    *

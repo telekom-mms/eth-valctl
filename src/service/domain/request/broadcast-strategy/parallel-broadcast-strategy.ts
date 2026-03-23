@@ -21,6 +21,11 @@ export class ParallelBroadcastStrategy implements IBroadcastStrategy {
   constructor(private readonly logger: TransactionProgressLogger) {}
 
   /**
+   * No-op disposal — parallel strategy holds no persistent resources
+   */
+  async dispose(): Promise<void> {}
+
+  /**
    * Broadcast all transactions concurrently
    *
    * Sends all transactions in parallel using Promise.all for maximum throughput.

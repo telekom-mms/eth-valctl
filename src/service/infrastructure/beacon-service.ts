@@ -60,6 +60,11 @@ export class BeaconService implements ISlotTimingService {
   }
 
   /**
+   * No-op disposal — beacon service holds no persistent resources
+   */
+  async dispose(): Promise<void> {}
+
+  /**
    * Calculate the current slot position within the beacon chain
    *
    * @returns Current slot, position within slot, and time until next slot

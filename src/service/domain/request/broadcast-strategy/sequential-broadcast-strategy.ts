@@ -44,6 +44,13 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
   ) {}
 
   /**
+   * Dispose the slot timing service
+   */
+  async dispose(): Promise<void> {
+    await this.slotTimingService.dispose();
+  }
+
+  /**
    * Broadcast transactions sequentially with slot-aware timing
    *
    * Processes each transaction one at a time, waiting for optimal slot position
