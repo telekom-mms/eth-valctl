@@ -136,6 +136,7 @@ bin
 .claude/exports/**/*
 .claude/reminders/**/*
 dev
+tickets/**/*
 
 # other
 internal-docs/**/*
