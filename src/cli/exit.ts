@@ -17,7 +17,7 @@ exitCommand
   .description('Exit one or many validators')
   .requiredOption(
     `-v, --validator <validatorPubkey...>`,
-    'Space separated list of validator pubkeys which will be exited',
+    'Validator pubkeys (space separated) or path to a file containing one pubkey per line',
     parseAndValidateValidatorPubKeys
   )
   .action(async (options: ValidatorOption, command) => {

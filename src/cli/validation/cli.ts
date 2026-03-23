@@ -1,7 +1,7 @@
 import { PublicKey } from '@chainsafe/blst';
 import chalk from 'chalk';
 import { JsonRpcProvider } from 'ethers';
-import { exit } from 'process';
+import { existsSync, readFileSync, statSync } from 'fs';
 
 import {
   ECONNREFUSED_ERROR_CODE,
@@ -11,6 +11,8 @@ import {
 } from '../../constants/application';
 import * as logging from '../../constants/logging';
 import { networkConfig } from '../../network-config';
+
+const PUBKEY_PATTERN = /^(0x)?[a-fA-F0-9]{96}$/;
 
 /**
  * Check if json rpc url is correctly formatted
@@ -58,22 +60,32 @@ export function parseAndValidateValidatorPubKey(validatorPubKey: string): string
 }
 
 /**
- * Check if provided validator pubkeys are valid
+ * Parse and validate validator pubkeys from inline arguments or a file
  *
- * @param validatorPubKey - The provided validator pubkey
- * @param previous - The previous provided validator pubkeys
- * @returns The validator pubkeys
+ * Auto-detects whether the argument is a pubkey or a file path:
+ * 1. If it matches the pubkey pattern, validate as BLS pubkey
+ * 2. If it exists as a file, read pubkeys from it (one per line)
+ * 3. Otherwise, exit with an error
+ *
+ * @param value - A validator pubkey or path to a file containing pubkeys
+ * @param previous - Previously accumulated pubkeys from prior arguments
+ * @returns Accumulated array of validated pubkeys
  */
-export function parseAndValidateValidatorPubKeys(
-  validatorPubKey: string,
-  previous: string[] = []
-): string[] {
-  try {
-    PublicKey.fromHex(validatorPubKey).keyValidate();
-    return [...previous, addPubKeyPrefix(validatorPubKey)];
-  } catch {
-    exitWithValidationError(logging.INVALID_VALIDATORS_PUBKEY_ERROR);
+export function parseAndValidateValidatorPubKeys(value: string, previous: string[] = []): string[] {
+  if (PUBKEY_PATTERN.test(value)) {
+    try {
+      PublicKey.fromHex(value).keyValidate();
+      return [...previous, addPubKeyPrefix(value)];
+    } catch {
+      exitWithValidationError(logging.INVALID_VALIDATORS_PUBKEY_ERROR);
+    }
   }
+
+  if (existsSync(value) && statSync(value).isFile()) {
+    return [...previous, ...readPubkeysFromFile(value)];
+  }
+
+  exitWithValidationError(logging.INVALID_PUBKEY_OR_FILE_ERROR(value));
 }
 
 /**
@@ -106,7 +118,7 @@ export async function validateNetwork(jsonRpcUrl: string, network: string): Prom
       error.message.includes(ECONNREFUSED_ERROR_CODE)
     ) {
       console.error(chalk.red(logging.GENERAL_JSON_RPC_ERROR(jsonRpcUrl)), error.message);
-      exit(1);
+      process.exit(1);
     }
   }
 }
@@ -130,6 +142,37 @@ export function parseAndValidateMaxNumberOfRequestsPerBlock(maxNumberOfRequests:
 }
 
 /**
+ * Read and validate validator pubkeys from a file
+ *
+ * @param filePath - Path to file containing one pubkey per line
+ * @returns Array of validated pubkeys with 0x prefix
+ */
+function readPubkeysFromFile(filePath: string): string[] {
+  const content = readFileSync(filePath, 'utf-8');
+  const lines = content.split('\n');
+  const pubkeys: string[] = [];
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const trimmed = lines[lineIndex]!.trim();
+    if (trimmed === '' || trimmed.startsWith('#')) continue;
+
+    try {
+      PublicKey.fromHex(trimmed).keyValidate();
+      pubkeys.push(addPubKeyPrefix(trimmed));
+    } catch {
+      exitWithValidationError(logging.INVALID_PUBKEY_IN_FILE_ERROR(lineIndex + 1, filePath));
+    }
+  }
+
+  if (pubkeys.length === 0) {
+    exitWithValidationError(logging.EMPTY_PUBKEY_FILE_ERROR(filePath));
+  }
+
+  console.error(chalk.blue(logging.READ_PUBKEYS_FROM_FILE_INFO(pubkeys.length, filePath)));
+  return pubkeys;
+}
+
+/**
  * Add 0x suffix to validator pubkey if not present
  *
  * @param validatorPubKey - The validator pubkey to check
@@ -149,5 +192,5 @@ function addPubKeyPrefix(validatorPubKey: string): string {
  */
 function exitWithValidationError(message: string): never {
   console.error(chalk.red(message));
-  exit(1);
+  process.exit(1);
 }

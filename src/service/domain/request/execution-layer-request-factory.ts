@@ -1,5 +1,6 @@
 import type { JsonRpcProvider } from 'ethers';
 
+import type { Disposable } from '../../../model/ethereum';
 import type { IBroadcastStrategy } from '../../../ports/broadcast-strategy.interface';
 import type { ISigner } from '../../../ports/signer.interface';
 import { BeaconService } from '../../infrastructure/beacon-service';
@@ -9,29 +10,32 @@ import { EthereumStateService } from './ethereum-state-service';
 import { TransactionBatchOrchestrator } from './transaction-batch-orchestrator';
 import { TransactionBroadcaster } from './transaction-broadcaster';
 import { TransactionMonitor } from './transaction-monitor';
+import { TransactionPipeline } from './transaction-pipeline';
 import { TransactionProgressLogger } from './transaction-progress-logger';
 import { TransactionReplacer } from './transaction-replacer';
 
 /**
- * Create a fully-wired TransactionBatchOrchestrator with all dependencies
+ * Create a fully-wired TransactionPipeline with all dependencies
  *
  * Constructs the dependency graph: EthereumStateService, broadcast strategy selection,
  * TransactionBroadcaster, TransactionMonitor, TransactionReplacer, and orchestrator.
+ * Returns a pipeline that owns both the orchestrator and all disposable resources.
  *
  * @param systemContractAddress - System contract address for execution layer requests
  * @param jsonRpcProvider - JSON-RPC provider for blockchain interaction
  * @param signer - Signer for transaction signing (wallet or Ledger)
  * @param beaconApiUrl - Beacon API URL for slot-aware broadcasting (required for Ledger)
- * @returns Fully-wired orchestrator ready to send execution layer requests
+ * @returns Pipeline ready to send execution layer requests and dispose resources
  */
-export async function createTransactionBatchOrchestrator(
+export async function createTransactionPipeline(
   systemContractAddress: string,
   jsonRpcProvider: JsonRpcProvider,
   signer: ISigner,
   beaconApiUrl: string
-): Promise<TransactionBatchOrchestrator> {
+): Promise<TransactionPipeline> {
   const ethereumStateService = new EthereumStateService(jsonRpcProvider, systemContractAddress);
   const logger = new TransactionProgressLogger();
+  const disposables: Disposable[] = [];
 
   const broadcastStrategy = await createBroadcastStrategy(
     signer,
@@ -40,6 +44,7 @@ export async function createTransactionBatchOrchestrator(
     beaconApiUrl,
     logger
   );
+  disposables.push(broadcastStrategy);
 
   const transactionBroadcaster = new TransactionBroadcaster(
     signer,
@@ -59,13 +64,15 @@ export async function createTransactionBatchOrchestrator(
     logger
   );
 
-  return new TransactionBatchOrchestrator(
+  const orchestrator = new TransactionBatchOrchestrator(
     ethereumStateService,
     transactionBroadcaster,
     transactionMonitor,
     transactionReplacer,
     logger
   );
+
+  return new TransactionPipeline(orchestrator, disposables);
 }
 
 /**

@@ -37,20 +37,20 @@ describe('classifyLedgerError', () => {
     expect(result.recoverable).toBe(true);
   });
 
-  it('classifies disconnected device during operation', () => {
+  it('classifies disconnected device during operation as non-recoverable', () => {
     const error = new DisconnectedDeviceDuringOperation();
     const result = classifyLedgerError(error);
 
     expect(result.type).toBe('DISCONNECTED_DURING_OPERATION');
-    expect(result.recoverable).toBe(true);
+    expect(result.recoverable).toBe(false);
   });
 
-  it('classifies disconnected device as recoverable', () => {
+  it('classifies disconnected device as non-recoverable', () => {
     const error = new DisconnectedDevice();
     const result = classifyLedgerError(error);
 
     expect(result.type).toBe('DISCONNECTED');
-    expect(result.recoverable).toBe(true);
+    expect(result.recoverable).toBe(false);
   });
 
   it('classifies disconnected device as DISCONNECTED_DURING_OPERATION when duringSigning', () => {

@@ -20,7 +20,7 @@ Supports both private key signing (default) and Ledger hardware wallet signing v
 - Partially withdraw ETH from one or many validators
 - Exit one or many validators
 
-Validator pubkeys can be provided with or without `0x` prefix.
+Validator pubkeys can be provided as a space-separated list or via a file containing one pubkey per line. The tool auto-detects the input format. Pubkeys can be provided with or without `0x` prefix. Empty lines and lines starting with `#` are ignored in file input.
 
 Each command requires specific withdrawal credential types:
 
@@ -51,30 +51,30 @@ Print the help message with `--help`. This works also for every subcommand.
 
 ### Switch
 
-| Short Option | Long Option | Description                                                                                                |
-| ------------ | ----------- | ---------------------------------------------------------------------------------------------------------- |
-| -v           | --validator | Space separated list of validator pubkeys for which the withdrawal credential type will be changed to 0x02 |
+| Short Option | Long Option | Description                                                                                                                                        |
+| ------------ | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| -v           | --validator | Validator pubkeys (space-separated list or path to file with one pubkey per line) for which the withdrawal credential type will be changed to 0x02 |
 
 ### Consolidate
 
-| Short Option | Long Option                   | Description                                                                                    |
-| ------------ | ----------------------------- | ---------------------------------------------------------------------------------------------- |
-| -s           | --source                      | Space separated list of validator pubkeys which will be consolidated into the target validator |
-| -t           | --target                      | Target validator pubkey                                                                        |
-|              | --skip-target-ownership-check | Skip the check that sender owns the target validator                                           |
+| Short Option | Long Option                   | Description                                                                                                                             |
+| ------------ | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| -s           | --source                      | Validator pubkeys (space-separated list or path to file with one pubkey per line) which will be consolidated into the target validator  |
+| -t           | --target                      | Target validator pubkey                                                                                                                 |
+|              | --skip-target-ownership-check | Skip the check that sender owns the target validator                                                                                    |
 
 ### Withdraw
 
-| Short Option | Long Option | Description                                                                              |
-| ------------ | ----------- | ---------------------------------------------------------------------------------------- |
-| -v           | --validator | Space separated list of validator pubkeys for which the withdrawal will be executed      |
-| -a           | --amount    | Amount of ETH which will be withdrawn from the validator(s) (in ETH notation e.g. 0.001) |
+| Short Option | Long Option | Description                                                                                                                  |
+| ------------ | ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| -v           | --validator | Validator pubkeys (space-separated list or path to file with one pubkey per line) for which the withdrawal will be executed  |
+| -a           | --amount    | Amount of ETH which will be withdrawn from the validator(s) (in ETH notation e.g. 0.001)                                     |
 
 ### Exit
 
-| Short Option | Long Option | Description                                                    |
-| ------------ | ----------- | -------------------------------------------------------------- |
-| -v           | --validator | Space separated list of validator pubkeys which will be exited |
+| Short Option | Long Option | Description                                                                                             |
+| ------------ | ----------- | ------------------------------------------------------------------------------------------------------- |
+| -v           | --validator | Validator pubkeys (space-separated list or path to file with one pubkey per line) which will be exited  |
 
 ## Transaction handling
 
@@ -178,7 +178,11 @@ Helper scripts can be used on a local devnet but also on any other network.
 This can be used for testing the mass consolidation or mass withdrawal credential switch on a local devnet.
 
 ```bash
+# Print pubkeys to stdout
 ./create-public-key-list-for-consolidation.sh --beacon-node-url <BEACON_NODE_URL> --validator-start-index <VALIDATOR_START_INDEX> --validator-stop-index <VALIDATOR_STOP_INDEX>
+
+# Write pubkeys to a file (one per line), creates path if needed
+./create-public-key-list-for-consolidation.sh --beacon-node-url <BEACON_NODE_URL> --validator-start-index <VALIDATOR_START_INDEX> --validator-stop-index <VALIDATOR_STOP_INDEX> --file <OUTPUT_FILE>
 ```
 
 ### Get validator status for a range of validator indices

@@ -188,6 +188,13 @@ export interface SlotPosition {
   secondsUntilNextSlot: number;
 }
 
+/**
+ * Lifecycle contract for objects that hold resources requiring explicit cleanup
+ */
+export interface Disposable {
+  dispose(): Promise<void>;
+}
+
 export class BlockchainStateError extends Error {
   constructor(
     message: string,
