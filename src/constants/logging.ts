@@ -10,6 +10,14 @@ export const AMOUNT_TOO_LOW_ERROR = 'Amount too low. Minimum withdrawable amount
 export const INVALID_VALIDATOR_PUBKEY_ERROR = 'Supplied validator pubkey is not valid';
 export const INVALID_VALIDATORS_PUBKEY_ERROR =
   'One or many of the supplied validator pubkeys are not valid';
+export const INVALID_PUBKEY_OR_FILE_ERROR = (value: string): string =>
+  `'${value}' is neither a valid validator pubkey nor an existing file`;
+export const INVALID_PUBKEY_IN_FILE_ERROR = (lineNumber: number, filePath: string): string =>
+  `Invalid validator pubkey on line ${lineNumber} of ${filePath}`;
+export const EMPTY_PUBKEY_FILE_ERROR = (filePath: string): string =>
+  `File '${filePath}' contains no valid validator pubkeys`;
+export const READ_PUBKEYS_FROM_FILE_INFO = (count: number, filePath: string): string =>
+  `Read ${count} validator pubkeys from ${filePath}`;
 export const INVALID_NETWORK_ERROR = (network: string): string => `Invalid network: ${network}.`;
 export const WRONG_CONNECTED_NETWORK_ERROR = (
   network: string,

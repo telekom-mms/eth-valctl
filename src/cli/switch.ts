@@ -17,7 +17,7 @@ switchWithdrawalCredentialTypeCommand
   .description('Switch withdrawal credential type from 0x01 to 0x02 for one or many validators')
   .requiredOption(
     `-v, --validator <validatorPubkey...>`,
-    'Space separated list of validator pubkeys for which the withdrawal credential type will be changed to 0x02',
+    'Validator pubkeys (space separated) or path to a file containing one pubkey per line',
     parseAndValidateValidatorPubKeys
   )
   .action(async (options: ValidatorOption, command) => {

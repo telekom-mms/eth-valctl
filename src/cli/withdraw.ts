@@ -17,7 +17,7 @@ withdrawCommand
   .description('Partially withdraw ETH from one or many validators')
   .requiredOption(
     `-v, --validator <validatorPubkey...>`,
-    'Space separated list of validator pubkeys for which partially withdraws will be perfomed',
+    'Validator pubkeys (space separated) or path to a file containing one pubkey per line',
     parseAndValidateValidatorPubKeys
   )
   .requiredOption(
