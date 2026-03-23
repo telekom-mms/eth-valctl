@@ -88,7 +88,11 @@ export class TransactionMonitor {
         // Network error — continue polling until timeout
       }
 
-      await new Promise((resolve) => setTimeout(resolve, this.receiptPollIntervalMs));
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(this.receiptPollIntervalMs, remaining))
+      );
     }
 
     return {

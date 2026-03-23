@@ -225,6 +225,24 @@ describe('TransactionMonitor', () => {
       }
     });
 
+    it('does not overshoot deadline when poll interval exceeds remaining time', async () => {
+      const shortTimeout = 200;
+      const longPollInterval = 2000;
+      const mockProvider = createMockProvider({
+        getTransactionReceipt: mock(() => Promise.resolve(null))
+      });
+      const monitor = new TransactionMonitor(mockProvider, shortTimeout, longPollInterval);
+
+      const tx = createMockPendingTransaction(1, '0xhash');
+
+      const start = Date.now();
+      const results = await monitor.waitForTransactionReceipts([tx]);
+      const elapsed = Date.now() - start;
+
+      expect(results[0]!.status.type).toBe(TransactionStatusType.PENDING);
+      expect(elapsed).toBeLessThan(shortTimeout + longPollInterval);
+    });
+
     it('discovers receipt after multiple poll attempts', async () => {
       let callCount = 0;
       const receipt = createMockReceipt(1, '0xhash');
