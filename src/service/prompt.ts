@@ -3,6 +3,7 @@ import { formatEther, type JsonRpcProvider } from 'ethers';
 import { exit } from 'process';
 import Prompts from 'prompts';
 
+import { LEDGER_NAV_VALUE_NEXT, LEDGER_NAV_VALUE_PREV } from '../constants/application';
 import * as logging from '../constants/logging';
 import type { AddressSelectionResult } from '../model/ledger';
 import { LedgerAddressSelector } from './domain/signer/ledger-address-selector';
@@ -26,9 +27,6 @@ export async function promptSecret(message: string): Promise<string> {
   }
   return answer.value;
 }
-
-const NAVIGATION_NEXT = 'next';
-const NAVIGATION_PREV = 'prev';
 
 /**
  * Prompt user to select a Ledger address from paginated list
@@ -93,19 +91,19 @@ async function selectAddressInteractively(
       return exit(1);
     }
 
-    if (answer.selection === NAVIGATION_NEXT) {
+    if (answer.selection === LEDGER_NAV_VALUE_NEXT) {
       currentPage++;
       continue;
     }
 
-    if (answer.selection === NAVIGATION_PREV) {
+    if (answer.selection === LEDGER_NAV_VALUE_PREV) {
       currentPage = Math.max(0, currentPage - 1);
       continue;
     }
 
     const selectedAddress = pageState.addresses.find((addr) => addr.index === answer.selection);
     if (!selectedAddress) {
-      throw new Error('Selected address not found');
+      throw new Error(logging.LEDGER_ADDRESS_NOT_FOUND_ERROR);
     }
 
     return {
@@ -133,10 +131,10 @@ function buildAddressChoices(
   }));
 
   if (currentPage > 0) {
-    choices.push({ title: '← Previous Page', value: NAVIGATION_PREV });
+    choices.push({ title: logging.LEDGER_NAV_PREVIOUS_PAGE, value: LEDGER_NAV_VALUE_PREV });
   }
 
-  choices.push({ title: '→ Next Page', value: NAVIGATION_NEXT });
+  choices.push({ title: logging.LEDGER_NAV_NEXT_PAGE, value: LEDGER_NAV_VALUE_NEXT });
 
   return choices;
 }

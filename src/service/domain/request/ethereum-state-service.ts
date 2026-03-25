@@ -103,22 +103,36 @@ export class EthereumStateService {
    * @throws BlockchainStateError if unable to fetch network fees
    */
   async getMaxNetworkFees(): Promise<MaxNetworkFees> {
-    let feeData = await this.provider.getFeeData();
-    let fetchNetworkFeeCounter = 0;
-    while (
-      (!feeData.maxFeePerGas || !feeData.maxPriorityFeePerGas) &&
-      fetchNetworkFeeCounter < serviceConstants.MAX_FETCH_NETWORK_FEES_RETRIES
-    ) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      feeData = await this.provider.getFeeData();
-      fetchNetworkFeeCounter++;
-    }
-    if (!feeData.maxFeePerGas || !feeData.maxPriorityFeePerGas) {
-      throw new BlockchainStateError('Unable to fetch current network fees');
-    }
-    return {
-      maxFeePerGas: feeData.maxFeePerGas,
-      maxPriorityFeePerGas: feeData.maxPriorityFeePerGas
-    };
+    return fetchMaxNetworkFees(this.provider);
   }
+}
+
+/**
+ * Fetch current max network fees from a JSON-RPC provider
+ *
+ * Retries up to MAX_FETCH_NETWORK_FEES_RETRIES if fees are unavailable.
+ * Standalone function usable without EthereumStateService instantiation.
+ *
+ * @param provider - JSON-RPC provider for fee data queries
+ * @returns Current max network fees per gas
+ * @throws BlockchainStateError if unable to fetch network fees after retries
+ */
+export async function fetchMaxNetworkFees(provider: JsonRpcProvider): Promise<MaxNetworkFees> {
+  let feeData = await provider.getFeeData();
+  let fetchNetworkFeeCounter = 0;
+  while (
+    (!feeData.maxFeePerGas || !feeData.maxPriorityFeePerGas) &&
+    fetchNetworkFeeCounter < serviceConstants.MAX_FETCH_NETWORK_FEES_RETRIES
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    feeData = await provider.getFeeData();
+    fetchNetworkFeeCounter++;
+  }
+  if (!feeData.maxFeePerGas || !feeData.maxPriorityFeePerGas) {
+    throw new BlockchainStateError('Unable to fetch current network fees');
+  }
+  return {
+    maxFeePerGas: feeData.maxFeePerGas,
+    maxPriorityFeePerGas: feeData.maxPriorityFeePerGas
+  };
 }
