@@ -30,6 +30,7 @@ All code generation must adhere to these principles and practices.
 **Practices:**
 - **Boy Scout Rule:** Leave code cleaner than found
 - **Root Cause Analysis:** Address underlying causes, not symptoms
+- **Small Functions:** Functions must do one thing. Avoid monolithic functions; break them into focused, single-purpose units. If a function requires scrolling or mental bookmarks, extract sub-steps into well-named helpers
 - **Simple Refactorings:** Apply Extract Method and Rename
 
 ### Orange Level - Structure
@@ -39,6 +40,7 @@ All code generation must adhere to these principles and practices.
 - **SRP (Single Responsibility):** Every class has one reason to change
 - **SoC (Separation of Concerns):** Isolate responsibilities into separate modules
 - **Source Code Conventions:** Consistent naming and standards
+- **No Inline String Literals:** Never use inline string literals for user-facing messages, error messages, or magic values. Extract them to dedicated constant modules.
 
 **Practices:**
 - **Automated Integration Tests:** Verify behavior across components

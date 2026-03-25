@@ -2,8 +2,11 @@ import chalk from 'chalk';
 import { JsonRpcProvider, toBeHex, toBigInt } from 'ethers';
 
 import * as serviceConstants from '../../../constants/application';
-import * as logging from '../../../constants/logging';
-import type { MaxNetworkFees } from '../../../model/ethereum';
+import {
+  FAILED_TO_FETCH_REQUIRED_FEE_ERROR,
+  SYSTEM_CONTRACT_NOT_ACTIVATED_ERROR
+} from '../../../constants/logging';
+import type { ContractFeeState, MaxNetworkFees } from '../../../model/ethereum';
 import { BlockchainStateError } from '../../../model/ethereum';
 
 /**
@@ -47,23 +50,39 @@ export class EthereumStateService {
    * @throws BlockchainStateError if unable to fetch contract fee from system contract
    */
   async fetchContractFee(): Promise<bigint> {
+    const { fee } = await this.fetchContractFeeWithExcess();
+    return fee;
+  }
+
+  /**
+   * Fetch contract fee and raw excess from system contract storage
+   *
+   * Returns both the calculated fee and the raw excess value from storage slot 0,
+   * enabling callers to perform block estimation for fee changes.
+   *
+   * @returns Contract fee state with calculated fee and raw excess
+   * @throws BlockchainStateError if system contract not yet activated (excess inhibitor active)
+   * @throws BlockchainStateError if unable to fetch contract fee from system contract
+   */
+  async fetchContractFeeWithExcess(): Promise<ContractFeeState> {
     try {
       const contractQueue = await this.provider.getStorage(this.systemContractAddress, toBeHex(0));
-      const contractQueueValue = toBigInt(contractQueue);
+      const excess = toBigInt(contractQueue);
 
-      if (contractQueueValue === serviceConstants.EXCESS_INHIBITOR) {
+      if (excess === serviceConstants.EXCESS_INHIBITOR) {
         throw new BlockchainStateError(
-          logging.SYSTEM_CONTRACT_NOT_ACTIVATED_ERROR(this.systemContractAddress)
+          SYSTEM_CONTRACT_NOT_ACTIVATED_ERROR(this.systemContractAddress)
         );
       }
 
-      return this.calculateContractFee(contractQueueValue);
+      const fee = EthereumStateService.calculateContractFee(excess);
+      return { fee, excess };
     } catch (error) {
       if (error instanceof BlockchainStateError) {
         throw error;
       }
       console.error(
-        chalk.red(logging.FAILED_TO_FETCH_REQUIRED_FEE_ERROR(this.systemContractAddress)),
+        chalk.red(FAILED_TO_FETCH_REQUIRED_FEE_ERROR(this.systemContractAddress)),
         error
       );
       throw new BlockchainStateError('Unable to fetch contract fee from system contract', error);
@@ -73,10 +92,10 @@ export class EthereumStateService {
   /**
    * Calculates the contract fee for sending an execution layer request to a specific system contract
    *
-   * @param numerator - The request queue length of a specific system contract
+   * @param numerator - The excess value (queue length) of a specific system contract
    * @returns The contract fee for sending an execution layer request
    */
-  private calculateContractFee(numerator: bigint): bigint {
+  static calculateContractFee(numerator: bigint): bigint {
     // https://eips.ethereum.org/EIPS/eip-7251#fee-calculation
     let i = 1n;
     let output = 0n;

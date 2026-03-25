@@ -14,6 +14,10 @@ Available skills for reference:
 - `feature-dev` - Guided feature development
 - `code-review` - Pull request review
 
+## Research
+
+Always use Context7 mcp server for code research
+
 ## Post Implementation Commands
 
 Always run below commands after an implementation task.
@@ -38,6 +42,7 @@ src/
     switch.ts                        Switch withdrawal credentials command
     withdraw.ts                      Partial withdrawal command
     exit.ts                          Full exit command
+    safe.ts                          Safe multisig sign/execute commands
     validation/
       cli.ts                         CLI argument parsing and validation
   constants/
@@ -47,6 +52,7 @@ src/
     commander.ts                     CLI option types
     ethereum.ts                      Domain types (transactions, requests, networks)
     ledger.ts                        Ledger-specific types (HD paths, device state)
+    safe.ts                          Safe multisig connection config type
   network-config.ts                  Network-to-chain-ID/contract-address mapping
   ports/
     signer.interface.ts              ISigner - transaction signing abstraction
@@ -62,10 +68,21 @@ src/
       ethereum.ts                    Ethereum connection factory
       pre-request-validation.ts      Beacon API credential type + ownership checks
       execution-layer-request-pipeline.ts  Orchestrates validation -> signing -> broadcast
+      safe/
+        index.ts                     Barrel exports
+        safe-sdk-factory.ts          SafeApiKit initialization
+        safe-health-check.ts         TX Service health verification
+        safe-preflight.ts            Safe existence and ownership validation
+        safe-signer-init.ts          Signer initialization for Safe operations
+        safe-propose-service.ts      MultiSend batch proposal
+        safe-sign-service.ts         Pending transaction signing
+        safe-execute-service.ts      On-chain execution of fully-signed transactions
+        safe-transaction-filter.ts   Filter transactions by origin/contract
       signer/
         index.ts                     Barrel exports
         wallet-signer.ts             ISigner via ethers Wallet (private key)
         ledger-signer.ts             ISigner via Ledger hardware wallet
+        ledger-eip1193-provider.ts   EIP-1193 adapter for Ledger (Safe Protocol Kit)
         ledger-address-selector.ts   HD path address selection for Ledger
         ledger-transport.ts          USB transport lifecycle management
         ledger-error-handler.ts      Ledger error classification and recovery
@@ -98,7 +115,7 @@ src/
 
 ## CLI Commands and Global Options
 
-**Commands:** `consolidate`, `switch`, `withdraw`, `exit`
+**Commands:** `consolidate`, `switch`, `withdraw`, `exit`, `safe sign`, `safe execute`
 
 **Global options:**
 
@@ -109,6 +126,7 @@ src/
 | `-b, --beacon-api-url` | Beacon API endpoint for pre-validation | `http://localhost:5052` |
 | `-m, --max-requests-per-block` | Max execution layer requests per block | `10` |
 | `-l, --ledger` | Use Ledger hardware wallet for signing | `false` |
+| `-s, --safe <address>` | Safe multisig address for proposal/sign/execute | - |
 
 ## Commit Message Style
 
@@ -126,6 +144,12 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/) as defined i
 - **Types:** `feat`, `fix`, `perf`, `docs`, `ci`, `build`, `test`, `refactor`, `style`, `chore`
 - **Breaking changes:** add `!` after type/scope or `BREAKING CHANGE:` in footer
 - **Examples:** `feat(cli): Add file-based validator pubkey input`, `fix(request): Dispose BeaconService in sequential broadcast path`
+
+## Constants Convention
+
+- **Application values** (error codes, contract addresses, regex patterns, config values) go to `src/constants/application.ts`
+- **User-facing messages** (error messages, log messages, warnings, info) go to `src/constants/logging.ts`
+- Never use inline string literals for error messages or magic values in source files
 
 ## Key Constraints
 

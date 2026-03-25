@@ -9,6 +9,18 @@ import { LedgerSigner } from './signer/ledger-signer';
 import { WalletSigner } from './signer/wallet-signer';
 
 /**
+ * Create a validated JSON-RPC provider
+ *
+ * @param jsonRpcUrl - The json rpc url used for creating a json rpc provider
+ * @returns A connected and validated JSON-RPC provider
+ */
+export async function createValidatedProvider(jsonRpcUrl: string): Promise<JsonRpcProvider> {
+  const provider = new JsonRpcProvider(jsonRpcUrl);
+  await provider.getNetwork();
+  return provider;
+}
+
+/**
  * Create Ethereum related connection information
  *
  * @param jsonRpcUrl - The json rpc url used for creating a json rpc provider
@@ -19,8 +31,7 @@ export async function createEthereumConnection(
   jsonRpcUrl: string,
   signerType: SignerType = 'wallet'
 ): Promise<EthereumConnection> {
-  const provider = new JsonRpcProvider(jsonRpcUrl);
-  await provider.getNetwork();
+  const provider = await createValidatedProvider(jsonRpcUrl);
 
   if (signerType === 'ledger') {
     return createLedgerConnection(provider);

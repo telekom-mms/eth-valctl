@@ -30,7 +30,8 @@ const mockFilterSwitchableValidators = mock((_beaconApiUrl: string, validatorPub
 );
 
 mock.module('./ethereum', () => ({
-  createEthereumConnection: mockCreateEthereumConnection
+  createEthereumConnection: mockCreateEthereumConnection,
+  createValidatedProvider: mock(() => Promise.resolve(mockProvider))
 }));
 
 mock.module('./request/send-request', () => ({
@@ -188,7 +189,8 @@ describe('Domain Services Integration Tests', () => {
         options.beaconApiUrl,
         '0xMockAddress',
         [VALID_TARGET_PUBKEY, VALID_PUBKEY],
-        [VALID_TARGET_PUBKEY]
+        [VALID_TARGET_PUBKEY],
+        undefined
       );
     });
 
@@ -201,7 +203,8 @@ describe('Domain Services Integration Tests', () => {
         options.beaconApiUrl,
         '0xMockAddress',
         [VALID_PUBKEY],
-        [VALID_TARGET_PUBKEY]
+        [VALID_TARGET_PUBKEY],
+        undefined
       );
     });
   });
@@ -325,7 +328,9 @@ describe('Domain Services Integration Tests', () => {
       expect(mockCheckWithdrawalAddressOwnership).toHaveBeenCalledWith(
         options.beaconApiUrl,
         '0xMockAddress',
-        [VALID_PUBKEY]
+        [VALID_PUBKEY],
+        undefined,
+        undefined
       );
     });
   });
@@ -387,7 +392,9 @@ describe('Domain Services Integration Tests', () => {
       expect(mockCheckWithdrawalAddressOwnership).toHaveBeenCalledWith(
         options.beaconApiUrl,
         '0xMockAddress',
-        [VALID_PUBKEY]
+        [VALID_PUBKEY],
+        undefined,
+        undefined
       );
     });
   });
@@ -473,7 +480,9 @@ describe('Domain Services Integration Tests', () => {
       expect(mockCheckWithdrawalAddressOwnership).toHaveBeenCalledWith(
         options.beaconApiUrl,
         '0xMockAddress',
-        [VALID_PUBKEY]
+        [VALID_PUBKEY],
+        undefined,
+        undefined
       );
     });
   });

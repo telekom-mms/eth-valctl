@@ -20,6 +20,8 @@ import {
   EIP_1193_METHOD_ETH_SIGN_TYPED_DATA_V4,
   EIP_1193_METHOD_PERSONAL_SIGN,
   EIP_1193_USER_REJECTED,
+  LEDGER_GAS_BUFFER_DENOMINATOR,
+  LEDGER_GAS_BUFFER_NUMERATOR,
   PENDING_BLOCK_TAG,
   PREFIX_0x
 } from '../../../constants/application';
@@ -323,7 +325,7 @@ export class LedgerEip1193Provider {
           }
         : await fetchMaxNetworkFees(this.jsonRpcProvider);
 
-    const gasLimit =
+    const gasEstimate =
       txParams.gas !== undefined
         ? BigInt(txParams.gas)
         : await this.jsonRpcProvider.estimateGas({
@@ -332,6 +334,7 @@ export class LedgerEip1193Provider {
             data: txParams.data,
             value: txParams.value ? BigInt(txParams.value) : 0n
           });
+    const gasLimit = (gasEstimate * LEDGER_GAS_BUFFER_NUMERATOR) / LEDGER_GAS_BUFFER_DENOMINATOR;
 
     return {
       chainId,

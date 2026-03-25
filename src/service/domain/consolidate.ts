@@ -1,5 +1,5 @@
 import { PREFIX_0x } from '../../constants/application';
-import * as logging from '../../constants/logging';
+import { SOURCE_VALIDATOR_0x00_CREDENTIALS_ERROR } from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
 import { executeRequestPipeline } from './execution-layer-request-pipeline';
 import {
@@ -27,21 +27,22 @@ export async function consolidate(
     validatorPubkeys: sourceValidatorPubkeys,
     encodeRequestData: (pubkey) => createConsolidationRequestData(pubkey, targetValidatorPubkey),
     resolveContractAddress: (config) => config.consolidationContractAddress,
-    validate: async (connection) => {
+    validate: async (ownerAddress, ownerLabel) => {
       await checkCompoundingCredentials(globalOptions.beaconApiUrl, [targetValidatorPubkey]);
       await checkHasExecutionCredentials(
         globalOptions.beaconApiUrl,
         sourceValidatorPubkeys,
-        logging.SOURCE_VALIDATOR_0x00_CREDENTIALS_ERROR
+        SOURCE_VALIDATOR_0x00_CREDENTIALS_ERROR
       );
       const pubkeysToCheck = skipTargetOwnershipCheck
         ? sourceValidatorPubkeys
         : [targetValidatorPubkey, ...sourceValidatorPubkeys];
       await checkWithdrawalAddressOwnership(
         globalOptions.beaconApiUrl,
-        connection.signer.address,
+        ownerAddress,
         pubkeysToCheck,
-        [targetValidatorPubkey]
+        [targetValidatorPubkey],
+        ownerLabel
       );
     }
   });

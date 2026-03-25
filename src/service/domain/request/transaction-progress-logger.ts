@@ -7,8 +7,8 @@ import type {
   ReplacementSummary,
   SigningContext
 } from '../../../model/ethereum';
+import { isInsufficientFundsError, isNonceExpiredError } from '../error-utils';
 import { isLedgerError } from '../signer';
-import { isInsufficientFundsError, isNonceExpiredError } from './error-utils';
 
 /**
  * Service for logging transaction processing progress with consistent formatting.

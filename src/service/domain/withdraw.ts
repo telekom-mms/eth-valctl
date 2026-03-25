@@ -25,14 +25,16 @@ export async function withdraw(
     validatorPubkeys,
     encodeRequestData: (pubkey) => createWithdrawRequestData(pubkey, amount),
     resolveContractAddress: (config) => config.withdrawalContractAddress,
-    validate: async (connection) => {
+    validate: async (ownerAddress, ownerLabel) => {
       if (amount > 0) {
         await checkCompoundingCredentials(globalOptions.beaconApiUrl, validatorPubkeys);
       }
       await checkWithdrawalAddressOwnership(
         globalOptions.beaconApiUrl,
-        connection.signer.address,
-        validatorPubkeys
+        ownerAddress,
+        validatorPubkeys,
+        undefined,
+        ownerLabel
       );
     }
   });
