@@ -140,3 +140,4 @@ tickets/**/*
 
 # other
 internal-docs/**/*
+tmp/
