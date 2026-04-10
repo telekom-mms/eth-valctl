@@ -28,6 +28,7 @@ Always run below commands after an implementation task.
 | `bun test` | Run tests |
 | `bun run typecheck` | Type check |
 | `bun run lint` | ESLint (TypeScript/JavaScript only) |
+| `bun run format` | Prettier (TypeScript/JavaScript only) |
 | `pre-commit run --config .pre-commit/.pre-commit-config.yaml --all-files` | Pre-commit hooks (YAML, JSON, markdown, shell, actionlint, trailing whitespace) |
 
 `bun run lint` and `pre-commit` are complementary: ESLint handles TS/JS, pre-commit handles everything else.
@@ -52,7 +53,7 @@ src/
     commander.ts                     CLI option types
     ethereum.ts                      Domain types (transactions, requests, networks)
     ledger.ts                        Ledger-specific types (HD paths, device state)
-    safe.ts                          Safe multisig connection config type
+    safe.ts                          Safe types (connection, fee validation hierarchy, execute config)
   network-config.ts                  Network-to-chain-ID/contract-address mapping
   ports/
     signer.interface.ts              ISigner - transaction signing abstraction
@@ -68,16 +69,23 @@ src/
       ethereum.ts                    Ethereum connection factory
       pre-request-validation.ts      Beacon API credential type + ownership checks
       execution-layer-request-pipeline.ts  Orchestrates validation -> signing -> broadcast
+      batch-utils.ts                 Splits arrays into sized batches (shared utility)
+      error-utils.ts                 Error classification (INSUFFICIENT_FUNDS, etc.)
       safe/
         index.ts                     Barrel exports
+        safe-init.ts                 Combined Safe initialization (preflight + signer + SDK)
         safe-sdk-factory.ts          SafeApiKit initialization
-        safe-health-check.ts         TX Service health verification
         safe-preflight.ts            Safe existence and ownership validation
         safe-signer-init.ts          Signer initialization for Safe operations
         safe-propose-service.ts      MultiSend batch proposal
         safe-sign-service.ts         Pending transaction signing
         safe-execute-service.ts      On-chain execution of fully-signed transactions
+        safe-fee-validator.ts        Fee validation (stale/sufficient/overpaid detection)
+        safe-fee-extractor.ts        Extract per-operation fees from MultiSend tx data
+        safe-fee-prompt.ts           Interactive fee validation prompts and stale fee handling
         safe-transaction-filter.ts   Filter transactions by origin/contract
+        safe-api-retry.ts            Safe API retry with exponential backoff
+        safe-utils.ts                Safe utility functions
       signer/
         index.ts                     Barrel exports
         wallet-signer.ts             ISigner via ethers Wallet (private key)
@@ -94,9 +102,8 @@ src/
         transaction-replacer.ts      Fee-bump replacement (12% increase per retry)
         transaction-progress-logger.ts  Real-time batch progress output
         ethereum-state-service.ts    Gas price and nonce queries
-        error-utils.ts               Error classification (INSUFFICIENT_FUNDS, etc.)
         transaction-pipeline.ts        Coordinates single-tx sign -> broadcast -> monitor flow
-        execution-layer-request-factory.ts  Builds typed transaction objects
+        execution-layer-request-factory.ts  Factory: wires TransactionPipeline dependency graph
         broadcast-strategy/
           index.ts                   Barrel exports
           parallel-broadcast-strategy.ts   All transactions in parallel (wallet signer)
@@ -109,9 +116,14 @@ src/
 ## Key Design Patterns
 
 - **Strategy:** `ISigner` (WalletSigner / LedgerSigner), `IBroadcastStrategy` (Parallel / Sequential)
-- **Pipeline:** `executeRequestPipeline` coordinates validation -> connection -> signing -> batch send
+- **Pipeline:** `executeRequestPipeline` branches Safe vs direct path, orchestrates validation -> signing -> broadcast
 - **Orchestrator:** `TransactionBatchOrchestrator` manages retry budget across batches
+- **Factory:** `createTransactionPipeline` wires full dependency graph (state service, broadcaster, monitor, replacer, strategy)
+- **Facade:** `initializeSafe` composes preflight validation, signer init, and SDK creation into single entry point
+- **Retry with Backoff:** `withSafeApiRetry` wraps Safe API calls (401 abort, 429 rate-limit retry with exponential backoff)
+- **Resource Disposal:** `Disposable` interface + `TransactionPipeline` collects and disposes resources (BeaconService, broadcast strategies)
 - **Ports & Adapters:** `src/ports/` defines abstractions; `src/service/domain/` provides implementations
+- **Adapter:** `LedgerEip1193Provider` bridges Ledger hardware wallet to EIP-1193 for Safe Protocol Kit
 
 ## CLI Commands and Global Options
 
@@ -127,6 +139,16 @@ src/
 | `-m, --max-requests-per-block` | Max execution layer requests per block | `10` |
 | `-l, --ledger` | Use Ledger hardware wallet for signing | `false` |
 | `-s, --safe <address>` | Safe multisig address for proposal/sign/execute | - |
+| `-f, --safe-fee-tip <wei>` | Tip in wei added to system contract fee per Safe proposal operation | `100` |
+
+**`safe execute` options:**
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `-o, --fee-overpayment-threshold <wei>` | Wei threshold above which fee overpayment is flagged | `100` |
+| `-y, --yes` | Skip confirmation prompts (stale fees abort with block estimate) | `false` |
+| `-a, --stale-fee-action <action>` | Non-interactive stale fee action: `wait` or `reject` | - |
+| `-w, --max-fee-wait-blocks <blocks>` | Max blocks to wait for fee to drop during execution (0 disables) | `50` |
 
 ## Commit Message Style
 
@@ -159,10 +181,30 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/) as defined i
 4. **Signer-aware broadcasting:** parallel (wallet) vs sequential (Ledger) with slot-boundary avoidance
 5. **INSUFFICIENT_FUNDS aborts** remaining batches immediately
 6. **Supported networks:** mainnet, hoodi, sepolia, kurtosis_devnet
+7. **Safe proposals** use MultiSend batching with sequential nonces; each operation includes system contract fee + `--safe-fee-tip` (default 100 wei to absorb intra-batch fee growth)
+8. **Safe execution is strictly nonce-ordered** — fee is re-validated per transaction; stale fees trigger wait or abort depending on `--stale-fee-action`
+9. **Safe preflight** validates TX Service health, Safe existence, and signer ownership before any sign/execute operation
 
 ## Testing
 
 - **Framework:** `bun:test`
 - **Convention:** Co-located test files (`*.test.ts` next to source)
-- **Integration tests:** `src/service/domain/domain-services.integration.test.ts`
-- **Run:** `bun test`
+- **Bun integration tests:** `src/service/domain/domain-services.integration.test.ts`
+- **Local devnet deployment:** `scripts/devnet/start-kurtosis-devnet.sh` (1800 validators)
+- **Deploy Safe infrastructure:** `scripts/safe/deploy-safe-infra.sh`
+- **Integration test suite:** `scripts/integration-test/run.sh`
+- **Manual test playbooks:** `scripts/integration-test/manual/`
+
+### Integration Test Maintenance
+
+Integration tests in `scripts/integration-test/` and `scripts/integration-test/manual/` **must be kept up to date** when implementing new features or fixing/updating existing ones. Changes to CLI commands, Safe services, or transaction flows require corresponding integration test updates.
+
+| Script | Purpose |
+| --- | --- |
+| `scripts/integration-test/run.sh` | Main orchestrator: propose/sign/execute flow |
+| `scripts/integration-test/helpers.sh` | Shared helpers (beacon queries, tx verification, fee checks) |
+| `scripts/integration-test/constants.sh` | Test configuration constants |
+| `scripts/integration-test/verify-final-state.sh` | Post-execution validator state assertions |
+| `scripts/integration-test/change-threshold.ts` | Safe threshold modification utility |
+| `scripts/integration-test/propose-foreign-tx.ts` | Foreign transaction proposal utility |
+| `scripts/integration-test/manual/manual-fee-testing-playbook.md` | Manual fee validation test procedures |
