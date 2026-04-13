@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 
 import * as serviceConstants from '../../../constants/application';
-import * as logging from '../../../constants/logging';
+import { FAILED_TO_FETCH_NETWORK_FEES_ERROR } from '../../../constants/logging';
 import type {
   BatchProcessingResult,
   BroadcastResult,
@@ -292,7 +292,7 @@ export class TransactionBatchOrchestrator {
       };
     } catch (error) {
       console.error(
-        chalk.red(logging.FAILED_TO_FETCH_NETWORK_FEES_ERROR(unresolvedTransactions.length)),
+        chalk.red(FAILED_TO_FETCH_NETWORK_FEES_ERROR(unresolvedTransactions.length)),
         error
       );
       return baseResult;

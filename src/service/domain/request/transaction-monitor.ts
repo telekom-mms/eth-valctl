@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import { JsonRpcProvider } from 'ethers';
 
 import * as serviceConstants from '../../../constants/application';
-import * as logging from '../../../constants/logging';
+import { MINED_EL_REQUEST_WITH_BLOCK_INFO } from '../../../constants/logging';
 import type {
   PendingTransactionInfo,
   ReceiptCheckResult,
@@ -153,7 +153,7 @@ export class TransactionMonitor {
     if (result.status.type === TransactionStatusType.MINED) {
       console.log(
         chalk.green(
-          logging.MINED_EL_REQUEST_WITH_BLOCK_INFO(
+          MINED_EL_REQUEST_WITH_BLOCK_INFO(
             result.status.receipt.hash,
             result.status.receipt.blockNumber
           )

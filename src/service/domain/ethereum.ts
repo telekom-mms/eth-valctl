@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import { JsonRpcProvider, NonceManager, Wallet } from 'ethers';
 
-import * as logging from '../../constants/logging';
+import { INVALID_PRIVATE_KEY_ERROR, PROMPT_PRIVATE_KEY_INFO } from '../../constants/logging';
 import type { EthereumConnection, SignerType } from '../../model/ethereum';
 import { promptLedgerAddressSelection, promptSecret } from '../prompt';
 import { TransactionProgressLogger } from './request/transaction-progress-logger';
@@ -34,12 +34,12 @@ export async function createEthereumConnection(
  */
 async function createWalletConnection(provider: JsonRpcProvider): Promise<EthereumConnection> {
   try {
-    const privateKey = await promptSecret(chalk.green(logging.PROMPT_PRIVATE_KEY_INFO));
+    const privateKey = await promptSecret(chalk.blue(PROMPT_PRIVATE_KEY_INFO));
     const wallet = new Wallet(privateKey, provider);
     const signer = new WalletSigner(new NonceManager(wallet));
     return { signer, provider };
   } catch {
-    console.error(chalk.red(logging.INVALID_PRIVATE_KEY_ERROR));
+    console.error(chalk.red(INVALID_PRIVATE_KEY_ERROR));
     process.exit(1);
   }
 }

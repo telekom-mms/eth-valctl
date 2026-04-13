@@ -77,7 +77,7 @@ async function selectAddressInteractively(
   let currentPage = 0;
 
   while (true) {
-    console.log(chalk.cyan(logging.LEDGER_ADDRESS_FETCHING_INFO(currentPage)));
+    console.log(chalk.blue(logging.LEDGER_ADDRESS_FETCHING_INFO(currentPage)));
     const pageState = await selector.getAddressPage(currentPage);
 
     const choices = buildAddressChoices(pageState.addresses, currentPage);

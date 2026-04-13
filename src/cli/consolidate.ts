@@ -29,7 +29,7 @@ consolidateCommand
     parseAndValidateValidatorPubKey
   )
   .option(
-    '--skip-target-ownership-check',
+    '-k, --skip-target-ownership-check',
     'Skip ownership validation for the target validator',
     false
   )
