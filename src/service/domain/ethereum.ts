@@ -1,12 +1,24 @@
 import chalk from 'chalk';
 import { JsonRpcProvider, NonceManager, Wallet } from 'ethers';
 
-import * as logging from '../../constants/logging';
+import { INVALID_PRIVATE_KEY_ERROR, PROMPT_PRIVATE_KEY_INFO } from '../../constants/logging';
 import type { EthereumConnection, SignerType } from '../../model/ethereum';
 import { promptLedgerAddressSelection, promptSecret } from '../prompt';
 import { TransactionProgressLogger } from './request/transaction-progress-logger';
 import { LedgerSigner } from './signer/ledger-signer';
 import { WalletSigner } from './signer/wallet-signer';
+
+/**
+ * Create a validated JSON-RPC provider
+ *
+ * @param jsonRpcUrl - The json rpc url used for creating a json rpc provider
+ * @returns A connected and validated JSON-RPC provider
+ */
+export async function createValidatedProvider(jsonRpcUrl: string): Promise<JsonRpcProvider> {
+  const provider = new JsonRpcProvider(jsonRpcUrl);
+  await provider.getNetwork();
+  return provider;
+}
 
 /**
  * Create Ethereum related connection information
@@ -19,8 +31,7 @@ export async function createEthereumConnection(
   jsonRpcUrl: string,
   signerType: SignerType = 'wallet'
 ): Promise<EthereumConnection> {
-  const provider = new JsonRpcProvider(jsonRpcUrl);
-  await provider.getNetwork();
+  const provider = await createValidatedProvider(jsonRpcUrl);
 
   if (signerType === 'ledger') {
     return createLedgerConnection(provider);
@@ -34,12 +45,12 @@ export async function createEthereumConnection(
  */
 async function createWalletConnection(provider: JsonRpcProvider): Promise<EthereumConnection> {
   try {
-    const privateKey = await promptSecret(chalk.green(logging.PROMPT_PRIVATE_KEY_INFO));
+    const privateKey = await promptSecret(chalk.blue(PROMPT_PRIVATE_KEY_INFO));
     const wallet = new Wallet(privateKey, provider);
     const signer = new WalletSigner(new NonceManager(wallet));
     return { signer, provider };
   } catch {
-    console.error(chalk.red(logging.INVALID_PRIVATE_KEY_ERROR));
+    console.error(chalk.red(INVALID_PRIVATE_KEY_ERROR));
     process.exit(1);
   }
 }

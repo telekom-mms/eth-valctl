@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 
 import * as serviceConstants from '../../../constants/application';
-import * as logging from '../../../constants/logging';
+import { FAILED_TO_FETCH_NETWORK_FEES_ERROR } from '../../../constants/logging';
 import type {
   BatchProcessingResult,
   BroadcastResult,
@@ -13,8 +13,9 @@ import {
   BroadcastStatusType,
   InsufficientFundsAbortError
 } from '../../../model/ethereum';
+import { splitToBatches } from '../batch-utils';
+import { isInsufficientFundsError } from '../error-utils';
 import { extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
-import { isInsufficientFundsError } from './error-utils';
 import { EthereumStateService } from './ethereum-state-service';
 import { TransactionBroadcaster } from './transaction-broadcaster';
 import { TransactionMonitor } from './transaction-monitor';
@@ -59,7 +60,7 @@ export class TransactionBatchOrchestrator {
     const allFailedValidators: string[] = [];
     const allRejectedValidators: string[] = [];
 
-    const executionLayerRequestBatches = this.splitToBatches(
+    const executionLayerRequestBatches = splitToBatches(
       requestData,
       executionLayerRequestBatchSize
     );
@@ -292,7 +293,7 @@ export class TransactionBatchOrchestrator {
       };
     } catch (error) {
       console.error(
-        chalk.red(logging.FAILED_TO_FETCH_NETWORK_FEES_ERROR(unresolvedTransactions.length)),
+        chalk.red(FAILED_TO_FETCH_NETWORK_FEES_ERROR(unresolvedTransactions.length)),
         error
       );
       return baseResult;
@@ -363,21 +364,6 @@ export class TransactionBatchOrchestrator {
     result: BroadcastResult
   ): result is Extract<BroadcastResult, { status: BroadcastStatusType.REJECTED }> {
     return result.status === BroadcastStatusType.REJECTED;
-  }
-
-  /**
-   * Split array of request data into batches of specified size
-   *
-   * @param requestData - Array of request data to split
-   * @param batchSize - Maximum number of items per batch
-   * @returns Array of batches, each containing up to batchSize items
-   */
-  private splitToBatches(requestData: string[], batchSize: number): string[][] {
-    const batches: string[][] = [];
-    for (let i = 0; i < requestData.length; i += batchSize) {
-      batches.push(requestData.slice(i, i + batchSize));
-    }
-    return batches;
   }
 
   /**

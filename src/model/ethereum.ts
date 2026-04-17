@@ -49,6 +49,23 @@ export interface NetworkConfig {
   consolidationContractAddress: string;
   withdrawalContractAddress: string;
   chainId: bigint;
+  safeTransactionServiceUrl?: string;
+  safeRequiresApiKey?: boolean;
+  safeContractAddresses?: SafeContractAddresses;
+}
+
+/**
+ * Custom Safe contract addresses for networks not in @safe-global/safe-deployments
+ */
+export interface SafeContractAddresses {
+  safeSingletonAddress: string;
+  safeProxyFactoryAddress: string;
+  multiSendAddress: string;
+  multiSendCallOnlyAddress: string;
+  fallbackHandlerAddress: string;
+  signMessageLibAddress: string;
+  createCallAddress: string;
+  simulateTxAccessorAddress: string;
 }
 
 export interface ExecutionLayerRequestTransaction {
@@ -193,6 +210,16 @@ export interface SlotPosition {
  */
 export interface Disposable {
   dispose(): Promise<void>;
+}
+
+/**
+ * Fee state from a system contract including calculated fee and raw excess value
+ */
+export interface ContractFeeState {
+  /** Calculated contract fee in wei */
+  fee: bigint;
+  /** Raw excess value from storage slot 0 */
+  excess: bigint;
 }
 
 export class BlockchainStateError extends Error {

@@ -32,6 +32,7 @@ repos:
       - id: "pretty-format-json"
         description: "Sets a standard for formatting json files"
         args: ["--autofix", "--indent", "2"]
+        exclude: "^(package-lock\\.json|bun\\.lock)$"
       - id: "no-commit-to-branch"
         description: "Prevent commits to specific branches"
         args: ["--branch", "main"]
@@ -57,6 +58,7 @@ repos:
     rev: "v0.11.0.1"
     hooks:
       - id: "shellcheck"
+        args: ["-x"]
   # - repo: "https://github.com/koalaman/shellcheck-precommit"
   #   rev: "v0.10.0"
   #   hooks:

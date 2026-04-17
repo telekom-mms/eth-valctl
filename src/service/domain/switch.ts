@@ -30,11 +30,13 @@ export async function switchWithdrawalCredentialType(
     validatorPubkeys: switchableValidators,
     encodeRequestData: createSwitchRequestData,
     resolveContractAddress: (config) => config.consolidationContractAddress,
-    validate: async (connection) => {
+    validate: async (ownerAddress, ownerLabel) => {
       await checkWithdrawalAddressOwnership(
         globalOptions.beaconApiUrl,
-        connection.signer.address,
-        switchableValidators
+        ownerAddress,
+        switchableValidators,
+        undefined,
+        ownerLabel
       );
     }
   });
