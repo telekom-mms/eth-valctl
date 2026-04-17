@@ -55,7 +55,7 @@ export interface NetworkConfig {
 }
 
 /**
- * Custom Safe contract addresses for networks not in @safe-global/safe-deployments
+ * Custom Safe contract addresses for networks not in \@safe-global/safe-deployments
  */
 export interface SafeContractAddresses {
   safeSingletonAddress: string;
