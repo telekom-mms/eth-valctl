@@ -21,6 +21,7 @@ Supports private key signing (default), Ledger hardware wallet signing (`--ledge
 - [Transaction handling](#transaction-handling)
 - [Safe multisig workflow](#safe-multisig-workflow)
   - [Phase 1: Propose](#phase-1-propose)
+    - [Batch size and gas cost](#batch-size-and-gas-cost)
   - [Phase 2: Sign](#phase-2-sign)
   - [Phase 3: Execute](#phase-3-execute)
   - [Contract fee staleness](#contract-fee-staleness)
@@ -86,6 +87,8 @@ Print the help message with `--help`. This works also for every subcommand.
 | -l           | --ledger                 | Use Ledger hardware wallet for signing (requires Ledger device with Ethereum app)                |
 | -s           | --safe \<address\>       | Safe multisig address for proposal, signing, and execution                                       |
 | -f           | --safe-fee-tip \<wei\>   | Tip in wei added to system contract fee per operation (default: 100)                             |
+
+When using `--safe`, `--max-requests-per-block` also controls how many EL requests get bundled into a single on-chain MultiSend transaction. This makes the option gas-sensitive. See [Batch size and gas cost](#batch-size-and-gas-cost) for guidance on tuning it under network congestion.
 
 ### Switch
 
@@ -158,6 +161,18 @@ eth-valctl --safe 0xYourSafe --network hoodi consolidate -s <source-pubkeys...> 
 
 Operations are batched into MultiSend transactions (controlled by `--max-requests-per-block`). Each operation includes the current system contract fee plus `--safe-fee-tip` as a buffer against fee increases.
 
+#### Batch size and gas cost
+
+Unlike direct mode, where each EL request is its own transaction that can land anywhere in a block, a Safe proposal executes as a **single top-level transaction**: Safe executor → MultiSend dispatcher → N × (system contract fee call + EL request). Total gas per batch is therefore `Safe overhead + MultiSend dispatch + N × per-request cost`. In practice a batch of 10 EL requests can exceed ~1,000,000 gas. This is significantly heavier than 10 equivalent direct-mode transactions spread across the block.
+
+Because the entire batch must fit into one block alongside everything else being mined, larger `--max-requests-per-block` values raise inclusion risk on congested networks and make EIP-1559 fee tuning more sensitive. Before proposing:
+
+- Check current base fee and block fullness (e.g. `cast base-fee --rpc-url <url>`, Etherscan, or any mempool dashboard).
+- On quiet networks the default `--max-requests-per-block=10` is fine.
+- Under **elevated base fees or visibly congested mainnet conditions, lower it to around 5** to keep single-tx gas roughly below ~500k and reduce the chance of the execution being outbid or delayed.
+
+You decide based on observed network conditions. There is no automatic adjustment.
+
 ### Phase 2: Sign
 
 Other Safe owners sign pending proposals:
@@ -180,7 +195,7 @@ Transactions are executed strictly in Safe nonce order. Each transaction's fee i
 
 ### Contract fee staleness
 
-System contract fees are dynamic — they increase with demand and decrease every block. Because fees are frozen inside the MultiSend data at proposal time, they can become insufficient by the time execution happens. When this occurs, executing the transaction would revert on-chain.
+System contract fees are dynamic. They increase with demand and decrease every block. Because fees are frozen inside the MultiSend data at proposal time, they can become insufficient by the time execution happens. When this occurs, executing the transaction would revert on-chain.
 
 The `--safe-fee-tip` option (default: 100 wei) adds a buffer to each operation's fee during proposal, reducing the likelihood of staleness. For large batches or volatile fee periods, consider increasing the tip.
 
@@ -210,7 +225,7 @@ Fees are also re-checked per-transaction during execution. If a fee becomes stal
 
 ### Safe Transaction Service API key
 
-The Safe Transaction Service requires an API key on certain networks. The key is provided via the `SAFE_API_KEY` environment variable — there is no separate CLI flag.
+The Safe Transaction Service requires an API key on certain networks. The key is provided via the `SAFE_API_KEY` environment variable. There is no separate CLI flag.
 
 | Network         | API key required | Key                                                                               |
 | --------------- | ---------------- | --------------------------------------------------------------------------------- |
