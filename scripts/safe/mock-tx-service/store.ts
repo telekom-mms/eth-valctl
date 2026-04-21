@@ -243,28 +243,32 @@ export class TransactionStore {
       const code = await this.provider.getCode(address);
       if (code === '0x') return null;
 
-      const safe = new ethers.Contract(address, SAFE_ABI, this.provider);
+      const safe = new ethers.Contract(address, SAFE_ABI, this.provider) as ethers.Contract & {
+        getOwners: () => Promise<string[]>;
+        getThreshold: () => Promise<bigint>;
+        nonce: () => Promise<bigint>;
+        VERSION: () => Promise<string>;
+        fallbackHandler: () => Promise<string>;
+        getModulesPaginated: (start: string, limit: number) => Promise<[string[], string]>;
+      };
 
       const [owners, threshold, nonce, version] = await Promise.all([
-        safe.getOwners() as Promise<string[]>,
-        safe.getThreshold() as Promise<bigint>,
-        safe.nonce() as Promise<bigint>,
-        safe.VERSION() as Promise<string>
+        safe.getOwners(),
+        safe.getThreshold(),
+        safe.nonce(),
+        safe.VERSION()
       ]);
 
       let fallbackHandler = ZERO_ADDRESS;
       try {
-        fallbackHandler = (await safe.fallbackHandler()) as string;
+        fallbackHandler = await safe.fallbackHandler();
       } catch {
         // fallbackHandler storage read may fail on some versions
       }
 
       let modules: string[] = [];
       try {
-        const [moduleList] = (await safe.getModulesPaginated(SENTINEL_ADDRESS, 10)) as [
-          string[],
-          string
-        ];
+        const [moduleList] = await safe.getModulesPaginated(SENTINEL_ADDRESS, 10);
         modules = moduleList;
       } catch {
         // modules may not be configured
@@ -292,11 +296,15 @@ export class TransactionStore {
 
   private async refreshOnChainState(record: SafeInfoRecord): Promise<SafeInfoRecord> {
     try {
-      const safe = new ethers.Contract(record.address, SAFE_ABI, this.provider);
-      const [nonce, threshold] = await Promise.all([
-        safe.nonce() as Promise<bigint>,
-        safe.getThreshold() as Promise<bigint>
-      ]);
+      const safe = new ethers.Contract(
+        record.address,
+        SAFE_ABI,
+        this.provider
+      ) as ethers.Contract & {
+        nonce: () => Promise<bigint>;
+        getThreshold: () => Promise<bigint>;
+      };
+      const [nonce, threshold] = await Promise.all([safe.nonce(), safe.getThreshold()]);
       record.nonce = nonce.toString();
       record.threshold = Number(threshold);
     } catch {

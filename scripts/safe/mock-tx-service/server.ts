@@ -59,28 +59,28 @@ const ROUTES: Array<{
   {
     method: 'GET',
     pattern: /^\/api\/v1\/safes\/(0x[a-fA-F0-9]{40})\/?$/,
-    handler: (match) => handleGetSafeInfo(store, match[1])
+    handler: (match) => handleGetSafeInfo(store, match[1] as string)
   },
   {
     method: 'POST',
     pattern: /^\/api\/v2\/safes\/(0x[a-fA-F0-9]{40})\/multisig-transactions\/?$/,
-    handler: (match, request) => handleProposeTransaction(store, match[1], request)
+    handler: (match, request) => handleProposeTransaction(store, match[1] as string, request)
   },
   {
     method: 'GET',
     pattern: /^\/api\/v2\/safes\/(0x[a-fA-F0-9]{40})\/multisig-transactions\/?$/,
-    handler: (match, _request, url) => handleGetMultisigTransactions(store, match[1], url)
+    handler: (match, _request, url) => handleGetMultisigTransactions(store, match[1] as string, url)
   },
   {
     method: 'GET',
     pattern: /^\/api\/v2\/multisig-transactions\/(0x[a-fA-F0-9]{64})\/?$/,
-    handler: (match) => handleGetTransaction(store, match[1])
+    handler: (match) => handleGetTransaction(store, match[1] as string)
   },
   {
     method: 'GET',
     pattern: /^\/api\/v1\/multisig-transactions\/(0x[a-fA-F0-9]{64})\/confirmations\/?$/,
     handler: (match) => {
-      const tx = store.getTransaction(match[1]);
+      const tx = store.getTransaction(match[1] as string);
       if (!tx) return Response.json({ detail: 'Not found.' }, { status: 404 });
       return Response.json({
         count: tx.confirmations.length,
@@ -93,7 +93,7 @@ const ROUTES: Array<{
   {
     method: 'POST',
     pattern: /^\/api\/v1\/multisig-transactions\/(0x[a-fA-F0-9]{64})\/confirmations\/?$/,
-    handler: (match, request) => handleAddConfirmation(store, match[1], request)
+    handler: (match, request) => handleAddConfirmation(store, match[1] as string, request)
   }
 ];
 

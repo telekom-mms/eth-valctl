@@ -18,7 +18,7 @@ const ETH_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
  * Override via KURTOSIS_MNEMONIC env var if different.
  */
 const MNEMONIC =
-  process.env.KURTOSIS_MNEMONIC ?? 'test test test test test test test test test test test junk';
+  process.env['KURTOSIS_MNEMONIC'] ?? 'test test test test test test test test test test test junk';
 
 const DEFAULT_THRESHOLD = 2;
 const DEFAULT_HD_OWNER_COUNT = 3;

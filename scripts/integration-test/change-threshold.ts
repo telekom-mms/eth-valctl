@@ -11,7 +11,7 @@ import {
   SAFE_CONTRACT_ADDRESSES
 } from '../safe/constants';
 
-const SAFE_ADDRESS = process.env.SAFE_ADDRESS ?? '';
+const SAFE_ADDRESS = process.env['SAFE_ADDRESS'] ?? '';
 
 const OWNER_0_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
 const OWNER_1_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
