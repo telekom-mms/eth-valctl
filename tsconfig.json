@@ -20,12 +20,16 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "ESNext",
+    "types": [
+      "bun"
+    ],
     "verbatimModuleSyntax": true
   },
   "exclude": [
     "node_modules"
   ],
   "include": [
+    "scripts/**/*",
     "src/**/*"
   ]
 }

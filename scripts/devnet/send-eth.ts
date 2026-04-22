@@ -40,9 +40,10 @@ async function sendETH() {
     const newBalance = await provider.getBalance(wallet.address);
     console.log(`\nNew balance: ${ethers.formatEther(newBalance)} ETH`);
   } catch (error) {
-    console.error('Error sending transaction:', error.message);
-    if (error.code) {
-      console.error('Error code:', error.code);
+    const err = error as { message?: string; code?: string };
+    console.error('Error sending transaction:', err.message);
+    if (err.code) {
+      console.error('Error code:', err.code);
     }
   }
 }

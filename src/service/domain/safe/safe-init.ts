@@ -1,5 +1,5 @@
-import type { SafeInfoResponse } from '@safe-global/api-kit';
 import type SafeApiKit from '@safe-global/api-kit';
+import type { SafeInfoResponse } from '@safe-global/api-kit';
 import type { ContractNetworksConfig } from '@safe-global/protocol-kit';
 import Safe from '@safe-global/protocol-kit';
 import chalk from 'chalk';

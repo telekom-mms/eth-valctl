@@ -28,10 +28,13 @@ The mock TX Service replaces the full Safe Transaction Service infrastructure (1
 
 - Running Kurtosis devnet (`scripts/devnet/start-kurtosis-devnet.sh`)
 - [Bun](https://bun.sh) runtime
-- [Node.js](https://nodejs.org) + npm (for Safe contract deployment)
+- [Node.js](https://nodejs.org) + npm (for Safe contract compilation and deployment)
 - [Foundry](https://book.getfoundry.sh/getting-started/installation) (`cast` CLI for singleton factory deployment)
 - Git
+- `jq` and `sed` on PATH (used by `deploy-safe-infra.sh`)
 - eth-valctl dependencies installed (`bun install`)
+
+`deploy-safe-infra.sh` orchestrates all Safe-contract tooling for you — you only need the binaries listed above on PATH.
 
 ### Account funding
 
@@ -47,121 +50,74 @@ cast send <ADDRESS> \
 ## Quick Start
 
 ```bash
-# 1. Deploy Safe contracts (external repo, one-time setup)
-#    See "Deploy Safe Contracts" section below
+# 1. Deploy Safe contracts + Safe wallet (one command, end-to-end)
+./scripts/safe/deploy-safe-infra.sh --json-rpc-url http://127.0.0.1:32003
 
-# 2. Start mock Transaction Service
+# 2. Start mock Transaction Service (separate terminal, long-running)
 bun run scripts/safe/mock-tx-service/server.ts
 
-# 3. Create Safe instance (in another terminal)
-bun run scripts/safe/create-safe.ts
-
-# 4. Use eth-valctl with --safe flag
+# 3. Use eth-valctl with --safe flag
 bun run src/cli/main.ts -n kurtosis_devnet -r http://127.0.0.1:32003 \
   --safe <SAFE_ADDRESS> consolidate -s <source_pubkeys> -t <target_pubkey>
 ```
 
-## Step 1: Deploy Safe Contracts
+The Safe address printed by step 1 is also written into `scripts/integration-test/constants.sh` automatically, so the integration test suite picks it up without further configuration.
 
-The Safe singleton contracts must be deployed to the Kurtosis devnet before creating any Safe instances. This uses the official `safe-smart-account` repository.
+## Step 1: Deploy Safe Infrastructure
 
-### Clone and configure
+`scripts/safe/deploy-safe-infra.sh` automates the full Safe-contract deployment end-to-end. It replaces the previously manual multi-step flow (clone, env, singleton factory via `cast`, `npm run deploy-all`, address copying).
 
-```bash
-git clone --branch release/v1.4.1 https://github.com/safe-global/safe-smart-account.git
-cd safe-smart-account
-npm install
-npm i --save-dev @safe-global/safe-singleton-factory
+### What the script does
+
+1. Clone `safe-smart-account` into `tmp/safe-smart-account/` (skipped when `--safe-repo` is set)
+2. `npm install` and pin `@safe-global/safe-singleton-factory`
+3. Write `.env` with the Kurtosis mnemonic and the provided JSON-RPC URL
+4. Deploy the CREATE2 singleton factory via `cast` and register it in `deployment.json`
+5. Compile Solidity with Hardhat, auto-downloading any missing solc binaries (retries up to 10 times on HH501, falls back from `binaries.soliditylang.org` to GitHub releases)
+6. Run `npm run deploy-all custom` to deploy the 9 Safe singleton contracts
+7. Update `scripts/safe/constants.ts` with the deployed addresses (and the provided RPC URL)
+8. Update `src/network-config.ts` with the deployed addresses
+9. Run `scripts/safe/create-safe.ts` to deploy a 2-of-3 Safe wallet and fund it (skippable via `--skip-safe-creation`)
+10. Update `scripts/integration-test/constants.sh`, `change-threshold.ts`, and `propose-foreign-tx.ts` with the new Safe address
+
+### Options
+
+```text
+Usage: deploy-safe-infra.sh --json-rpc-url <url> [OPTIONS]
+
+Required:
+  --json-rpc-url <url>      Execution layer JSON-RPC endpoint
+
+Options:
+  --safe-repo <path>        Path to existing safe-smart-account checkout (skips clone)
+  --safe-version <branch>   Git branch/tag to clone (default: release/v1.4.1)
+                            Ignored when --safe-repo is set
+  --skip-safe-creation      Skip Safe wallet creation (create-safe.ts)
 ```
 
-### Set environment variables
-
-Create a `.env` file in the `safe-smart-account` directory:
+### Example
 
 ```bash
-# Kurtosis HD wallet mnemonic (default test mnemonic)
-MNEMONIC="giant issue aisle success illegal bike spike question tent bar rely arctic volcano long crawl hungry vocal artwork sniff fantasy very lucky have athlete"
-
-# Kurtosis EL RPC endpoint (check actual port with: kurtosis enclave inspect ethereum)
-NODE_URL=http://127.0.0.1:32003
+./scripts/safe/deploy-safe-infra.sh --json-rpc-url http://127.0.0.1:32003
 ```
 
-### Deploy the singleton factory
+### Tip: reuse a pre-compiled checkout
 
-The Safe deploy scripts use a CREATE2 singleton factory for deterministic addresses. This factory isn't pre-deployed on Kurtosis devnets and must be deployed manually:
+On first run the script clones `safe-smart-account`, installs ~400 MB of npm dependencies, and compiles Solidity (which may trigger a solc download). For repeated redeployments against the **same Safe contract version** — typical when restarting Kurtosis devnets frequently — this work is redundant.
+
+Pass `--safe-repo <path>` pointing at an existing checkout to skip the clone step. The script also skips `npm install` when `node_modules/` is already present, and skips compilation / contract redeployment when `deployments/custom/Safe.json` points at an address with code on the current chain. In practice this turns minutes of setup into seconds:
 
 ```bash
-# Deploy the singleton factory contract (from any directory with cast available)
-cast send --private-key 0xbcdf20249abf0ed6d944c0288fad489e33f66b3960d9e6229c1cd214ed3bbe31 \
-  --rpc-url http://127.0.0.1:32003 \
-  --create \
-  0x604580600e600039806000f350fe7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe03601600081602082378035828234f58015156039578182fd5b8082525050506014600cf3
+# First deployment (populates tmp/safe-smart-account/)
+./scripts/safe/deploy-safe-infra.sh --json-rpc-url http://127.0.0.1:32003
+
+# Later deployments against a fresh devnet — reuse the existing checkout
+./scripts/safe/deploy-safe-infra.sh \
+  --json-rpc-url http://127.0.0.1:32003 \
+  --safe-repo ./tmp/safe-smart-account
 ```
 
-Note the `contractAddress` from the output, then register it for chain 3151908:
-
-```bash
-# Back in the safe-smart-account directory
-mkdir -p node_modules/@safe-global/safe-singleton-factory/artifacts/3151908
-cat > node_modules/@safe-global/safe-singleton-factory/artifacts/3151908/deployment.json << 'EOF'
-{
-  "gasPrice": 100000000000,
-  "gasLimit": 100000,
-  "signerAddress": "0xE1CB04A0fA36DdD16a06ea828007E35e1a3cBC37",
-  "transaction": "0x00",
-  "address": "<FACTORY_ADDRESS>"
-}
-EOF
-```
-
-Replace `<FACTORY_ADDRESS>` with the `contractAddress` from the deploy output.
-
-### Deploy Safe contracts
-
-```bash
-npm run deploy-all custom
-```
-
-This deploys 13 contracts. At the end, Hardhat attempts Etherscan verification which will fail with `"Chain 3151908 not supported for verification!"` — this is expected and harmless on a local devnet. The contracts are deployed regardless.
-
-The key contracts:
-
-| Contract | Purpose |
-| -------- | ------- |
-| Safe / SafeL2 | Singleton implementation |
-| SafeProxyFactory | Creates Safe proxy instances |
-| CompatibilityFallbackHandler | Default callback handler |
-| MultiSend | Batch multiple operations |
-| MultiSendCallOnly | Read-only batch variant |
-| SignMessageLib | EIP-1271 message signing |
-| CreateCall | Create contracts from Safe |
-| SimulateTxAccessor | Transaction simulation |
-
-### Update contract addresses
-
-Because the singleton factory is deployed at a non-deterministic address (unlike the canonical pre-signed deployment), the Safe contracts will land at different addresses each time. **You must update `scripts/safe/constants.ts`** with the addresses from the deploy output before creating a Safe instance.
-
-Map the deploy output to the constants:
-
-| Deploy Output Name | Constant in `constants.ts` |
-| ------------------ | ------------------------- |
-| `Safe` | `safeSingletonAddress` |
-| `SafeL2` | `safeSingletonL2Address` |
-| `SafeProxyFactory` | `safeProxyFactoryAddress` |
-| `MultiSend` | `multiSendAddress` |
-| `MultiSendCallOnly` | `multiSendCallOnlyAddress` |
-| `CompatibilityFallbackHandler` | `fallbackHandlerAddress` |
-| `SignMessageLib` | `signMessageLibAddress` |
-| `CreateCall` | `createCallAddress` |
-| `SimulateTxAccessor` | `simulateTxAccessorAddress` |
-
-### Verify deployment
-
-Check that contracts have code at their expected addresses:
-
-```bash
-cast code <address> --rpc-url http://127.0.0.1:32003
-```
+If you bump `--safe-version`, use a fresh `--safe-repo` path (or delete `tmp/safe-smart-account/`) so the script clones the new branch.
 
 ## Step 2: Start Mock Transaction Service
 
@@ -189,8 +145,8 @@ The mock mirrors the real Safe Transaction Service rate limiting behavior. API k
 
 | Tier | Rate Limit | Condition |
 | ---- | ---------- | --------- |
-| Authenticated | 1000 req/5s | Valid `Authorization: Bearer <key>` header |
-| Unauthenticated | 3 req/5s | Missing, empty, or wrong key |
+| Authenticated | 1000 req/3s | Valid `Authorization: Bearer <key>` header |
+| Unauthenticated | 5 req/3s | Missing, empty, or wrong key |
 
 When the limit is exceeded, the mock returns HTTP 429 with `{"detail": "Request was throttled."}`, which triggers eth-valctl's retry logic (up to 3 retries with 2s delay).
 
@@ -204,9 +160,9 @@ Rate limits are configurable via environment variables:
 
 | Env Var | Default | Description |
 | ------- | ------- | ----------- |
-| `RATE_LIMIT_AUTHENTICATED` | `100` | Requests per window with valid key |
+| `RATE_LIMIT_AUTHENTICATED` | `1000` | Requests per window with valid key |
 | `RATE_LIMIT_UNAUTHENTICATED` | `5` | Requests per window without valid key |
-| `RATE_LIMIT_WINDOW_MS` | `60000` | Sliding window duration in ms |
+| `RATE_LIMIT_WINDOW_MS` | `3000` | Sliding window duration in ms |
 
 The mock implements these endpoints:
 
@@ -220,9 +176,9 @@ The mock implements these endpoints:
 | `/api/v1/multisig-transactions/{safeTxHash}/confirmations/` | GET | List confirmations |
 | `/api/v1/multisig-transactions/{safeTxHash}/confirmations/` | POST | Add confirmation |
 
-## Step 3: Create Safe Instance
+## Step 3: Create Additional Safe Instances (optional)
 
-With the mock TX Service running:
+`deploy-safe-infra.sh` already runs `scripts/safe/create-safe.ts` to deploy a 2-of-3 Safe wallet (unless invoked with `--skip-safe-creation`). Run `create-safe.ts` directly only when you need **additional** Safes — e.g. a different threshold, extra owners (Ledger addresses), or a different deterministic address via a custom salt nonce:
 
 ```bash
 bun run scripts/safe/create-safe.ts
@@ -386,36 +342,6 @@ The Safe singleton contracts were deployed at different addresses than expected.
 
 The chain ID isn't in `@safe-global/safe-deployments`. The `create-safe.ts` script handles this by passing `contractNetworks` explicitly. If you're using Protocol Kit elsewhere, pass the same `contractNetworks` config.
 
-### Hardhat can't download solc (Error HH501) — VPN/proxy environments
+### `deploy-safe-infra.sh` exits after 10 HH501 retries
 
-Corporate VPNs may block or interfere with Hardhat's solc binary download from `binaries.soliditylang.org`.
-
-**Symptoms:**
-
-```text
-Downloading solc 0.7.6
-Error HH501: Couldn't download compiler version 0.7.6+commit.7338295f.
-```
-
-**Fix:** Download the solc binary manually and place it in Hardhat's cache:
-
-```bash
-# Download solc binary (use -k to skip certificate verification if needed)
-curl -4 -k -L -o /tmp/solc-0.7.6 \
-  https://binaries.soliditylang.org/linux-amd64/solc-linux-amd64-v0.7.6+commit.7338295f
-
-# Place it in Hardhat's cache (must be a file, not a directory)
-cp /tmp/solc-0.7.6 \
-  ~/.cache/hardhat-nodejs/compilers-v2/linux-amd64/solc-linux-amd64-v0.7.6+commit.7338295f
-chmod +x \
-  ~/.cache/hardhat-nodejs/compilers-v2/linux-amd64/solc-linux-amd64-v0.7.6+commit.7338295f
-```
-
-If `binaries.soliditylang.org` is unreachable, download from GitHub releases instead:
-
-```bash
-curl -4 -k -L -o /tmp/solc-0.7.6 \
-  https://github.com/ethereum/solidity/releases/download/v0.7.6/solc-static-linux
-```
-
-Then run `npx hardhat compile`. If additional solc versions are needed, repeat with the corresponding version number.
+`deploy-safe-infra.sh` automatically downloads missing solc binaries (from `binaries.soliditylang.org`, falling back to GitHub releases) and retries compilation up to 10 times. If it still fails, the network path to both sources is likely blocked (corporate VPN, strict proxy). Fetch the solc binary listed in the error from a machine with working connectivity, copy it into the Hardhat cache on the build host (Linux: `~/.cache/hardhat-nodejs/compilers-v2/linux-amd64/`, macOS: `~/Library/Caches/hardhat-nodejs/compilers-v2/macosx-amd64/`), `chmod +x` it, then rerun the script.

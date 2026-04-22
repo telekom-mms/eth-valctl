@@ -416,8 +416,8 @@ step_create_safe() {
 	local propose_foreign_ts="${PROJECT_DIR}/scripts/integration-test/propose-foreign-tx.ts"
 
 	sed_inplace "s|SAFE_ADDRESS=\"\${SAFE_ADDRESS:-[^}]*}\"|SAFE_ADDRESS=\"\${SAFE_ADDRESS:-${safe_address}}\"|" "${constants_sh}"
-	sed_inplace "s|process\.env\.SAFE_ADDRESS ?? '[^']*'|process.env.SAFE_ADDRESS ?? '${safe_address}'|" "${change_threshold_ts}"
-	sed_inplace "s|process\.env\.SAFE_ADDRESS ?? '[^']*'|process.env.SAFE_ADDRESS ?? '${safe_address}'|" "${propose_foreign_ts}"
+	sed_inplace "s|process\.env\['SAFE_ADDRESS'\] ?? '[^']*'|process.env['SAFE_ADDRESS'] ?? '${safe_address}'|" "${change_threshold_ts}"
+	sed_inplace "s|process\.env\['SAFE_ADDRESS'\] ?? '[^']*'|process.env['SAFE_ADDRESS'] ?? '${safe_address}'|" "${propose_foreign_ts}"
 }
 
 # --- Main ---
