@@ -1,0 +1,8 @@
+- [Mocking destructured process.exit](feedback_mock_exit_destructured_import.md) — spyOn doesn't catch `import { exit } from 'process'`; use mock.module
+- [chalk stringifies multi-arg calls](feedback_chalk_stringifies_args.md) — assert on message strings, not Error object identity, when source uses chalk.red(msg, err)
+- [Bun test output needs --dots in pipes](reference_bun_output_piping.md) — harness pipes stdout, so bun hides progress unless --dots or -t is passed
+- [mock.module leaks across test files](feedback_mock_module_pollution.md) — prefer spyOn; avoid mock.module for internal paths (wallet-signer, ledger-signer, ethers)
+- [Ethers partial mocking strategy](reference_ethers_partial_mocking.md) — use spyOn(JsonRpcProvider.prototype,'getNetwork') + real Wallet/NonceManager instead of mock.module('ethers')
+- [Bun mock.module is process-global](feedback_mock_module_global_scope.md) — confirmed mock.restore does NOT undo mock.module; use spyOn on module namespace instead
+- [eth-valctl test conventions](reference_project_test_conventions.md) — fixtures, constants imports, TS4111 bracket access for Record<string,unknown>
+- [Cache-bust bypass for leaked mock.module](feedback_cache_bust_bypass_mock_module.md) — `import('./x?real')` gets a fresh unmocked copy; assign specifier to const to dodge TS2307
