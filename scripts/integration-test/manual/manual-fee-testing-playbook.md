@@ -1,6 +1,6 @@
 # Manual Safe Fee Testing Playbook
 
-Manual test scenarios for Safe fee validation — all wait/abort/reject paths at **batch-level** and **per-transaction** levels.
+Manual test scenarios for Safe fee validation — all wait/abort/reject paths at the **per-transaction** level, plus the non-interactive batch-level `--stale-fee-action reject` flow.
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ Manual test scenarios for Safe fee validation — all wait/abort/reject paths at
 
 ## Shell Helpers
 
-Safe commands prompt for the private key interactively. Do **not** pipe keys via `echo '...' |` — stdin is consumed by the PK prompt, causing follow-up interactive prompts (execute confirmation, stale fee Wait/Reject) to receive EOF and silently skip. Direct commands (`direct_switch`, `direct_exit`) still pipe PK since they have no follow-up prompts.
+Safe commands prompt for the private key interactively. Do **not** pipe keys via `echo '...' |` — stdin is consumed by the PK prompt, causing follow-up interactive prompts (execute confirmation, per-tx stale fee Wait/Abort) to receive EOF and silently skip. Direct commands (`direct_switch`, `direct_exit`) still pipe PK since they have no follow-up prompts.
 
 Paste into your terminal before running scenarios:
 
@@ -32,8 +32,8 @@ SAFE="0x78a4AA95Ae1031C8ded9c7b11D35AEDfD8dafd7e"
 EOA="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 KEY0="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 KEY1="0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-RPC="http://127.0.0.1:8545"
-BEACON="http://localhost:5052"
+RPC="http://164.30.71.185:32003"
+BEACON="http://164.30.71.185:33022"
 CONSOL="0x0000BBdDc7CE488642fb579F8B00f3a590007251"
 WITHDR="0x00000961Ef480Eb55e80D19ad83579A64c007002"
 TMP="./tmp/manual-test"
@@ -168,19 +168,18 @@ All should show `0x01`. Wait and re-check if still `0x00`.
 | # | Scenario | Safe | EOA | Consumed? |
 | --- | ---------- | ---- | --- | --------- |
 | S1 | Happy path switch | 1000-1005 | — | Yes |
-| S2 | Batch stale -> interactive wait | 1006-1011 | 1100-1124 | Yes (retry) |
-| S3 | Batch stale -> interactive reject | 1012-1017 | 1125-1149 | No |
-| S4 | Batch stale -> `--stale-fee-action wait` | 1018-1023 | 1150-1174 | Yes (retry) |
-| S5 | Batch stale -> `--stale-fee-action reject` | 1024-1029 | 1175-1199 | No |
-| S6 | Batch stale -> `-y` | 1030-1035 | 1200-1224 | Yes (retry) |
-| S7 | Per-tx stale -> interactive wait (success) | 1036-1044 | 1225-1249 | Yes |
-| S8 | Per-tx stale -> interactive abort | 1045-1053 | 1250-1274 | Partial |
-| S9 | Per-tx stale -> `--max-fee-wait-blocks 1` | 1054-1062 | 1275-1299 | Partial |
-| S10 | Per-tx stale -> `--max-fee-wait-blocks 0` | 1063-1071 | 1300-1324 | Partial |
-| S11 | Overpaid fee | 1072-1077 | — | Yes |
-| S12 | Happy path exit | 1078-1083 | — | Yes |
-| S13 | Batch stale exit (withdrawal contract) | 1084-1089 | 1350-1399 | Yes (retry) |
-| — | Reserve | 1090-1099 | 1400-1500 | — |
+| S2 | Batch stale -> interactive per-tx wait | 1006-1011 | 1100-1124 | Yes (polls) |
+| S3 | Batch stale -> `--stale-fee-action wait` | 1018-1023 | 1150-1174 | Yes (polls) |
+| S4 | Batch stale -> `--stale-fee-action reject` | 1024-1029 | 1175-1199 | No |
+| S5 | Batch stale -> `-y` | 1030-1035 | 1200-1224 | Yes (polls) |
+| S6 | Per-tx stale -> interactive wait (success) | 1036-1044 | 1225-1249 | Yes |
+| S7 | Per-tx stale -> interactive abort | 1045-1053 | 1250-1274 | Partial |
+| S8 | Per-tx stale -> `--max-fee-wait-blocks 1` | 1054-1062 | 1275-1299 | Partial |
+| S9 | Per-tx stale -> `--max-fee-wait-blocks 0` | 1063-1071 | 1300-1324 | Partial |
+| S10 | Overpaid fee | 1072-1077 | — | Yes |
+| S11 | Happy path exit | 1078-1083 | — | Yes |
+| S12 | Batch stale exit (withdrawal contract) | 1084-1089 | 1350-1399 | Yes (polls) |
+| — | Reserve | 1012-1017, 1090-1099 | 1125-1149, 1400-1500 | — |
 
 ### EOA Queue Fill Ranges
 
@@ -189,16 +188,16 @@ EOA validators are consumed when used for `direct_switch` or `direct_exit`. Each
 | Range | Purpose |
 | ----------- | --------------------------------- |
 | 1100-1124 | queue-1 (S2) |
-| 1125-1149 | queue-2 (S3) |
-| 1150-1174 | queue-3 (S4) |
-| 1175-1199 | queue-4 (S5) |
-| 1200-1224 | queue-5 (S6) |
-| 1225-1249 | queue-6 (S7) |
-| 1250-1274 | queue-7 (S8) |
-| 1275-1299 | queue-8 (S9) |
-| 1300-1324 | queue-9 (S10) |
-| 1325-1349 | queue-10 (reserve/refill) |
-| 1350-1399 | withdrawal queue fill (S13) |
+| 1125-1149 | (reserve — unused) |
+| 1150-1174 | queue-2 (S3) |
+| 1175-1199 | queue-3 (S4) |
+| 1200-1224 | queue-4 (S5) |
+| 1225-1249 | queue-5 (S6) |
+| 1250-1274 | queue-6 (S7) |
+| 1275-1299 | queue-7 (S8) |
+| 1300-1324 | queue-8 (S9) |
+| 1325-1349 | queue-9 (reserve/refill) |
+| 1350-1399 | withdrawal queue fill (S12) |
 | 1400-1500 | reserve |
 
 ---
@@ -221,7 +220,7 @@ safe_exec --yes
 
 ## Queue Fill: Inflate Consolidation Fee
 
-Used to make previously proposed Safe transactions stale. The correct ordering for batch-level stale scenarios (S2-S6) is:
+Used to make previously proposed Safe transactions stale. The correct ordering for batch-stale scenarios (S2-S5) is:
 
 1. **Propose + sign** while excess ≤ 12 (locks in fee = 1 wei with tip=0)
 2. **Fill queue** with EOA validators to push excess > 12 (current fee > 1 wei)
@@ -233,7 +232,7 @@ Used to make previously proposed Safe transactions stale. The correct ordering f
 
 ---
 
-## S2: Batch Stale -> Interactive Wait
+## S2: Batch Stale -> Interactive Per-Tx Wait
 
 **Precondition:** Consolidation excess ≤ 12 (fee at minimum).
 
@@ -248,92 +247,55 @@ fetch_pubkeys 1100 1124 queue-1
 direct_switch queue-1
 check_excess ${CONSOL}   # MUST be > 12 (~24 expected)
 
-# 3. Execute (interactive) — SELECT "Wait"
-safe_exec
+# 3. Execute (interactive) — SELECT "Wait" on the per-tx prompt
+safe_exec --max-fee-wait-blocks 30
 ```
 
 **Expected:**
 
 - Stale warnings for both batches, block estimates
-- `Stale fees detected — executing now will revert 2 of 2 transactions`
-- Prompt: **Wait** / Reject -> select **Wait** -> exits cleanly
-
-**Retry after decay:**
-
-```bash
-wait_for_decay ${CONSOL} "consolidation"
-safe_exec --yes
-```
+- `Stale fees detected (2 of 2 transactions) — continuing will wait per transaction for fees to decrease, bounded by --max-fee-wait-blocks.` (informational summary only, **no** Wait/Reject prompt)
+- Execute-confirm prompt -> confirm
+- Per-tx stale detected before first execute -> prompt: **Wait** / Abort -> select **Wait**
+- `Waiting for fee to drop...` progress logs -> `fee is now sufficient, proceeding`
+- Second Safe tx: if its proposed fee matches the current fee at its execution slot, it proceeds silently (no prompt); otherwise a second per-tx Wait/Abort prompt fires — both paths are intended.
 
 **Verify:** `check_creds 1006 1011` -> all `0x02`
 
 ---
 
-## S3: Batch Stale -> Interactive Reject
+## S3-S5: Batch Stale Non-Interactive Variants
 
-**Precondition:** Consolidation excess ≤ 12 (fee at minimum).
-
-```bash
-# 1. Propose + sign at low fee
-fetch_pubkeys 1012 1017 s3
-safe_propose s3
-safe_sign
-
-# 2. Inflate queue (use S3's dedicated range)
-fetch_pubkeys 1125 1149 queue-2
-direct_switch queue-2
-check_excess ${CONSOL}   # MUST be > 12 (~24 expected)
-
-# 3. Execute (interactive) — SELECT "Reject"
-safe_exec
-```
-
-**Expected:**
-
-- Prompt: Wait / **Reject** -> select **Reject**
-- `Rejecting 2 stale transactions...` -> `2 rejection transactions proposed`
-
-**Complete rejection flow:**
-
-```bash
-safe_sign                              # sign rejection txs
-safe_exec --yes                        # execute rejection txs (no fee needed)
-```
-
-**Verify:** `check_creds 1012 1017` -> all still `0x01` (cancelled)
-
----
-
-## S4-S6: Batch Stale Non-Interactive Variants
-
-Same propose+sign-then-inflate pattern as S2/S3, only the execute command differs.
+Same propose+sign-then-inflate pattern as S2, only the execute command differs.
 
 **Precondition:** Consolidation excess ≤ 12 (fee at minimum) when proposing.
 
 ```bash
-# S4: --stale-fee-action wait
-fetch_pubkeys 1018 1023 s4 && safe_propose s4 && safe_sign
-fetch_pubkeys 1150 1174 queue-3 && direct_switch queue-3
+# S3: --stale-fee-action wait (default --max-fee-wait-blocks = 50)
+fetch_pubkeys 1018 1023 s3 && safe_propose s3 && safe_sign
+fetch_pubkeys 1150 1174 queue-2 && direct_switch queue-2
 check_excess ${CONSOL}   # MUST be > 12
 safe_exec --stale-fee-action wait
-# Expected: stale warnings, NO prompt, exits immediately (code 0)
-# Retry: wait_for_decay ${CONSOL} "consolidation" && safe_exec --yes
+# Expected: stale warnings, NO prompt, per-tx wait polls until fee drops -> batches execute
 
-# S5: --stale-fee-action reject
-fetch_pubkeys 1024 1029 s5 && safe_propose s5 && safe_sign
-fetch_pubkeys 1175 1199 queue-4 && direct_switch queue-4
+# S4: --stale-fee-action reject
+fetch_pubkeys 1024 1029 s4 && safe_propose s4 && safe_sign
+fetch_pubkeys 1175 1199 queue-3 && direct_switch queue-3
 check_excess ${CONSOL}   # MUST be > 12
 safe_exec --stale-fee-action reject
 # Expected: NO prompt, rejections proposed automatically
 # Complete: safe_sign && safe_exec --yes
 
-# S6: -y (auto-wait)
-fetch_pubkeys 1030 1035 s6 && safe_propose s6 && safe_sign
-fetch_pubkeys 1200 1224 queue-5 && direct_switch queue-5
+# S5: -y (auto-wait, default --max-fee-wait-blocks = 50)
+fetch_pubkeys 1030 1035 s5 && safe_propose s5 && safe_sign
+fetch_pubkeys 1200 1224 queue-4 && direct_switch queue-4
 check_excess ${CONSOL}   # MUST be > 12
 safe_exec -y
-# Expected: NO prompt, exits immediately (same as --stale-fee-action wait)
-# Retry: wait_for_decay ${CONSOL} "consolidation" && safe_exec --yes
+# Expected: NO prompt, per-tx wait polls until fee drops -> batches execute
+
+# S3b/S5b: --max-fee-wait-blocks 0 (opt-in for immediate abort on stale)
+safe_exec --stale-fee-action wait --max-fee-wait-blocks 0
+# Expected: stale warnings, "Estimated N blocks exceeds max wait of 0 blocks" -> exit code 1
 ```
 
 ---
@@ -348,7 +310,7 @@ Per-tx stale requires batch-level to PASS but per-tx check (after batch 1) to FA
 
 **Recovery:** excess 14 -> 12 takes ~2 blocks (24s). Use `--max-fee-wait-blocks` to control behavior.
 
-**Common setup for S7-S10:**
+**Common setup for S6-S9:**
 
 ```bash
 # 1. Propose + sign (do this while excess <= 12)
@@ -367,14 +329,14 @@ wait_for_decay ${CONSOL} "consolidation"   # waits until excess <= 12
 
 ---
 
-## S7: Per-Tx Stale -> Interactive Wait (Success)
+## S6: Per-Tx Stale -> Interactive Wait (Success)
 
 ```bash
-fetch_pubkeys 1036 1044 s7
-safe_propose s7
+fetch_pubkeys 1036 1044 s6
+safe_propose s6
 safe_sign
 # Fill queue, then wait for decay to exactly 12
-fetch_pubkeys 1225 1249 queue-6 && direct_switch queue-6
+fetch_pubkeys 1225 1249 queue-5 && direct_switch queue-5
 wait_for_decay ${CONSOL} "consolidation"
 # Execute IMMEDIATELY when excess = 12
 safe_exec --max-fee-wait-blocks 5
@@ -392,14 +354,14 @@ safe_exec --max-fee-wait-blocks 5
 
 ---
 
-## S8: Per-Tx Stale -> Interactive Abort
+## S7: Per-Tx Stale -> Interactive Abort
 
 ```bash
-fetch_pubkeys 1045 1053 s8
-safe_propose s8
+fetch_pubkeys 1045 1053 s7
+safe_propose s7
 safe_sign
 # Fill queue, then wait for decay to exactly 12
-fetch_pubkeys 1250 1274 queue-7 && direct_switch queue-7
+fetch_pubkeys 1250 1274 queue-6 && direct_switch queue-6
 wait_for_decay ${CONSOL} "consolidation"
 # Execute IMMEDIATELY when excess = 12
 safe_exec
@@ -417,23 +379,23 @@ safe_exec
 
 ---
 
-## S9-S10: Per-Tx Stale Max-Wait Variants
+## S8-S9: Per-Tx Stale Max-Wait Variants
 
 Same propose+sign, only execute flags differ. Both abort immediately because estimated blocks (2) exceeds max wait.
 
 ```bash
-# S9: --max-fee-wait-blocks 1 (estimated 2 > max 1 -> abort)
-fetch_pubkeys 1054 1062 s9 && safe_propose s9 && safe_sign
-fetch_pubkeys 1275 1299 queue-8 && direct_switch queue-8
+# S8: --max-fee-wait-blocks 1 (estimated 2 > max 1 -> abort)
+fetch_pubkeys 1054 1062 s8 && safe_propose s8 && safe_sign
+fetch_pubkeys 1275 1299 queue-7 && direct_switch queue-7
 wait_for_decay ${CONSOL} "consolidation"
 # Execute IMMEDIATELY when excess = 12
 safe_exec --stale-fee-action wait --max-fee-wait-blocks 1
 # Expected: "Estimated 2 blocks exceeds max wait of 1 blocks — aborting"
 # Exit code 1. Cleanup: `safe_exec` after excess is low enough
 
-# S10: --max-fee-wait-blocks 0 (any stale -> immediate abort)
-fetch_pubkeys 1063 1071 s10 && safe_propose s10 && safe_sign
-fetch_pubkeys 1300 1324 queue-9 && direct_switch queue-9
+# S9: --max-fee-wait-blocks 0 (any stale -> immediate abort)
+fetch_pubkeys 1063 1071 s9 && safe_propose s9 && safe_sign
+fetch_pubkeys 1300 1324 queue-8 && direct_switch queue-8
 wait_for_decay ${CONSOL} "consolidation"
 # Execute IMMEDIATELY when excess = 12
 safe_exec --stale-fee-action wait --max-fee-wait-blocks 0
@@ -443,13 +405,13 @@ safe_exec --stale-fee-action wait --max-fee-wait-blocks 0
 
 ---
 
-## S11: Overpaid Fee (Warning Only)
+## S10: Overpaid Fee (Warning Only)
 
 **Precondition:** Consolidation excess <= 12.
 
 ```bash
-fetch_pubkeys 1072 1077 s11
-safe_propose s11 10000    # tip=10000 wei -> proposed = 10001 wei
+fetch_pubkeys 1072 1077 s10
+safe_propose s10 10000    # tip=10000 wei -> proposed = 10001 wei
 safe_sign
 safe_exec --yes
 ```
@@ -463,15 +425,15 @@ safe_exec --yes
 
 ---
 
-## S12: Happy Path Exit (Withdrawal Contract)
+## S11: Happy Path Exit (Withdrawal Contract)
 
 **Precondition:** Both contract excesses <= 12.
 
 ### Step A: Switch to 0x02
 
 ```bash
-fetch_pubkeys 1078 1083 s12
-safe_propose s12 100
+fetch_pubkeys 1078 1083 s11
+safe_propose s11 100
 safe_sign
 safe_exec --yes
 
@@ -487,7 +449,7 @@ done
 ### Step B: Exit
 
 ```bash
-safe_propose_exit s12 100
+safe_propose_exit s11 100
 safe_sign
 safe_exec --yes
 ```
@@ -496,7 +458,7 @@ safe_exec --yes
 
 ---
 
-## S13: Batch Stale Exit (Withdrawal Contract)
+## S12: Batch Stale Exit (Withdrawal Contract)
 
 Tests stale fee on the **withdrawal contract** (decay rate 2/block vs 1/block).
 
@@ -504,12 +466,12 @@ Tests stale fee on the **withdrawal contract** (decay rate 2/block vs 1/block).
 
 ```bash
 # Safe validators
-fetch_pubkeys 1084 1089 s13-safe
-safe_propose s13-safe 100 && safe_sign && safe_exec --yes
+fetch_pubkeys 1084 1089 s12-safe
+safe_propose s12-safe 100 && safe_sign && safe_exec --yes
 
 # EOA validators (for queue filling)
-fetch_pubkeys 1350 1399 s13-eoa
-direct_switch s13-eoa
+fetch_pubkeys 1350 1399 s12-eoa
+direct_switch s12-eoa
 
 # Wait for 0x02 (sample check)
 while true; do
@@ -522,19 +484,16 @@ done
 
 ```bash
 # Propose exit at fee = 1 wei (ensure withdrawal excess <= 12 first)
-safe_propose_exit s13-safe
+safe_propose_exit s12-safe
 safe_sign
 
 # Fill withdrawal queue
-direct_exit s13-eoa
+direct_exit s12-eoa
 
 # Execute (batch-level stale on withdrawal contract)
 safe_exec --stale-fee-action wait
-# Expected: stale warnings with withdrawal contract, exits immediately
-
-# Retry after decay (2x faster than consolidation)
-wait_for_decay ${WITHDR} "withdrawal"
-safe_exec --yes
+# Expected: stale warnings, per-tx wait polls until withdrawal fee drops -> batches execute
+# Withdrawal decay rate is 2/block, so recovery is quicker than consolidation.
 ```
 
 **Verify:** `check_status 1084 1089` -> all `active_exiting`

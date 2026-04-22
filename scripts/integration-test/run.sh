@@ -419,11 +419,12 @@ phase_g_fee_validation() {
 	run_ethvalctl "${OWNER_0_KEY}" switch -v "${TMP_DIR}/fee-queue-pubkeys.txt"
 	assert_output_contains "${LAST_CMD_OUTPUT}" "Mined execution layer request" "Large queue fill mined"
 
-	# --- G.4: Stale fee — wait action ---
-	log_test "Stale fee — wait action"
-	log_info "Executing with --stale-fee-action wait (should detect stale and abort)..."
-	safe_execute "${OWNER_0_KEY}" --stale-fee-action wait
+	# --- G.4: Stale fee — wait action with immediate-abort budget ---
+	log_test "Stale fee — wait action with --max-fee-wait-blocks 0"
+	log_info "Executing with --stale-fee-action wait --max-fee-wait-blocks 0 (should detect stale and abort immediately)..."
+	safe_execute "${OWNER_0_KEY}" --stale-fee-action wait --max-fee-wait-blocks 0
 	assert_output_contains "${LAST_CMD_OUTPUT}" "Stale fees detected" "Wait action: stale fee summary logged"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "exceeds max wait" "Wait action: immediate abort logged"
 
 	# --- G.5: Stale fee — reject action ---
 	log_test "Stale fee — reject action"

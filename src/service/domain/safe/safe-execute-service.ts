@@ -88,23 +88,21 @@ export async function executeReadyTransactions(config: SafeExecuteConfig): Promi
   let executedCount = 0;
 
   for (let i = 0; i < sorted.length; i++) {
-    if (i > 0) {
-      const shouldAbort = await checkFeePerTransaction({
-        transaction: sorted[i]!,
-        provider: config.provider,
-        systemContractAddresses: config.systemContractAddresses,
-        overpaymentThreshold,
-        maxFeeWaitBlocks,
-        txIndex: i + 1,
-        totalTxs: sorted.length,
-        skipConfirmation: config.skipConfirmation,
-        staleFeeAction: config.staleFeeAction
-      });
-      if (shouldAbort) {
-        printRemainingHashes(sorted, i);
-        process.exitCode = 1;
-        return;
-      }
+    const shouldAbort = await checkFeePerTransaction({
+      transaction: sorted[i]!,
+      provider: config.provider,
+      systemContractAddresses: config.systemContractAddresses,
+      overpaymentThreshold,
+      maxFeeWaitBlocks,
+      txIndex: i + 1,
+      totalTxs: sorted.length,
+      skipConfirmation: config.skipConfirmation,
+      staleFeeAction: config.staleFeeAction
+    });
+    if (shouldAbort) {
+      printRemainingHashes(sorted, i);
+      process.exitCode = 1;
+      return;
     }
 
     try {

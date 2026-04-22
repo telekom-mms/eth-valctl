@@ -159,6 +159,14 @@ describe('executeReadyTransactions', () => {
   beforeEach(() => {
     stderrSpy = spyOn(console, 'error').mockImplementation(() => {});
     spyOn(console, 'log').mockImplementation(() => {});
+    mockValidateSingleTransactionFee.mockReset();
+    mockValidateSingleTransactionFee.mockResolvedValue(SUFFICIENT_VALIDATION);
+    mockWaitForSufficientFee.mockReset();
+    mockWaitForSufficientFee.mockResolvedValue(SUFFICIENT_VALIDATION);
+    mockValidateTransactionFees.mockReset();
+    mockValidateTransactionFees.mockResolvedValue(ALL_SUFFICIENT_RESULT);
+    mockHandleStaleFeeBeforeExecution.mockReset();
+    mockHandleStaleFeeBeforeExecution.mockResolvedValue('wait');
   });
 
   afterEach(() => {
@@ -427,29 +435,7 @@ describe('executeReadyTransactions', () => {
     expect(allOutput).toContain('block 12345');
   });
 
-  it('skips per-tx fee check for the first transaction (i=0)', async () => {
-    const tx = createPendingTx({ safeTxHash: '0x001', nonce: '42' });
-    const mockApiKit = createMockApiKit([tx]);
-    const mockProtocolKit = createMockProtocolKit(42);
-    const mockProvider = createMockProvider();
-
-    mockValidateSingleTransactionFee.mockClear();
-
-    await executeReadyTransactions({
-      apiKit: mockApiKit as never,
-      protocolKit: mockProtocolKit as never,
-      provider: mockProvider as never,
-      safeAddress: SAFE_ADDRESS,
-      signerAddress: SIGNER_ADDRESS,
-      systemContractAddresses: [CONSOLIDATION_CONTRACT_ADDRESS],
-      skipConfirmation: true
-    });
-
-    expect(mockValidateSingleTransactionFee).not.toHaveBeenCalled();
-    expect(mockProtocolKit.executeTransaction).toHaveBeenCalledTimes(1);
-  });
-
-  it('runs per-tx fee check for transactions after the first', async () => {
+  it('runs per-tx fee check for every transaction including the first', async () => {
     const tx1 = createPendingTx({ safeTxHash: '0x001', nonce: '42' });
     const tx2 = createPendingTx({ safeTxHash: '0x002', nonce: '43' });
     const mockApiKit = createMockApiKit([tx1, tx2]);
@@ -469,11 +455,11 @@ describe('executeReadyTransactions', () => {
       skipConfirmation: true
     });
 
-    expect(mockValidateSingleTransactionFee).toHaveBeenCalledTimes(1);
+    expect(mockValidateSingleTransactionFee).toHaveBeenCalledTimes(2);
     expect(mockProtocolKit.executeTransaction).toHaveBeenCalledTimes(2);
   });
 
-  it('aborts execution when per-tx fee check returns abort', async () => {
+  it('aborts on first-tx stale fee when per-tx check returns abort', async () => {
     const staleValidation: TransactionFeeValidation = {
       transaction: {} as never,
       status: FeeStatus.STALE,
@@ -485,8 +471,7 @@ describe('executeReadyTransactions', () => {
 
     const tx1 = createPendingTx({ safeTxHash: '0xhash001', nonce: '42' });
     const tx2 = createPendingTx({ safeTxHash: '0xhash002', nonce: '43' });
-    const tx3 = createPendingTx({ safeTxHash: '0xhash003', nonce: '44' });
-    const mockApiKit = createMockApiKit([tx1, tx2, tx3]);
+    const mockApiKit = createMockApiKit([tx1, tx2]);
     const mockProtocolKit = createMockProtocolKit(42);
     const mockProvider = createMockProvider();
 
@@ -505,10 +490,53 @@ describe('executeReadyTransactions', () => {
       skipConfirmation: true
     });
 
+    expect(mockProtocolKit.executeTransaction).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+
+    const allOutput = stderrSpy.mock.calls.flat().join('\n');
+    expect(allOutput).toContain('0xhash001');
+    expect(allOutput).toContain('0xhash002');
+  });
+
+  it('aborts mid-execution when per-tx fee check returns abort for a later transaction', async () => {
+    const staleValidation: TransactionFeeValidation = {
+      transaction: {} as never,
+      status: FeeStatus.STALE,
+      proposedFee: 50n,
+      currentFee: 100n,
+      contractAddress: CONSOLIDATION_CONTRACT_ADDRESS,
+      estimatedBlocks: 10n
+    };
+
+    const tx1 = createPendingTx({ safeTxHash: '0xhash001', nonce: '42' });
+    const tx2 = createPendingTx({ safeTxHash: '0xhash002', nonce: '43' });
+    const tx3 = createPendingTx({ safeTxHash: '0xhash003', nonce: '44' });
+    const mockApiKit = createMockApiKit([tx1, tx2, tx3]);
+    const mockProtocolKit = createMockProtocolKit(42);
+    const mockProvider = createMockProvider();
+
+    mockValidateSingleTransactionFee.mockClear();
+    mockValidateSingleTransactionFee
+      .mockResolvedValueOnce(SUFFICIENT_VALIDATION)
+      .mockResolvedValue(staleValidation);
+    mockHandleStaleFeeBeforeExecution.mockClear();
+    mockHandleStaleFeeBeforeExecution.mockResolvedValue(FEE_ACTION_ABORT);
+
+    await executeReadyTransactions({
+      apiKit: mockApiKit as never,
+      protocolKit: mockProtocolKit as never,
+      provider: mockProvider as never,
+      safeAddress: SAFE_ADDRESS,
+      signerAddress: SIGNER_ADDRESS,
+      systemContractAddresses: [CONSOLIDATION_CONTRACT_ADDRESS],
+      skipConfirmation: true
+    });
+
     expect(mockProtocolKit.executeTransaction).toHaveBeenCalledTimes(1);
     expect(process.exitCode).toBe(1);
 
     const allOutput = stderrSpy.mock.calls.flat().join('\n');
+    expect(allOutput).toContain('0xhash002');
     expect(allOutput).toContain('0xhash003');
   });
 

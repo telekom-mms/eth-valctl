@@ -45,7 +45,9 @@ interface ExecutionFeePromptConfig {
  *
  * - Empty validations (rejection-only batch): returns 'proceed' silently
  * - All SUFFICIENT: prints success, returns 'proceed'
- * - Has STALE: prints warnings with block estimates, prompts Wait/Reject
+ * - Has STALE: prints warnings with block estimates, prompts Wait/Reject. Wait
+ *   returns 'proceed' so the per-transaction fee check in the execution loop
+ *   performs the actual polling bounded by `--max-fee-wait-blocks`.
  * - Has UNVALIDATED: prints warning, prompts Execute anyway/Abort
  * - OVERPAID info is printed in all scenarios but does not block execution
  *
@@ -117,13 +119,16 @@ function printValidationDetails(validations: TransactionFeeValidation[], total: 
 /**
  * Handle scenario where stale fees are detected
  *
- * Prints summary and prompts user to Wait or Reject.
- * On Reject, creates rejection transactions for stale nonces.
+ * Prints an informational summary of stale fees and either proposes rejection
+ * transactions (when `--stale-fee-action reject` is set) or returns 'proceed'
+ * so the per-transaction fee check during execution performs bounded polling
+ * via `--max-fee-wait-blocks`. All interactive Wait/Abort decisions happen
+ * per-transaction in `handleStaleFeeBeforeExecution`.
  *
  * @param config - Fee prompt configuration
  * @param validations - Per-transaction validation results
  * @param total - Total number of transactions
- * @returns 'wait' if user chose to wait, 'reject' after rejection proposals
+ * @returns 'reject' after rejection proposals, otherwise 'proceed'
  */
 async function handleStaleTransactions(
   config: FeePromptConfig,
@@ -131,36 +136,16 @@ async function handleStaleTransactions(
   total: number
 ): Promise<FeeValidationAction> {
   const staleValidations = validations.filter((v) => v.status === FeeStatus.STALE);
-  console.error(chalk.red(`\n${logging.SAFE_FEE_STALE_SUMMARY(staleValidations.length, total)}`));
+  console.error(
+    chalk.yellow(`\n${logging.SAFE_FEE_STALE_SUMMARY_INFO(staleValidations.length, total)}`)
+  );
 
-  if (config.staleFeeAction) {
-    if (config.staleFeeAction === application.FEE_ACTION_REJECT) {
-      await rejectStaleTransactions(config, staleValidations);
-      return application.FEE_ACTION_REJECT;
-    }
-    return application.FEE_ACTION_WAIT;
+  if (config.staleFeeAction === application.FEE_ACTION_REJECT) {
+    await rejectStaleTransactions(config, staleValidations);
+    return application.FEE_ACTION_REJECT;
   }
 
-  if (config.skipConfirmation) {
-    return application.FEE_ACTION_WAIT;
-  }
-
-  const { action } = await prompts({
-    type: 'select',
-    name: 'action',
-    message: logging.SAFE_FEE_STALE_PROMPT,
-    choices: [
-      { title: logging.SAFE_FEE_WAIT_ACTION, value: application.FEE_ACTION_WAIT },
-      { title: logging.SAFE_FEE_REJECT_ACTION, value: application.FEE_ACTION_REJECT }
-    ]
-  });
-
-  if (action === undefined || action === application.FEE_ACTION_WAIT) {
-    return application.FEE_ACTION_WAIT;
-  }
-
-  await rejectStaleTransactions(config, staleValidations);
-  return application.FEE_ACTION_REJECT;
+  return application.FEE_ACTION_PROCEED;
 }
 
 /**
