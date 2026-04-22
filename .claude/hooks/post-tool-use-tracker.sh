@@ -94,7 +94,7 @@ get_build_command() {
 	if [[ -f "$repo_path/package.json" ]]; then
 		if grep -q '"build"' "$repo_path/package.json" 2>/dev/null; then
 			# Detect package manager (prefer bun, then pnpm, then yarn, then npm)
-			if [[ -f "$repo_path/bun.lock" ]] || [[ -f "$repo_path/bun.lockb" ]]; then
+			if [[ -f "$repo_path/bun.lock" ]] || [[ -f "$repo_path/bun.lock" ]]; then
 				echo "cd $repo_path && bun run build"
 			elif [[ -f "$repo_path/pnpm-lock.yaml" ]]; then
 				echo "cd $repo_path && pnpm build"

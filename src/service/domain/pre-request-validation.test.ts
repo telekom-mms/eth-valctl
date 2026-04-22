@@ -20,17 +20,6 @@ import {
   WRONG_WITHDRAWAL_CREDENTIALS_0X01_ERROR
 } from '../../constants/logging';
 
-const exitMock = mock((_code?: number) => undefined as never);
-
-mock.module('process', () => {
-  const original = { ...process };
-  return {
-    ...original,
-    exit: exitMock,
-    default: { ...original, exit: exitMock }
-  };
-});
-
 const OWNER_ADDRESS = '0xaabbccddeeff00112233445566778899aabbccdd';
 const OWNER_ADDRESS_MIXED_CASE = '0xAabbCCddEEff00112233445566778899aabBccDd';
 const OTHER_ADDRESS = '0x1111111111111111111111111111111111111111';
@@ -83,14 +72,18 @@ mock.module('undici', () => ({
   fetch: mockFetch
 }));
 
+const REAL_PRE_REQUEST_VALIDATION_SPECIFIER = './pre-request-validation?real';
 const {
   checkCompoundingCredentials,
   checkHasExecutionCredentials,
   checkWithdrawalAddressOwnership,
   filterSwitchableValidators
-} = await import('./pre-request-validation');
+} = (await import(
+  REAL_PRE_REQUEST_VALIDATION_SPECIFIER
+)) as typeof import('./pre-request-validation');
 
-const ANSI_ESCAPE_PATTERN = /\[[0-9;]*m/g;
+// eslint-disable-next-line no-control-regex -- Matches ANSI escape sequences emitted by chalk
+const ANSI_ESCAPE_PATTERN = /\u001B\[[0-9;]*m/g;
 
 /**
  * Collect all console.error calls from a spy, join them with newlines, and strip
@@ -109,15 +102,17 @@ function collectStderr(spy: ReturnType<typeof spyOn>): string {
 describe('pre-request-validation', () => {
   let stderrSpy: ReturnType<typeof spyOn>;
   let stdoutSpy: ReturnType<typeof spyOn>;
+  let exitSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
     mockFetch.mockReset();
-    exitMock.mockClear();
+    exitSpy = spyOn(process, 'exit').mockImplementation((() => undefined) as never);
     stderrSpy = spyOn(console, 'error').mockImplementation(() => {});
     stdoutSpy = spyOn(console, 'log').mockImplementation(() => {});
   });
 
   afterEach(() => {
+    exitSpy.mockRestore();
     stderrSpy.mockRestore();
     stdoutSpy.mockRestore();
   });
@@ -130,7 +125,7 @@ describe('pre-request-validation', () => {
 
       await checkCompoundingCredentials(BEACON_URL, [PUBKEY_A, PUBKEY_B]);
 
-      expect(exitMock).not.toHaveBeenCalled();
+      expect(exitSpy).not.toHaveBeenCalled();
       expect(stderrSpy).not.toHaveBeenCalled();
     });
 
@@ -141,7 +136,7 @@ describe('pre-request-validation', () => {
 
       await checkCompoundingCredentials(BEACON_URL, [PUBKEY_A]);
 
-      expect(exitMock).toHaveBeenCalledWith(1);
+      expect(exitSpy).toHaveBeenCalledWith(1);
       const stderrOutput = collectStderr(stderrSpy);
       expect(stderrOutput).toContain(
         GENERAL_WRONG_WITHDRAWAL_CREDENTIALS_ERROR(WITHDRAWAL_CREDENTIALS_0x00)
@@ -156,7 +151,7 @@ describe('pre-request-validation', () => {
 
       await checkCompoundingCredentials(BEACON_URL, [PUBKEY_A]);
 
-      expect(exitMock).toHaveBeenCalledWith(1);
+      expect(exitSpy).toHaveBeenCalledWith(1);
       const stderrOutput = collectStderr(stderrSpy);
       expect(stderrOutput).toContain(
         GENERAL_WRONG_WITHDRAWAL_CREDENTIALS_ERROR(WITHDRAWAL_CREDENTIALS_0x01)
@@ -175,7 +170,7 @@ describe('pre-request-validation', () => {
 
       await checkHasExecutionCredentials(BEACON_URL, [PUBKEY_A, PUBKEY_B], formatError);
 
-      expect(exitMock).not.toHaveBeenCalled();
+      expect(exitSpy).not.toHaveBeenCalled();
       expect(stderrSpy).not.toHaveBeenCalled();
     });
 
@@ -187,8 +182,8 @@ describe('pre-request-validation', () => {
 
       await checkHasExecutionCredentials(BEACON_URL, [PUBKEY_A, PUBKEY_B, PUBKEY_C], formatError);
 
-      expect(exitMock).toHaveBeenCalledTimes(1);
-      expect(exitMock).toHaveBeenCalledWith(1);
+      expect(exitSpy).toHaveBeenCalledTimes(1);
+      expect(exitSpy).toHaveBeenCalledWith(1);
       const stderrOutput = collectStderr(stderrSpy);
       expect(stderrOutput).toContain(formatError(PUBKEY_A));
       expect(stderrOutput).toContain(formatError(PUBKEY_C));
@@ -210,7 +205,7 @@ describe('pre-request-validation', () => {
       ]);
 
       expect(switchable).toEqual([PUBKEY_A, PUBKEY_C]);
-      expect(exitMock).not.toHaveBeenCalled();
+      expect(exitSpy).not.toHaveBeenCalled();
       const stdoutOutput = stdoutSpy.mock.calls.flat().join('\n');
       expect(stdoutOutput).toContain(SWITCH_SOURCE_VALIDATOR_ALREADY_0x02_WARNING(PUBKEY_B));
     });
@@ -223,8 +218,8 @@ describe('pre-request-validation', () => {
 
       await filterSwitchableValidators(BEACON_URL, [PUBKEY_A, PUBKEY_B, PUBKEY_C]);
 
-      expect(exitMock).toHaveBeenCalledTimes(1);
-      expect(exitMock).toHaveBeenCalledWith(1);
+      expect(exitSpy).toHaveBeenCalledTimes(1);
+      expect(exitSpy).toHaveBeenCalledWith(1);
       const stderrOutput = collectStderr(stderrSpy);
       expect(stderrOutput).toContain(SWITCH_SOURCE_VALIDATOR_0x00_CREDENTIALS_ERROR(PUBKEY_A));
       expect(stderrOutput).toContain(SWITCH_SOURCE_VALIDATOR_0x00_CREDENTIALS_ERROR(PUBKEY_C));
@@ -239,7 +234,7 @@ describe('pre-request-validation', () => {
       const switchable = await filterSwitchableValidators(BEACON_URL, [PUBKEY_A, PUBKEY_B]);
 
       expect(switchable).toEqual([]);
-      expect(exitMock).not.toHaveBeenCalled();
+      expect(exitSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -251,7 +246,7 @@ describe('pre-request-validation', () => {
 
       await checkWithdrawalAddressOwnership(BEACON_URL, OWNER_ADDRESS, [PUBKEY_A]);
 
-      expect(exitMock).not.toHaveBeenCalled();
+      expect(exitSpy).not.toHaveBeenCalled();
       expect(stderrSpy).not.toHaveBeenCalled();
     });
 
@@ -273,8 +268,8 @@ describe('pre-request-validation', () => {
         PUBKEY_C
       ]);
 
-      expect(exitMock).toHaveBeenCalledTimes(1);
-      expect(exitMock).toHaveBeenCalledWith(1);
+      expect(exitSpy).toHaveBeenCalledTimes(1);
+      expect(exitSpy).toHaveBeenCalledWith(1);
       const stderrOutput = collectStderr(stderrSpy);
       expect(stderrOutput).toContain(PUBKEY_A);
       expect(stderrOutput).toContain(PUBKEY_C);
@@ -400,7 +395,7 @@ describe('pre-request-validation', () => {
 
       await checkCompoundingCredentials(BEACON_URL, [PUBKEY_A]);
 
-      expect(exitMock).toHaveBeenCalledWith(1);
+      expect(exitSpy).toHaveBeenCalledWith(1);
       const stderrOutput = collectStderr(stderrSpy);
       expect(stderrOutput).toContain(BEACON_API_ERROR);
       expect(stderrOutput).toContain('Service Unavailable');
@@ -417,7 +412,7 @@ describe('pre-request-validation', () => {
 
       await checkCompoundingCredentials(BEACON_URL, [PUBKEY_A]);
 
-      expect(exitMock).toHaveBeenCalledWith(1);
+      expect(exitSpy).toHaveBeenCalledWith(1);
       const stderrOutput = collectStderr(stderrSpy);
       expect(stderrOutput).toContain(BEACON_API_ERROR);
       expect(stderrOutput).toContain(causeMessage);
@@ -430,7 +425,7 @@ describe('pre-request-validation', () => {
 
       await checkCompoundingCredentials(BEACON_URL, [PUBKEY_A]);
 
-      expect(exitMock).toHaveBeenCalledWith(1);
+      expect(exitSpy).toHaveBeenCalledWith(1);
       const stderrOutput = collectStderr(stderrSpy);
       expect(stderrOutput).toContain(UNEXPECTED_BEACON_API_ERROR(BEACON_URL));
       expect(stderrOutput).toContain(unexpectedMessage);
@@ -444,7 +439,7 @@ describe('pre-request-validation', () => {
 
       await filterSwitchableValidators(BEACON_URL, [PUBKEY_A]);
 
-      expect(exitMock).toHaveBeenCalledWith(1);
+      expect(exitSpy).toHaveBeenCalledWith(1);
       const stderrOutput = collectStderr(stderrSpy);
       expect(stderrOutput).toContain(BEACON_API_ERROR);
     });
@@ -457,7 +452,7 @@ describe('pre-request-validation', () => {
 
       await checkWithdrawalAddressOwnership(BEACON_URL, OWNER_ADDRESS, [PUBKEY_A]);
 
-      expect(exitMock).toHaveBeenCalledWith(1);
+      expect(exitSpy).toHaveBeenCalledWith(1);
       const stderrOutput = collectStderr(stderrSpy);
       expect(stderrOutput).toContain(BEACON_API_ERROR);
     });

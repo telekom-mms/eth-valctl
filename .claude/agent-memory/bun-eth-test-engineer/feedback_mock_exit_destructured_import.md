@@ -1,45 +1,35 @@
 ---
-name: Mocking process.exit when source destructures it from 'process'
-description: spyOn(process, 'exit') does NOT intercept `import { exit } from 'process'` in Bun — must use mock.module('process', ...) instead
+name: Do not destructure exit from 'process' in source under test
+description: Source should call process.exit(1) directly; mock.module('process') works locally but fails on Linux CI
 type: feedback
 ---
 
-When a source file imports `exit` via destructuring from the `'process'` module
-(e.g. `import { exit } from 'process'`) and then calls `exit(1)`, a
-`spyOn(process, 'exit').mockImplementation(...)` does NOT intercept the call in
-Bun. The test runner's own process gets terminated with code 1 and the test
-output is swallowed (you'll see `bun test v...` and then the process dies with
-exit code 1 — no failure details, no dots).
+**Source-side rule:** if a domain module calls `exit(1)`, the tests get two-mode
+behaviour — pass locally, fail on Linux CI. Change the source to call
+`process.exit(1)` directly (remove `import { exit } from 'process'`). This is
+consistent with the rest of the repo (`ethereum.ts`, `safe-preflight.ts`).
 
-**Why:** Bun resolves `import { exit } from 'process'` to a live binding on the
-`process` object's own `exit` slot that was captured at import-evaluation time.
-`spyOn` replaces the slot, but the resolved binding inside the module appears to
-still reference the original. Confirmed by running a minimal repro inside this
-repo.
+**Why:** Bun resolves `import { exit } from 'process'` to a live binding captured
+at module-evaluation time. Under `bun test` on Linux CI, that binding is
+orphaned from the `process` singleton the test's `spyOn(process, 'exit')`
+targets, so the spy never intercepts. `process.exit(1)` performs a property
+lookup at call time and goes through the spy correctly.
 
-**How to apply:** For modules that destructure `exit` (see
-`src/service/domain/pre-request-validation.ts` and `src/service/prompt.ts`), mock
-the whole `process` module and preserve the rest of its surface:
+**Why not use `mock.module('process', ...)`:** It works locally in isolation but
+fails deterministically on CI. The failure mode is silent — the test runner
+subprocess catches the real `exit(1)` and continues; the spy shows zero calls,
+and every subsequent assertion about the error path fails.
 
-```ts
-const exitMock = mock((_code?: number) => undefined as never);
+**How to apply:**
 
-mock.module('process', () => {
-  const original = { ...process };
-  return {
-    ...original,
-    exit: exitMock,
-    default: { ...original, exit: exitMock }
-  };
-});
+1. Before authoring tests against a module that uses `exit(1)`: change the
+   source to `process.exit(1)` and remove the destructured import. Small
+   one-line-per-call-site change, no behaviour difference at runtime.
+2. In the test, install the spy inside `beforeEach` (NOT at module top level)
+   and restore in `afterEach`. Module-level spies are lost across Bun's
+   per-test module re-initialization on CI.
+3. Combine with the cache-bust specifier (`./module-name?real`) when loading
+   the module under test — see `feedback_cache_bust_bypass_mock_module.md`.
 
-const { theExported } = await import('./module-under-test');
-```
-
-The no-op `exitMock` lets post-exit statements keep running so accumulation
-behaviour (loops that collect all bad inputs before a single `exit(1)`) becomes
-observable. Use `exitMock.mockClear()` in `beforeEach` to reset call state.
-
-For files that use `process.exit(1)` directly (e.g. `safe-preflight.ts`), the
-standard `spyOn(process, 'exit').mockImplementation(() => { throw ... })` still
-works — see `src/service/domain/safe/safe-preflight.test.ts` for that pattern.
+**Reference implementation:** `pre-request-validation.test.ts` and source at
+`src/service/domain/pre-request-validation.ts`.

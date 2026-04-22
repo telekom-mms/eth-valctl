@@ -161,7 +161,7 @@ dist/
 *.exe
 
 # Bun
-bun.lockb
+bun.lock
 
 # Environment
 .env
@@ -213,8 +213,8 @@ Thumbs.db
 ### Lock File
 
 ```bash
-# Always commit bun.lockb for reproducible builds
-git add bun.lockb
+# Always commit bun.lock for reproducible builds
+git add bun.lock
 
 # Update dependencies
 bun update

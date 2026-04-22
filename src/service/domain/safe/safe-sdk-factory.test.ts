@@ -42,12 +42,13 @@ describe('createSafeApiKit', () => {
     delete process.env[SAFE_API_KEY_ENV];
 
     capturedConstructorArgs = [];
-    safeApiKitSpy = spyOn(safeApiKitModule, 'default').mockImplementation(function (
-      ...args: unknown[]
-    ) {
+    const spyTarget = safeApiKitModule as unknown as {
+      default: (...args: unknown[]) => unknown;
+    };
+    safeApiKitSpy = spyOn(spyTarget, 'default').mockImplementation((...args: unknown[]) => {
       capturedConstructorArgs.push(args);
       return { __capturedArgs: args };
-    } as unknown as typeof safeApiKitModule.default);
+    });
   });
 
   afterEach(() => {

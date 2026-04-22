@@ -1,5 +1,4 @@
 import chalk from 'chalk';
-import { exit } from 'process';
 import { fetch, Response } from 'undici';
 
 import {
@@ -89,7 +88,7 @@ async function validateWithdrawalCredentials(
       } else {
         console.error(chalk.red(logging.UNEXPECTED_BEACON_API_ERROR(beaconApiUrl), error));
       }
-      exit(1);
+      process.exit(1);
     }
   }
 }
@@ -139,7 +138,7 @@ export async function checkHasExecutionCredentials(
     for (const pubkey of invalidPubkeys) {
       console.error(chalk.red(formatError(pubkey)));
     }
-    exit(1);
+    process.exit(1);
   }
 }
 
@@ -186,7 +185,7 @@ export async function filterSwitchableValidators(
       } else {
         console.error(chalk.red(logging.UNEXPECTED_BEACON_API_ERROR(beaconApiUrl), error));
       }
-      exit(1);
+      process.exit(1);
     }
   }
 
@@ -194,7 +193,7 @@ export async function filterSwitchableValidators(
     for (const pubkey of unswitchable) {
       console.error(chalk.red(logging.SWITCH_SOURCE_VALIDATOR_0x00_CREDENTIALS_ERROR(pubkey)));
     }
-    exit(1);
+    process.exit(1);
   }
 
   return switchable;
@@ -233,7 +232,7 @@ export async function checkWithdrawalAddressOwnership(
       } else {
         console.error(chalk.red(logging.UNEXPECTED_BEACON_API_ERROR(beaconApiUrl), error));
       }
-      exit(1);
+      process.exit(1);
     }
   }
 
@@ -281,7 +280,7 @@ function reportOwnershipMismatches(
   if (hasTargetMismatch) {
     console.error(chalk.yellow(logging.WITHDRAWAL_ADDRESS_TARGET_MISMATCH_HINT));
   }
-  exit(1);
+  process.exit(1);
 }
 
 /**
@@ -292,7 +291,7 @@ function reportOwnershipMismatches(
 async function exitWithApiError(response: Response) {
   console.error(chalk.red(logging.BEACON_API_ERROR, response.statusText));
   console.error(chalk.red(logging.RESPONSE_ERROR, response.status, '-', await response.text()));
-  exit(1);
+  process.exit(1);
 }
 
 /**
@@ -309,5 +308,5 @@ function exitWithInvalidWithdrawalCredentials(withdrawalCredentialsType: string)
   } else {
     console.error(chalk.red(logging.WRONG_WITHDRAWAL_CREDENTIALS_0X01_ERROR));
   }
-  exit(1);
+  process.exit(1);
 }

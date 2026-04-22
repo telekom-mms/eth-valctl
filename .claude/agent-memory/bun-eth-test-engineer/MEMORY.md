@@ -1,4 +1,5 @@
-- [Mocking destructured process.exit](feedback_mock_exit_destructured_import.md) — spyOn doesn't catch `import { exit } from 'process'`; use mock.module
+- [CI module isolation needs three fixes together](feedback_ci_module_isolation_combo.md) — cache-bust + beforeEach spy + direct process.exit in source
+- [Do not destructure exit from 'process'](feedback_mock_exit_destructured_import.md) — change source to `process.exit(1)`; mock.module workaround fails on Linux CI
 - [chalk stringifies multi-arg calls](feedback_chalk_stringifies_args.md) — assert on message strings, not Error object identity, when source uses chalk.red(msg, err)
 - [Bun test output needs --dots in pipes](reference_bun_output_piping.md) — harness pipes stdout, so bun hides progress unless --dots or -t is passed
 - [mock.module leaks across test files](feedback_mock_module_pollution.md) — prefer spyOn; avoid mock.module for internal paths (wallet-signer, ledger-signer, ethers)
