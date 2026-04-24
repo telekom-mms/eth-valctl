@@ -45,6 +45,18 @@ The scope is optional but recommended for clarity. Use lowercase and keep it con
 
 The description should be concise, using imperative mood (e.g., "Add", "Fix", "Update"). It should start with a capital letter and not end with a period.
 
+### Body Guidelines
+
+The commit body should contain bullet points summarizing the individual changes:
+
+```bash
+feat(cli): Add file-based validator pubkey input
+
+* Add auto-detection of file paths vs inline pubkeys
+* Read pubkeys from file with comment and blank line support
+* Update help text on all four CLI commands
+```
+
 ### Breaking Changes
 
 For breaking changes, add `!` after the type/scope or include `BREAKING CHANGE:` in the footer:

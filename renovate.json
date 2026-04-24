@@ -1,13 +1,22 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "baseBranches": [
+    "develop"
+  ],
   "commitMessageAction": "Update",
+  "enabledManagers": [
+    "bun",
+    "npm",
+    "github-actions"
+  ],
   "extends": [
     "config:recommended"
   ],
   "packageRules": [
     {
       "groupName": "npm non-major",
-      "matchDatasources": [
+      "matchManagers": [
+        "bun",
         "npm"
       ],
       "matchUpdateTypes": [

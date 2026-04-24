@@ -20,7 +20,7 @@ consolidateCommand
   .description('Consolidate one or many source validators into one target validator')
   .requiredOption(
     `-s, --source <validatorPubkey...>`,
-    'Space separated list of validator pubkeys which will be consolidated into the target validator',
+    'Validator pubkeys (space separated) or path to a file containing one pubkey per line',
     parseAndValidateValidatorPubKeys
   )
   .requiredOption(
@@ -29,7 +29,7 @@ consolidateCommand
     parseAndValidateValidatorPubKey
   )
   .option(
-    '--skip-target-ownership-check',
+    '-k, --skip-target-ownership-check',
     'Skip ownership validation for the target validator',
     false
   )

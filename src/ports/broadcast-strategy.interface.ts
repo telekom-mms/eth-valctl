@@ -1,4 +1,8 @@
-import type { BroadcastResult, ExecutionLayerRequestTransaction } from '../model/ethereum';
+import type {
+  BroadcastResult,
+  Disposable,
+  ExecutionLayerRequestTransaction
+} from '../model/ethereum';
 import type { ISigner } from './signer.interface';
 
 /**
@@ -7,7 +11,7 @@ import type { ISigner } from './signer.interface';
  * Different implementations handle parallel vs sequential broadcasting
  * based on signer capabilities.
  */
-export interface IBroadcastStrategy {
+export interface IBroadcastStrategy extends Disposable {
   /**
    * Whether this strategy broadcasts in parallel (true) or sequentially (false)
    */

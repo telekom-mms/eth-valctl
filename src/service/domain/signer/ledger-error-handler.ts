@@ -46,7 +46,7 @@ export interface ClassifyLedgerErrorOptions {
 const DISCONNECTED_DURING_OPERATION_INFO: LedgerErrorInfo = {
   type: 'DISCONNECTED_DURING_OPERATION',
   message: logging.LEDGER_DEVICE_DISCONNECTED_DURING_OPERATION_ERROR,
-  recoverable: true
+  recoverable: false
 };
 
 const USER_REJECTED_INFO: LedgerErrorInfo = {
@@ -70,7 +70,7 @@ const LOCKED_DEVICE_INFO: LedgerErrorInfo = {
 const DISCONNECTED_INFO: LedgerErrorInfo = {
   type: 'DISCONNECTED',
   message: logging.LEDGER_DEVICE_DISCONNECTED_ERROR,
-  recoverable: true
+  recoverable: false
 };
 
 const BLIND_SIGNING_REQUIRED_INFO: LedgerErrorInfo = {

@@ -7,8 +7,8 @@ import type {
   ReplacementSummary,
   SigningContext
 } from '../../../model/ethereum';
+import { isInsufficientFundsError, isNonceExpiredError } from '../error-utils';
 import { isLedgerError } from '../signer';
-import { isInsufficientFundsError, isNonceExpiredError } from './error-utils';
 
 /**
  * Service for logging transaction processing progress with consistent formatting.
@@ -42,7 +42,7 @@ export class TransactionProgressLogger {
    * @param maxFeePerGasInGwei - Current max fee per gas in gwei
    */
   logBroadcastStart(count: number, blockNumber: number, maxFeePerGasInGwei: string): void {
-    console.log(chalk.cyan(logging.BROADCAST_START_INFO(count, blockNumber, maxFeePerGasInGwei)));
+    console.log(chalk.blue(logging.BROADCAST_START_INFO(count, blockNumber, maxFeePerGasInGwei)));
   }
 
   /**
@@ -52,7 +52,7 @@ export class TransactionProgressLogger {
    * @param maxFeePerGasInGwei - Current max fee per gas in gwei
    */
   logBroadcastStartSequential(count: number, maxFeePerGasInGwei: string): void {
-    console.log(chalk.cyan(logging.BROADCAST_START_SEQUENTIAL_INFO(count, maxFeePerGasInGwei)));
+    console.log(chalk.blue(logging.BROADCAST_START_SEQUENTIAL_INFO(count, maxFeePerGasInGwei)));
   }
 
   /**
@@ -126,7 +126,7 @@ export class TransactionProgressLogger {
 
   logFailedValidators(failedValidatorPubkeys: string[]): void {
     console.log('');
-    console.log(chalk.cyan(logging.FAILED_VALIDATORS_FOR_RETRY_HEADER));
+    console.log(chalk.blue(logging.FAILED_VALIDATORS_FOR_RETRY_HEADER));
     console.log(chalk.white(failedValidatorPubkeys.join(' ')));
   }
 
@@ -164,14 +164,14 @@ export class TransactionProgressLogger {
    * @param hash - Transaction hash being broadcast
    */
   logBroadcastingTransaction(hash: string): void {
-    console.log(chalk.yellow(logging.BROADCASTING_EL_REQUEST_INFO, hash, '...'));
+    console.log(chalk.blue(logging.BROADCASTING_EL_REQUEST_INFO, hash, '...'));
   }
 
   /**
    * Log that a Ledger connection attempt is starting
    */
   logLedgerConnecting(): void {
-    console.log(chalk.cyan(logging.LEDGER_CONNECTING_INFO));
+    console.log(chalk.blue(logging.LEDGER_CONNECTING_INFO));
   }
 
   /**
@@ -180,14 +180,14 @@ export class TransactionProgressLogger {
    * @param address - Ethereum address resolved from the Ledger device
    */
   logLedgerConnected(address: string): void {
-    console.log(chalk.cyan(logging.LEDGER_CONNECTED_INFO(address)));
+    console.log(chalk.blue(logging.LEDGER_CONNECTED_INFO(address)));
   }
 
   /**
    * Log Ledger device disconnection
    */
   logLedgerDisconnected(): void {
-    console.log(chalk.cyan(logging.LEDGER_DISCONNECTED_INFO));
+    console.log(chalk.blue(logging.LEDGER_DISCONNECTED_INFO));
   }
 
   /**
@@ -198,7 +198,7 @@ export class TransactionProgressLogger {
   logLedgerSigningPrompt(context?: SigningContext): void {
     if (context) {
       console.log(
-        chalk.cyan(
+        chalk.blue(
           logging.LEDGER_SIGN_PROMPT(
             context.currentIndex,
             context.totalCount,
@@ -207,7 +207,7 @@ export class TransactionProgressLogger {
         )
       );
     } else {
-      console.log(chalk.cyan(logging.LEDGER_SIGN_GENERIC_PROMPT));
+      console.log(chalk.blue(logging.LEDGER_SIGN_GENERIC_PROMPT));
     }
   }
 

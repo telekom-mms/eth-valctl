@@ -20,21 +20,39 @@ export const networkConfig: Record<string, NetworkConfig> = {
   mainnet: {
     consolidationContractAddress: CONSOLIDATION_CONTRACT_ADDRESS,
     withdrawalContractAddress: WITHDRAWAL_CONTRACT_ADDRESS,
-    chainId: 1n
+    chainId: 1n,
+    safeTransactionServiceUrl: 'https://safe-transaction-mainnet.safe.global/api',
+    safeRequiresApiKey: true
   },
   sepolia: {
     consolidationContractAddress: CONSOLIDATION_CONTRACT_ADDRESS,
     withdrawalContractAddress: WITHDRAWAL_CONTRACT_ADDRESS,
-    chainId: 11155111n
+    chainId: 11155111n,
+    safeTransactionServiceUrl: 'https://safe-transaction-sepolia.safe.global/api',
+    safeRequiresApiKey: true
   },
   hoodi: {
     consolidationContractAddress: CONSOLIDATION_CONTRACT_ADDRESS,
     withdrawalContractAddress: WITHDRAWAL_CONTRACT_ADDRESS,
-    chainId: 560048n
+    chainId: 560048n,
+    safeTransactionServiceUrl: 'https://transaction-ethereum-hoodi.safe.protofire.io/api',
+    safeRequiresApiKey: false
   },
   kurtosis_devnet: {
     consolidationContractAddress: CONSOLIDATION_CONTRACT_ADDRESS,
     withdrawalContractAddress: WITHDRAWAL_CONTRACT_ADDRESS,
-    chainId: 3151908n
+    chainId: 3151908n,
+    safeTransactionServiceUrl: 'http://localhost:5555/api',
+    safeRequiresApiKey: false,
+    safeContractAddresses: {
+      safeSingletonAddress: '',
+      safeProxyFactoryAddress: '',
+      multiSendAddress: '',
+      multiSendCallOnlyAddress: '',
+      fallbackHandlerAddress: '',
+      signMessageLibAddress: '',
+      createCallAddress: '',
+      simulateTxAccessorAddress: ''
+    }
   }
 };

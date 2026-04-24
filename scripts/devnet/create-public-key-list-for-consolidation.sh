@@ -32,6 +32,7 @@ check_dependencies
 BEACON_NODE_URL=""
 VALIDATOR_START_INDEX=""
 VALIDATOR_STOP_INDEX=""
+OUTPUT_FILE=""
 
 # Help text
 usage() {
@@ -44,6 +45,7 @@ Options:
     --beacon-node-url              Beacon node URL
     --validator-start-index        Starting index of validator range
     --validator-stop-index         Stopping index of validator range
+    --file                         Write pubkeys to file (one per line), creates path if needed
     -h, --help                     Show this help message
 EOF
 	exit 1
@@ -62,6 +64,10 @@ while [[ $# -gt 0 ]]; do
 		;;
 	--validator-stop-index)
 		VALIDATOR_STOP_INDEX="$2"
+		shift 2
+		;;
+	--file)
+		OUTPUT_FILE="$2"
 		shift 2
 		;;
 	-h | --help)
@@ -84,4 +90,10 @@ for i in $(seq "$VALIDATOR_START_INDEX" "$VALIDATOR_STOP_INDEX"); do
 	add_to_validator_list "$(curl -s "$BEACON_NODE_URL"/eth/v1/beacon/states/head/validators/"$i" | jq -r .data.validator.pubkey)"
 done
 
-echo "$all_validator_pubkeys"
+if [[ -n "$OUTPUT_FILE" ]]; then
+	mkdir -p "$(dirname "$OUTPUT_FILE")"
+	echo "$all_validator_pubkeys" | tr ' ' '\n' >"$OUTPUT_FILE"
+	echo "Wrote $(echo "$all_validator_pubkeys" | wc -w | tr -d ' ') pubkeys to $OUTPUT_FILE" >&2
+else
+	echo "$all_validator_pubkeys"
+fi

@@ -12,15 +12,19 @@ import chalk from 'chalk';
 import { Command, Option } from 'commander';
 
 import packageJson from '../../package.json';
+import { DEFAULT_SAFE_FEE_TIP } from '../constants/application';
 import { DISCLAIMER_INFO } from '../constants/logging';
 import type { GlobalCliOptions } from '../model/commander';
 import { consolidateCommand } from './consolidate';
 import { exitCommand } from './exit';
+import { safeCommand } from './safe';
 import { switchWithdrawalCredentialTypeCommand } from './switch';
 import {
   parseAndValidateMaxNumberOfRequestsPerBlock,
   parseAndValidateNodeUrl,
-  validateNetwork
+  parseAndValidateSafeAddress,
+  validateNetwork,
+  validateSafeNetworkSupport
 } from './validation/cli';
 import { withdrawCommand } from './withdraw';
 
@@ -34,6 +38,7 @@ program
   .name('eth-valctl')
   .description(`CLI tool for managing Ethereum validators.\n${chalk.yellow(DISCLAIMER_INFO)}`)
   .version(packageJson.version)
+  .enablePositionalOptions()
   .addOption(
     new Option(
       `-n, --network <network>`,
@@ -57,7 +62,7 @@ program
   )
   .requiredOption(
     `-m, --max-requests-per-block <number>`,
-    'Max. number of sent execution layer requests per block',
+    'Max. number of execution layer requests per block (direct mode) or operations per MultiSend batch (Safe mode)',
     parseAndValidateMaxNumberOfRequestsPerBlock,
     10
   )
@@ -66,15 +71,27 @@ program
     'Use Ledger hardware wallet for transaction signing (requires device connection)',
     false
   )
+  .option(
+    `-s, --safe <address>`,
+    'Safe multisig address to use for transaction proposals',
+    parseAndValidateSafeAddress
+  )
+  .option(
+    `-f, --safe-fee-tip <wei>`,
+    'Absolute tip in wei added to system contract fee per operation in Safe proposals',
+    String(DEFAULT_SAFE_FEE_TIP)
+  )
   .hook('preAction', (thisCommand) => {
     console.log(chalk.yellow(DISCLAIMER_INFO));
     const globalOptions: GlobalCliOptions = thisCommand.opts();
     validateNetwork(globalOptions.jsonRpcUrl, globalOptions.network);
+    validateSafeNetworkSupport(globalOptions.network, globalOptions.safe);
   })
   .addCommand(consolidateCommand)
   .addCommand(switchWithdrawalCredentialTypeCommand)
   .addCommand(withdrawCommand)
-  .addCommand(exitCommand);
+  .addCommand(exitCommand)
+  .addCommand(safeCommand);
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   console.error(chalk.red('Fatal error:'), error);

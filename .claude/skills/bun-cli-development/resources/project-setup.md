@@ -212,7 +212,7 @@ dist/
 my-cli
 
 # Bun
-bun.lockb
+bun.lock
 
 # Coverage
 coverage/
@@ -237,9 +237,6 @@ Thumbs.db
 ### .gitattributes
 
 ```gitattributes
-# Treat lockfile as binary
-bun.lockb binary
-
 # Ensure LF line endings
 *.ts text eol=lf
 *.json text eol=lf
@@ -333,18 +330,21 @@ export const config = validateEnv();
 When starting a new Bun CLI project:
 
 1. **Initialize project**
+
    ```bash
    mkdir my-cli && cd my-cli
    bun init
    ```
 
 2. **Install dependencies**
+
    ```bash
    bun add commander chalk prompts
    bun add -d @types/bun typescript
    ```
 
 3. **Create directory structure**
+
    ```bash
    mkdir -p src/{cli,service/domain,model,config,constants}
    mkdir -p tests/{unit,integration}
@@ -356,6 +356,7 @@ When starting a new Bun CLI project:
 5. **Configure Bun** - Create bunfig.toml (see above)
 
 6. **Configure Git**
+
    ```bash
    git init
    # Create .gitignore and .gitattributes

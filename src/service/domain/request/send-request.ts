@@ -1,7 +1,7 @@
 import type { JsonRpcProvider } from 'ethers';
 
 import type { ISigner } from '../../../ports/signer.interface';
-import { createTransactionBatchOrchestrator } from './execution-layer-request-factory';
+import { createTransactionPipeline } from './execution-layer-request-factory';
 
 /**
  * Send execution layer requests via JSON-RPC connection
@@ -24,7 +24,7 @@ export async function sendExecutionLayerRequests(
   executionLayerRequestBatchSize: number,
   beaconApiUrl: string
 ): Promise<void> {
-  const orchestrator = await createTransactionBatchOrchestrator(
+  const pipeline = await createTransactionPipeline(
     systemContractAddress,
     jsonRpcProvider,
     signer,
@@ -32,8 +32,9 @@ export async function sendExecutionLayerRequests(
   );
 
   try {
-    await orchestrator.sendExecutionLayerRequests(requestData, executionLayerRequestBatchSize);
+    await pipeline.sendExecutionLayerRequests(requestData, executionLayerRequestBatchSize);
   } finally {
+    await pipeline.dispose();
     await signer.dispose();
   }
 }

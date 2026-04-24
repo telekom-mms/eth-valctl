@@ -89,7 +89,9 @@ async function main(): Promise<void> {
     console.error(`Allowed targets are: ${allowedTargets.join(', ')}`);
     process.exit(1);
   }
-  const targetsToBuild = targetArg ? [targetMap[targetArg]] : Object.values(targetMap);
+  const targetsToBuild: TargetConfig[] = targetArg
+    ? [targetMap[targetArg] as TargetConfig]
+    : Object.values(targetMap);
   console.log(
     targetArg
       ? `Building for target: ${targetArg}`

@@ -1,4 +1,4 @@
-import * as logging from '../../constants/logging';
+import { EXIT_VALIDATOR_0x00_CREDENTIALS_ERROR } from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
 import { checkHasExecutionCredentials } from './pre-request-validation';
 import { withdraw } from './withdraw';
@@ -16,7 +16,7 @@ export async function exit(
   await checkHasExecutionCredentials(
     globalOptions.beaconApiUrl,
     validatorPubkeys,
-    logging.EXIT_VALIDATOR_0x00_CREDENTIALS_ERROR
+    EXIT_VALIDATOR_0x00_CREDENTIALS_ERROR
   );
   await withdraw(globalOptions, validatorPubkeys, 0);
 }

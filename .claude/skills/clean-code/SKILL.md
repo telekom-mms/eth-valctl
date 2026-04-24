@@ -30,6 +30,7 @@ All code generation must adhere to these principles and practices.
 **Practices:**
 - **Boy Scout Rule:** Leave code cleaner than found
 - **Root Cause Analysis:** Address underlying causes, not symptoms
+- **Small Functions:** Functions must do one thing. Avoid monolithic functions; break them into focused, single-purpose units. If a function requires scrolling or mental bookmarks, extract sub-steps into well-named helpers
 - **Simple Refactorings:** Apply Extract Method and Rename
 
 ### Orange Level - Structure
@@ -39,6 +40,7 @@ All code generation must adhere to these principles and practices.
 - **SRP (Single Responsibility):** Every class has one reason to change
 - **SoC (Separation of Concerns):** Isolate responsibilities into separate modules
 - **Source Code Conventions:** Consistent naming and standards
+- **No Inline String Literals:** Never use inline string literals for user-facing messages, error messages, or magic values. Extract them to dedicated constant modules.
 
 **Practices:**
 - **Automated Integration Tests:** Verify behavior across components
@@ -107,6 +109,16 @@ All code generation must adhere to these principles and practices.
 - **Mandatory Documentation:** JSDoc, docstrings, type docs required
 - **No Whitespace Suggestions:** Focus on logic changes
 - **No Unnecessary Updates:** Don't change files without modifications
+- **Max Number Of Function Arguments:** Limit arguments to three or fewer. Excessive arguments complicate the function signature and make it difficult to understand and use.
+- **Avoid Useless Config Type Extraction:** Do not extract a config type argument at the beginning of a function. Use dot notation (type.property) if properties are only referenced. If a property is modified during the function flow it should be extracted into a separate variable. In those cases, extracting the specific property can improve clarity and maintainability.
+
+---
+
+## Specific repository guidelines
+
+- **No inline string literals:** All user-facing messages, error messages, and magic values must be extracted to dedicated constant modules. This ensures consistency and maintainability across the codebase.
+- **Interface rules:** All interfaces should be places in `src/model` or `src/ports`, depending on their usage. This has multiple advantages: 1) it provides a clear overview of all interfaces in the codebase, 2) it prevents the declaration of duplicate interfaces, 3) it makes it easier to find and maintain interfaces, 4) it is easier to find common patterns between interfaces and create a base/parent class. When defining an interface, check if there is already a similar one in `src/model` or `src/ports` that can be reused or extended instead of creating a new one.
+- **Importing namespaces:** Import full constant namespaces (e.g., `import * as application from '../constants/application'`) when number of specific imports > 3. This enhances readability and maintainability by providing clear context for constant usage.
 
 ---
 

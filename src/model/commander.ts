@@ -30,4 +30,6 @@ export interface GlobalCliOptions {
   beaconApiUrl: string;
   maxRequestsPerBlock: number;
   ledger: boolean;
+  safe?: string;
+  safeFeeTip?: string;
 }

@@ -1,8 +1,8 @@
 import chalk from 'chalk';
-import { exit } from 'process';
 import { fetch, Response } from 'undici';
 
 import {
+  OWNER_LABEL_SIGNER,
   VALIDATOR_STATE_BEACON_API_ENDPOINT,
   WITHDRAWAL_CREDENTIALS_0x00,
   WITHDRAWAL_CREDENTIALS_0x01,
@@ -88,7 +88,7 @@ async function validateWithdrawalCredentials(
       } else {
         console.error(chalk.red(logging.UNEXPECTED_BEACON_API_ERROR(beaconApiUrl), error));
       }
-      exit(1);
+      process.exit(1);
     }
   }
 }
@@ -138,7 +138,7 @@ export async function checkHasExecutionCredentials(
     for (const pubkey of invalidPubkeys) {
       console.error(chalk.red(formatError(pubkey)));
     }
-    exit(1);
+    process.exit(1);
   }
 }
 
@@ -185,7 +185,7 @@ export async function filterSwitchableValidators(
       } else {
         console.error(chalk.red(logging.UNEXPECTED_BEACON_API_ERROR(beaconApiUrl), error));
       }
-      exit(1);
+      process.exit(1);
     }
   }
 
@@ -193,25 +193,27 @@ export async function filterSwitchableValidators(
     for (const pubkey of unswitchable) {
       console.error(chalk.red(logging.SWITCH_SOURCE_VALIDATOR_0x00_CREDENTIALS_ERROR(pubkey)));
     }
-    exit(1);
+    process.exit(1);
   }
 
   return switchable;
 }
 
 /**
- * Check that the signer address matches the withdrawal address embedded in each validator's credentials
+ * Check that the owner address matches the withdrawal address embedded in each validator's credentials
  *
  * @param beaconApiUrl - The beacon api url
- * @param signerAddress - The address of the connected signer
+ * @param ownerAddress - The address that should own the validators (signer address or Safe address)
  * @param validatorPubkeys - The validator public keys to check
  * @param targetPubkeys - When provided, labels mismatches as (source) or (target) and hints at --skip-target-ownership-check
+ * @param ownerLabel - Label for error messages (e.g. 'signer' or 'Safe')
  */
 export async function checkWithdrawalAddressOwnership(
   beaconApiUrl: string,
-  signerAddress: string,
+  ownerAddress: string,
   validatorPubkeys: string[],
-  targetPubkeys?: string[]
+  targetPubkeys?: string[],
+  ownerLabel: string = OWNER_LABEL_SIGNER
 ): Promise<void> {
   const targetSet = targetPubkeys ? new Set(targetPubkeys) : undefined;
   const mismatches: WithdrawalAddressMismatch[] = [];
@@ -221,7 +223,7 @@ export async function checkWithdrawalAddressOwnership(
       const credentials = await fetchValidatorCredentials(beaconApiUrl, validatorPubkey);
       const withdrawalAddress = extractAddressFromCredentials(credentials);
 
-      if (withdrawalAddress.toLowerCase() !== signerAddress.toLowerCase()) {
+      if (withdrawalAddress.toLowerCase() !== ownerAddress.toLowerCase()) {
         mismatches.push({ pubkey: validatorPubkey, withdrawalAddress });
       }
     } catch (error) {
@@ -230,28 +232,30 @@ export async function checkWithdrawalAddressOwnership(
       } else {
         console.error(chalk.red(logging.UNEXPECTED_BEACON_API_ERROR(beaconApiUrl), error));
       }
-      exit(1);
+      process.exit(1);
     }
   }
 
   if (mismatches.length > 0) {
-    reportOwnershipMismatches(mismatches, signerAddress, targetSet);
+    reportOwnershipMismatches(mismatches, ownerAddress, ownerLabel, targetSet);
   }
 }
 
 /**
  * Report withdrawal address ownership mismatches and terminate the process
  *
- * @param mismatches - The validators whose withdrawal address does not match the signer
- * @param signerAddress - The address of the connected signer
+ * @param mismatches - The validators whose withdrawal address does not match the owner
+ * @param ownerAddress - The address that should own the validators
+ * @param ownerLabel - Label for error messages (e.g. 'signer' or 'Safe')
  * @param targetSet - When provided, used to label mismatches as (Source) or (Target) role
  */
 function reportOwnershipMismatches(
   mismatches: WithdrawalAddressMismatch[],
-  signerAddress: string,
+  ownerAddress: string,
+  ownerLabel: string,
   targetSet?: Set<string>
 ): never {
-  console.error(chalk.red(logging.WITHDRAWAL_ADDRESS_OWNERSHIP_HEADER));
+  console.error(chalk.red(logging.WITHDRAWAL_ADDRESS_OWNERSHIP_HEADER(ownerLabel)));
   let hasTargetMismatch = false;
   for (const { pubkey, withdrawalAddress } of mismatches) {
     let role: string | undefined;
@@ -263,14 +267,20 @@ function reportOwnershipMismatches(
     }
     console.error(
       chalk.red(
-        logging.WITHDRAWAL_ADDRESS_MISMATCH_ERROR(pubkey, withdrawalAddress, signerAddress, role)
+        logging.WITHDRAWAL_ADDRESS_MISMATCH_ERROR(
+          pubkey,
+          withdrawalAddress,
+          ownerAddress,
+          ownerLabel,
+          role
+        )
       )
     );
   }
   if (hasTargetMismatch) {
     console.error(chalk.yellow(logging.WITHDRAWAL_ADDRESS_TARGET_MISMATCH_HINT));
   }
-  exit(1);
+  process.exit(1);
 }
 
 /**
@@ -281,7 +291,7 @@ function reportOwnershipMismatches(
 async function exitWithApiError(response: Response) {
   console.error(chalk.red(logging.BEACON_API_ERROR, response.statusText));
   console.error(chalk.red(logging.RESPONSE_ERROR, response.status, '-', await response.text()));
-  exit(1);
+  process.exit(1);
 }
 
 /**
@@ -298,5 +308,5 @@ function exitWithInvalidWithdrawalCredentials(withdrawalCredentialsType: string)
   } else {
     console.error(chalk.red(logging.WRONG_WITHDRAWAL_CREDENTIALS_0X01_ERROR));
   }
-  exit(1);
+  process.exit(1);
 }

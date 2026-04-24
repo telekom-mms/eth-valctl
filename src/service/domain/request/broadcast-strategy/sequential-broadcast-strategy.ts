@@ -5,8 +5,8 @@ import type {
 } from '../../../../model/ethereum';
 import type { IBroadcastStrategy } from '../../../../ports/broadcast-strategy.interface';
 import type { ISlotTimingService } from '../../../../ports/slot-timing.interface';
+import { isInsufficientFundsError } from '../../error-utils';
 import { isFatalLedgerError, type ISigner, isUserRejectedError } from '../../signer';
-import { isInsufficientFundsError } from '../error-utils';
 import type { EthereumStateService } from '../ethereum-state-service';
 import type { TransactionProgressLogger } from '../transaction-progress-logger';
 import {
@@ -42,6 +42,13 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
     private readonly slotTimingService: ISlotTimingService,
     private readonly logger: TransactionProgressLogger
   ) {}
+
+  /**
+   * Dispose the slot timing service
+   */
+  async dispose(): Promise<void> {
+    await this.slotTimingService.dispose();
+  }
 
   /**
    * Broadcast transactions sequentially with slot-aware timing

@@ -11,13 +11,13 @@ import type {
   TransactionStatus
 } from '../../../model/ethereum';
 import { TransactionReplacementStatusType, TransactionStatusType } from '../../../model/ethereum';
-import { type ISigner, isUserRejectedError } from '../signer';
-import { createElTransaction, extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
 import {
   isInsufficientFundsError,
   isNonceExpiredError,
   isReplacementUnderpricedError
-} from './error-utils';
+} from '../error-utils';
+import { type ISigner, isUserRejectedError } from '../signer';
+import { createElTransaction, extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
 import { EthereumStateService } from './ethereum-state-service';
 import { TransactionMonitor } from './transaction-monitor';
 import { TransactionProgressLogger } from './transaction-progress-logger';
