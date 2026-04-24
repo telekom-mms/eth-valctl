@@ -40,16 +40,16 @@ safeCommand
   )
   .option(
     '-y, --yes',
-    'Skip confirmation prompts (stale fees will abort with block estimate; use --stale-fee-action to override)',
+    'Skip confirmation prompts. On stale fees, poll until fees drop, bounded by --max-fee-wait-blocks (use --stale-fee-action reject to propose rejections instead)',
     false
   )
   .option(
     '-a, --stale-fee-action <action>',
-    'Action for stale fees: wait (default with --yes, exit and retry later) or reject (propose rejection transactions)'
+    'Non-interactive action for stale fees: wait (poll until fee drops, bounded by --max-fee-wait-blocks) or reject (propose rejection transactions)'
   )
   .option(
     '-w, --max-fee-wait-blocks <blocks>',
-    'Max blocks to wait for fee to drop during execution (0 disables waiting)',
+    'Max blocks to wait for fee to drop (default: 50, 0 aborts immediately on stale fees)',
     String(application.DEFAULT_MAX_FEE_WAIT_BLOCKS)
   )
   .action(async (options, cmd) => {

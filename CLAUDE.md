@@ -146,9 +146,9 @@ src/
 | Option | Description | Default |
 | --- | --- | --- |
 | `-o, --fee-overpayment-threshold <wei>` | Wei threshold above which fee overpayment is flagged | `100` |
-| `-y, --yes` | Skip confirmation prompts (stale fees abort with block estimate) | `false` |
-| `-a, --stale-fee-action <action>` | Non-interactive stale fee action: `wait` or `reject` | - |
-| `-w, --max-fee-wait-blocks <blocks>` | Max blocks to wait for fee to drop during execution (0 disables) | `50` |
+| `-y, --yes` | Skip confirmation prompts. On stale fees, poll until fees drop, bounded by `--max-fee-wait-blocks` (use `--stale-fee-action reject` to propose rejections instead) | `false` |
+| `-a, --stale-fee-action <action>` | Non-interactive stale fee action: `wait` (poll) or `reject` (propose rejection) | - |
+| `-w, --max-fee-wait-blocks <blocks>` | Max blocks to wait for fee to drop (default: 50, 0 aborts immediately on stale fees) | `50` |
 
 ## Commit Message Style
 
@@ -182,7 +182,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/) as defined i
 5. **INSUFFICIENT_FUNDS aborts** remaining batches immediately
 6. **Supported networks:** mainnet, hoodi, sepolia, kurtosis_devnet
 7. **Safe proposals** use MultiSend batching with sequential nonces; each operation includes system contract fee + `--safe-fee-tip` (default 100 wei to absorb intra-batch fee growth)
-8. **Safe execution is strictly nonce-ordered** — fee is re-validated per transaction; stale fees trigger wait or abort depending on `--stale-fee-action`
+8. **Safe execution is strictly nonce-ordered** — fee is re-validated before every transaction (including the first); stale fees poll for fee drop (bounded by `--max-fee-wait-blocks`) or propose rejection, depending on `--stale-fee-action`
 9. **Safe preflight** validates TX Service health, Safe existence, and signer ownership before any sign/execute operation
 
 ## Testing

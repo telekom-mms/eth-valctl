@@ -1,5 +1,7 @@
 # eth-valctl
 
+**NOTE: This README is pretty big already and will be refactored to a static html site, using Docusaurus, soon.**
+
 CLI tool for managing Ethereum validators via execution layer requests. This cli currently only supports validator related features included in the Pectra hardfork. This might change in the future. The tool scales to hundreds of validators and supports Safe multisig wallets and Ledger hardware signing for secure private key management.
 
 Supports private key signing (default), Ledger hardware wallet signing (`--ledger`), and Safe multisig proposals (`--safe`).
@@ -72,6 +74,8 @@ Each command requires specific withdrawal credential types:
 
 **Note: Your system clock must be synchronized (e.g. via NTP) for accurate slot boundary calculations. Inaccurate time may cause transactions to be broadcast at unfavorable moments, leading to reverts.**
 
+**Terminology note**: Throughout this README, "fee" (unqualified) refers to the **EIP-7002/EIP-7251 system contract fee** which is a dynamic fee paid to the withdrawal (`0x...7002`) or consolidation (`0x...7251`) request contract when submitting a validator operation. It is **not** the Ethereum gas fee. See [Contract fee staleness](#contract-fee-staleness) for details on how this fee behaves and how `safe execute` handles staleness.
+
 ## Available cli options and commands
 
 Print the help message with `--help`. This works also for every subcommand.
@@ -129,12 +133,16 @@ Sign pending eth-valctl Safe transactions. Requires `--safe`.
 
 Execute fully-signed eth-valctl Safe transactions on-chain. Requires `--safe`.
 
+<!-- markdownlint-disable MD060 -->
+
 | Short Option | Long Option                          | Description                                                                                  |
 | ------------ | ------------------------------------ | -------------------------------------------------------------------------------------------- |
 | -o           | --fee-overpayment-threshold \<wei\>  | Wei threshold above which fee overpayment is flagged (default: 100)                          |
-| -y           | --yes                                | Skip confirmation prompts (stale fees abort with block estimate)                             |
-| -a           | --stale-fee-action \<action\>        | Non-interactive stale fee handling: `wait` or `reject`                                       |
-| -w           | --max-fee-wait-blocks \<blocks\>     | Max blocks to wait for fee to drop during execution (default: 50, 0 disables)                |
+| -y           | --yes                                | Skip confirmation prompts. On stale fees, poll until fees drop, bounded by `--max-fee-wait-blocks` (use `--stale-fee-action reject` to propose rejections instead) |
+| -a           | --stale-fee-action \<action\>        | Non-interactive stale fee handling: `wait` (poll) or `reject` (propose rejection)            |
+| -w           | --max-fee-wait-blocks \<blocks\>     | Max blocks to wait for fee to drop (default: 50, 0 aborts immediately on stale fees)         |
+
+<!-- markdownlint-enable MD060 -->
 
 ## Transaction handling
 
@@ -143,7 +151,7 @@ Execute fully-signed eth-valctl Safe transactions on-chain. Requires `--safe`.
 - Transactions are processed in batches controlled by `--max-requests-per-block`
 - The tool waits for the next slot boundary if signing happens in the last 2 seconds of a 12-second slot. This avoids broadcasting transactions right at a slot change where contract fees may update, and may cause brief pauses during execution.
 - Failed transactions are automatically retried up to 3 times with updated contract fees
-- Replacement transactions pay 12% higher transaction fees (required by execution clients for replacements to be accepted)
+- Replacement transactions pay 12% higher gas fees (required by execution clients for replacements to be accepted)
 - Transaction replacements are mostly necessary when the system contract fees increase between signing and mining. This is especially relevant when using Ledger signing, as the manual confirmation on the device adds latency, increasing the chance of fee changes. Consider using smaller batch sizes with `--ledger` to mitigate this.
 - An `INSUFFICIENT_FUNDS` error aborts all remaining batches immediately. Ensure your wallet is sufficiently funded before starting a large operation.
 
@@ -207,17 +215,31 @@ During `safe execute`, the tool validates proposed fees against current on-chain
 
 ### Handling stale fees
 
-When stale fees are detected, the tool offers three options:
+When stale fees are detected, the tool supports two resolution strategies:
 
 | Action | Behavior |
 | ------ | -------- |
-| **Wait** | Poll every slot (~12s) until fees drop to the proposed level, up to `--max-fee-wait-blocks` (default: 50). Useful when the fee spike is temporary. |
-| **Reject** | Propose zero-value rejection transactions at the same nonces. Other owners must sign the rejections. Once executed, the original stale transactions become non-executable and new proposals with updated fees can be created. |
-| **Abort** | Stop execution immediately without modifying any pending transactions. Come back later to try again, once system contract fee dropped. |
+| **Wait** (default) | Poll every slot (~12s) until fees drop to the proposed level, bounded by `--max-fee-wait-blocks` (default: 50). Aborts if the estimated number of blocks to fee recovery exceeds the bound, or if the bound is exhausted. Useful when the fee spike is temporary. |
+| **Reject** | Propose zero-value rejection transactions at the same nonces. Other owners must sign the rejections. Once executed, the original stale transactions become non-executable and new proposals with updated fees can be created. Opt in via `--stale-fee-action reject`. |
 
-For non-interactive usage (`--yes`), use `--stale-fee-action` to select `wait` or `reject`. If neither is set, the default is `wait`.
+Resolution happens **per Safe transaction** in the execution loop: before each tx is sent, its fee is re-checked against the current on-chain fee. If still stale, the tool either polls (Wait) or aborts with an Abort prompt (interactive) / an immediate abort (non-interactive when the estimated block count exceeds `--max-fee-wait-blocks`). Transactions whose proposed fee is no longer stale at their execution slot proceed silently.
 
-Fees are also re-checked per-transaction during execution. If a fee becomes stale between transactions, the tool will wait (up to `--max-fee-wait-blocks`) or abort depending on the configured action.
+To skip waiting entirely and abort immediately on any stale fee, set `--max-fee-wait-blocks 0`.
+
+For non-interactive usage (`--yes`), the default action on stale fees is Wait (bounded by `--max-fee-wait-blocks`). Use `--stale-fee-action reject` to propose rejections instead.
+
+The `~N blocks remaining` estimate shown during a wait is recomputed from live on-chain excess on every poll. If other parties submit requests mid-wait, the estimate may increase; if demand drops, it decreases. `--max-fee-wait-blocks` bounds the real elapsed blocks regardless of how the estimate moves.
+
+### Rejecting stale transactions
+
+Rejection is a whole-batch, non-interactive decision — there is no "Reject" option in the per-tx prompt. Choose one of:
+
+| Situation | Command |
+| --- | --- |
+| Known upfront — all stale txs should be cancelled | `safe execute --stale-fee-action reject` |
+| Changed mind during execution | At the per-tx prompt, select **Abort**, then re-run with `--stale-fee-action reject` |
+
+Rejection proposes zero-value transactions at each stale nonce; owners must still sign them (`safe sign`) and execute them (`safe execute --yes`) to cancel the originals. If some transactions already executed before you aborted, only the remaining pending nonces are rejected — the executed ones are on-chain and permanent.
 
 ### Limitations
 
@@ -371,7 +393,7 @@ The automated suite (`scripts/integration-test/run.sh`) covers:
 
 ### Manual testing
 
-The local devnet with Safe infrastructure can also be used for manual testing. Interactive scenarios that require manual input or Ledger hardware are documented in `scripts/integration-test/manual/manual-fee-testing-playbook.md`, covering all wait/abort/reject paths at batch-level and per-transaction levels. For Safe infrastructure setup details, see `scripts/safe/README.md`.
+The local devnet with Safe infrastructure can also be used for manual testing. Interactive scenarios that require manual input or Ledger hardware are documented in `scripts/integration-test/manual/manual-fee-testing-playbook.md`, covering all wait/abort/reject paths at the per-transaction level plus the non-interactive batch-level `--stale-fee-action reject` flow. For Safe infrastructure setup details, see `scripts/safe/README.md`.
 
 ### Scripts reference
 

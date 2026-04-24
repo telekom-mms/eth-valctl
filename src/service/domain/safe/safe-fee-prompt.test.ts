@@ -135,7 +135,7 @@ describe('handleFeeValidationResult', () => {
     expect(output).toContain('sufficient');
   });
 
-  it('returns wait for stale transactions with skipConfirmation', async () => {
+  it('returns proceed for stale transactions with skipConfirmation', async () => {
     const result: FeeValidationResult = {
       validations: [createStaleValidation()],
       hasStale: true,
@@ -144,7 +144,58 @@ describe('handleFeeValidationResult', () => {
 
     const action = await handleFeeValidationResult(createConfig(result));
 
-    expect(action).toBe('wait');
+    expect(action).toBe('proceed');
+  });
+
+  it('returns proceed for stale transactions when staleFeeAction is wait', async () => {
+    const result: FeeValidationResult = {
+      validations: [createStaleValidation()],
+      hasStale: true,
+      hasUnvalidated: false
+    };
+
+    const action = await handleFeeValidationResult(
+      createConfig(result, { skipConfirmation: false, staleFeeAction: 'wait' })
+    );
+
+    expect(action).toBe('proceed');
+  });
+
+  it('returns proceed for stale transactions in interactive mode without prompting', async () => {
+    const result: FeeValidationResult = {
+      validations: [createStaleValidation()],
+      hasStale: true,
+      hasUnvalidated: false
+    };
+
+    const action = await handleFeeValidationResult(
+      createConfig(result, { skipConfirmation: false })
+    );
+
+    expect(action).toBe('proceed');
+  });
+
+  it('returns reject and proposes rejections when staleFeeAction is reject', async () => {
+    const result: FeeValidationResult = {
+      validations: [createStaleValidation()],
+      hasStale: true,
+      hasUnvalidated: false
+    };
+    const protocolKit = createMockProtocolKit();
+    const apiKit = createMockApiKit();
+
+    const action = await handleFeeValidationResult(
+      createConfig(result, {
+        skipConfirmation: false,
+        staleFeeAction: 'reject',
+        protocolKit: protocolKit as never,
+        apiKit: apiKit as never
+      })
+    );
+
+    expect(action).toBe('reject');
+    expect(protocolKit.createRejectionTransaction).toHaveBeenCalledTimes(1);
+    expect(apiKit.proposeTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('prints stale warning with block estimate', async () => {
@@ -254,7 +305,7 @@ describe('handleFeeValidationResult', () => {
 
     const action = await handleFeeValidationResult(createConfig(result));
 
-    expect(action).toBe('wait');
+    expect(action).toBe('proceed');
     const output = stderrSpy.mock.calls.flat().join('\n');
     expect(output).toContain('Stale fees detected');
   });

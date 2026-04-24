@@ -287,12 +287,8 @@ export const SAFE_FEE_OVERPAYMENT_INFO = (
   `  ℹ Batch ${batch}/${total} (${safeTxHash.slice(0, 10)}...): proposed fee ${proposed} wei > current fee ${current} wei (overpayment: ${overpaymentAmount} wei above threshold)`;
 export const SAFE_FEE_ALL_SUFFICIENT_INFO = (count: number): string =>
   `  ✅ All ${count} transaction${count === 1 ? '' : 's'}: contract fees sufficient`;
-export const SAFE_FEE_STALE_SUMMARY = (staleCount: number, total: number): string =>
-  `Stale fees detected — executing now will revert ${staleCount} of ${total} transaction${total === 1 ? '' : 's'}.`;
-export const SAFE_FEE_STALE_PROMPT = 'Choose an action:';
-export const SAFE_FEE_WAIT_ACTION = 'Wait (exit and retry later when fees decrease)';
-export const SAFE_FEE_REJECT_ACTION =
-  'Reject (propose rejection transactions to cancel stale batches)';
+export const SAFE_FEE_STALE_SUMMARY_INFO = (staleCount: number, total: number): string =>
+  `Stale fees detected (${staleCount} of ${total} transaction${total === 1 ? '' : 's'}) — continuing will wait per transaction for fees to decrease, bounded by --max-fee-wait-blocks.`;
 export const SAFE_FEE_REJECTING_INFO = (count: number): string =>
   `Proposing ${count} rejection transaction${count === 1 ? '' : 's'}...`;
 export const SAFE_FEE_REJECTED_INFO = (batch: number, nonce: number, safeTxHash: string): string =>
