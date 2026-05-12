@@ -120,7 +120,7 @@ jobs:
         run: "quill --version"
 
       - name: "Fetch signing and notarization credentials from OpenBao"
-        uses: "hashicorp/vault-action@v3"
+        uses: "hashicorp/vault-action@v4"
         with:
           url: "${{ secrets.VAULT_ADDR }}"
           path: "jwt-github"
