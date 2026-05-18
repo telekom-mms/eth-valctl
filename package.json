@@ -24,7 +24,7 @@
   "description": "CLI tool to manage Ethereum validators",
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",
-    "@eslint/js": "^9.39.4",
+    "@eslint/js": "^10.0.0",
     "@eslint/migrate-config": "^2.0.6",
     "@ledgerhq/types-cryptoassets": "^7.36.0",
     "@ledgerhq/types-devices": "^6.31.0",
@@ -35,7 +35,7 @@
     "@typescript-eslint/eslint-plugin": "^8.59.0",
     "@typescript-eslint/parser": "^8.59.0",
     "conventional-changelog-conventionalcommits": "^9.3.1",
-    "eslint": "^9.39.4",
+    "eslint": "^10.0.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-prettier": "^5.5.5",
