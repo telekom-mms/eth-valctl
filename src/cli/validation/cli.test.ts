@@ -5,15 +5,19 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 
 import { MAX_NUMBER_OF_REQUESTS_PER_BLOCK } from '../../constants/application';
+import * as logging from '../../constants/logging';
 import { SAFE_OPTION_REQUIRED_ERROR } from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
+import { formatFeeForDisplay } from '../../service/domain/request/transaction-progress-logger';
 import {
+  parseAndValidateMaxFee,
   parseAndValidateMaxNumberOfRequestsPerBlock,
   parseAndValidateNodeUrl,
   parseAndValidateSafeAddress,
   parseAndValidateValidatorPubKey,
   parseAndValidateValidatorPubKeys,
   parseAndValidateWithdrawAmount,
+  resolveMaxFee,
   validateSafeAddress,
   validateSafeNetworkSupport
 } from './cli';
@@ -370,6 +374,142 @@ describe('CLI Validation', () => {
       expect(() => validateSafeAddress(options)).toThrow('process.exit');
       expect(stderrSpy).toHaveBeenCalledWith(chalk.red(SAFE_OPTION_REQUIRED_ERROR));
       expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe('parseAndValidateMaxFee', () => {
+    let stderrSpy: ReturnType<typeof spyOn>;
+    let exitSpy: ReturnType<typeof spyOn>;
+
+    beforeEach(() => {
+      stderrSpy = spyOn(console, 'error').mockImplementation(() => {});
+      exitSpy = spyOn(process, 'exit').mockImplementation(() => {
+        throw new Error('process.exit');
+      });
+    });
+
+    afterEach(() => {
+      stderrSpy.mockRestore();
+      exitSpy.mockRestore();
+    });
+
+    it('parses wei unit', () => {
+      const result = parseAndValidateMaxFee('100wei');
+
+      expect(result).toBe('100');
+    });
+
+    it('parses gwei unit', () => {
+      const result = parseAndValidateMaxFee('50gwei');
+
+      expect(result).toBe('50000000000');
+    });
+
+    it('parses eth unit', () => {
+      const result = parseAndValidateMaxFee('0.01eth');
+
+      expect(result).toBe('10000000000000000');
+    });
+
+    it('parses decimal gwei value', () => {
+      const result = parseAndValidateMaxFee('0.5gwei');
+
+      expect(result).toBe('500000000');
+    });
+
+    it('parses 1wei as minimum valid fee', () => {
+      const result = parseAndValidateMaxFee('1wei');
+
+      expect(result).toBe('1');
+    });
+
+    it('parses integer eth value', () => {
+      const result = parseAndValidateMaxFee('1eth');
+
+      expect(result).toBe('1000000000000000000');
+    });
+
+    it('handles spaces between number and unit', () => {
+      const result = parseAndValidateMaxFee('100 gwei');
+
+      expect(result).toBe('100000000000');
+    });
+
+    it('exits with error for invalid format - no unit', () => {
+      expect(() => parseAndValidateMaxFee('100')).toThrow('process.exit');
+      expect(stderrSpy).toHaveBeenCalledWith(chalk.red(logging.INVALID_MAX_FEE_FORMAT_ERROR));
+    });
+
+    it('exits with error for invalid unit', () => {
+      expect(() => parseAndValidateMaxFee('100ether')).toThrow('process.exit');
+    });
+
+    it('exits with error for nonsense string', () => {
+      expect(() => parseAndValidateMaxFee('abc')).toThrow('process.exit');
+    });
+
+    it('exits with error for fee below 1 wei', () => {
+      expect(() => parseAndValidateMaxFee('0.5wei')).toThrow('process.exit');
+      expect(stderrSpy).toHaveBeenCalledWith(chalk.red(logging.MAX_FEE_TOO_LOW_ERROR));
+    });
+
+    it('exits with error for zero fee', () => {
+      expect(() => parseAndValidateMaxFee('0wei')).toThrow('process.exit');
+    });
+
+    it('prints warning when fee exceeds 0.01 ETH', () => {
+      const result = parseAndValidateMaxFee('0.02eth');
+
+      expect(result).toBe('20000000000000000');
+      expect(stderrSpy).toHaveBeenCalledWith(
+        chalk.yellow(logging.MAX_FEE_EXPENSIVE_WARNING(formatFeeForDisplay(20000000000000000n)))
+      );
+    });
+
+    it('does not print warning for exactly 0.01 ETH', () => {
+      stderrSpy.mockReset();
+      const result = parseAndValidateMaxFee('0.01eth');
+
+      expect(result).toBe('10000000000000000');
+      expect(stderrSpy).not.toHaveBeenCalled();
+    });
+
+    it('parses uppercase unit', () => {
+      const result = parseAndValidateMaxFee('10GWEI');
+
+      expect(result).toBe('10000000000');
+    });
+
+    it('parses mixed case unit', () => {
+      const result = parseAndValidateMaxFee('10Gwei');
+
+      expect(result).toBe('10000000000');
+    });
+  });
+
+  describe('resolveMaxFee', () => {
+    it('returns DEFAULT_MAX_FEE for undefined', () => {
+      const result = resolveMaxFee(undefined);
+
+      expect(result).toBe('1');
+    });
+
+    it('returns already-parsed numeric string as-is', () => {
+      const result = resolveMaxFee('100000000000');
+
+      expect(result).toBe('100000000000');
+    });
+
+    it('parses raw unit string via parseAndValidateMaxFee', () => {
+      const result = resolveMaxFee('1wei');
+
+      expect(result).toBe('1');
+    });
+
+    it('parses gwei unit string', () => {
+      const result = resolveMaxFee('50gwei');
+
+      expect(result).toBe('50000000000');
     });
   });
 

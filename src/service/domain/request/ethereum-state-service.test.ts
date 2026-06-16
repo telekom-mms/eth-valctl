@@ -230,4 +230,93 @@ describe('EthereumStateService', () => {
       expect(service.getMaxNetworkFees()).rejects.toThrow(BlockchainStateError);
     });
   });
+
+  describe('waitForContractFee', () => {
+    let setTimeoutSpy: ReturnType<typeof spyOn>;
+
+    beforeEach(() => {
+      setTimeoutSpy = spyOn(globalThis, 'setTimeout').mockImplementation(((
+        fn: unknown,
+        _ms?: unknown,
+        ..._args: unknown[]
+      ) => {
+        (fn as () => void)();
+        return undefined as unknown as ReturnType<typeof setTimeout>;
+      }) as typeof setTimeout);
+    });
+
+    afterEach(() => {
+      setTimeoutSpy.mockRestore();
+    });
+
+    it('returns fee immediately when fee is within max', async () => {
+      const mockProvider = createMockProviderWithStorage('0x0');
+      const service = new EthereumStateService(mockProvider, CONSOLIDATION_CONTRACT_ADDRESS);
+
+      const fee = await service.waitForContractFee(1n);
+
+      expect(fee).toBe(1n);
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+
+    it('waits for next block when fee exceeds max and returns when fee drops', async () => {
+      let blockCalls = 0;
+      let storageCalls = 0;
+      const mockProvider = createMockProvider({
+        getBlockNumber: mock(() => {
+          blockCalls++;
+          if (blockCalls === 1) return Promise.resolve(10);
+          return Promise.resolve(11);
+        }),
+        getStorage: mock(() => {
+          storageCalls++;
+          if (storageCalls === 1) {
+            return Promise.resolve(toBeHex(17n, 32));
+          }
+          return Promise.resolve('0x0');
+        })
+      });
+      const service = new EthereumStateService(mockProvider, CONSOLIDATION_CONTRACT_ADDRESS);
+
+      const fee = await service.waitForContractFee(1n);
+
+      expect(fee).toBe(1n);
+      expect(storageCalls).toBeGreaterThanOrEqual(2);
+    });
+
+    it('logs block number in waiting message', async () => {
+      let blockCalls = 0;
+      let storageCalls = 0;
+      const mockProvider = createMockProvider({
+        getBlockNumber: mock(() => {
+          blockCalls++;
+          if (blockCalls === 1) return Promise.resolve(42);
+          return Promise.resolve(43);
+        }),
+        getStorage: mock(() => {
+          storageCalls++;
+          if (storageCalls === 1) {
+            return Promise.resolve(toBeHex(17n, 32));
+          }
+          return Promise.resolve('0x0');
+        })
+      });
+      const service = new EthereumStateService(mockProvider, CONSOLIDATION_CONTRACT_ADDRESS);
+
+      await service.waitForContractFee(1n);
+
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      const loggedMessage = consoleErrorSpy.mock.calls[0]?.[0] as string;
+      expect(loggedMessage).toContain('Block 42');
+    });
+
+    it('propagates fee fetch error', async () => {
+      const mockProvider = createMockProvider({
+        getStorage: mock(() => Promise.reject(new Error('Storage failure')))
+      });
+      const service = new EthereumStateService(mockProvider, CONSOLIDATION_CONTRACT_ADDRESS);
+
+      expect(service.waitForContractFee(1n)).rejects.toThrow(BlockchainStateError);
+    });
+  });
 });

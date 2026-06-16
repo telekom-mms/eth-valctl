@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import { formatEther, formatUnits } from 'ethers';
 
 import * as serviceConstants from '../../../constants/application';
 import * as logging from '../../../constants/logging';
@@ -35,14 +36,24 @@ export class TransactionProgressLogger {
   }
 
   /**
-   * Log start of transaction broadcast with network context (parallel mode)
+   * Start of transaction broadcast with network context (parallel mode)
    *
    * @param count - Number of transactions being broadcast
    * @param blockNumber - Target block number
    * @param maxFeePerGasInGwei - Current max fee per gas in gwei
+   * @param contractFeeDisplay - Human-readable contract fee string
    */
-  logBroadcastStart(count: number, blockNumber: number, maxFeePerGasInGwei: string): void {
-    console.log(chalk.blue(logging.BROADCAST_START_INFO(count, blockNumber, maxFeePerGasInGwei)));
+  logBroadcastStart(
+    count: number,
+    blockNumber: number,
+    maxFeePerGasInGwei: string,
+    contractFeeDisplay: string
+  ): void {
+    console.log(
+      chalk.blue(
+        logging.BROADCAST_START_INFO(count, blockNumber, maxFeePerGasInGwei, contractFeeDisplay)
+      )
+    );
   }
 
   /**
@@ -50,9 +61,18 @@ export class TransactionProgressLogger {
    *
    * @param count - Number of transactions being broadcast
    * @param maxFeePerGasInGwei - Current max fee per gas in gwei
+   * @param contractFeeDisplay - Human-readable contract fee string
    */
-  logBroadcastStartSequential(count: number, maxFeePerGasInGwei: string): void {
-    console.log(chalk.blue(logging.BROADCAST_START_SEQUENTIAL_INFO(count, maxFeePerGasInGwei)));
+  logBroadcastStartSequential(
+    count: number,
+    maxFeePerGasInGwei: string,
+    contractFeeDisplay: string
+  ): void {
+    console.log(
+      chalk.blue(
+        logging.BROADCAST_START_SEQUENTIAL_INFO(count, maxFeePerGasInGwei, contractFeeDisplay)
+      )
+    );
   }
 
   /**
@@ -248,9 +268,20 @@ export class TransactionProgressLogger {
    *
    * @param nextBlock - Target block number
    * @param count - Number of transactions being replaced
+   * @param maxFeePerGasGwei - Current max fee per gas in gwei
+   * @param contractFeeDisplay - Human-readable contract fee string
    */
-  logBlockChangeReplacement(nextBlock: number, count: number): void {
-    console.log(chalk.yellow(logging.BLOCK_CHANGE_INFO(nextBlock, count)));
+  logBlockChangeReplacement(
+    nextBlock: number,
+    count: number,
+    maxFeePerGasGwei: string,
+    contractFeeDisplay: string
+  ): void {
+    console.log(
+      chalk.yellow(
+        logging.BLOCK_CHANGE_INFO(nextBlock, count, maxFeePerGasGwei, contractFeeDisplay)
+      )
+    );
   }
 
   /**
@@ -310,4 +341,28 @@ export class TransactionProgressLogger {
     if (isLedgerError(error)) return;
     console.error(chalk.red(logging.FAILED_TO_REPLACE_TRANSACTION_ERROR(hash)), error);
   }
+
+  /**
+   * Format a wei fee value for human-readable display
+   *
+   * Selects the most appropriate unit (wei, gwei, or ETH) based on magnitude.
+   *
+   * @param feeWei - Fee amount in wei
+   * @returns Formatted string with unit, e.g. "100 wei", "2.5 gwei", "0.01 ETH"
+   */
+  static formatFeeForDisplay(feeWei: bigint): string {
+    return formatFeeForDisplay(feeWei);
+  }
+}
+
+export function formatFeeForDisplay(feeWei: bigint): string {
+  if (feeWei < 1_000_000n) return `${feeWei} wei`;
+  if (feeWei < 10_000_000_000_000_000_000n) {
+    const gwei = formatUnits(feeWei, 'gwei');
+    const num = Number(gwei);
+    if (num < 1) return `${num.toFixed(4)} gwei`;
+    if (num < 100) return `${num.toFixed(2)} gwei`;
+    return `${Math.round(num)} gwei`;
+  }
+  return `${formatEther(feeWei)} ETH`;
 }

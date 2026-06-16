@@ -1,4 +1,4 @@
-import type { TransactionResponse } from 'ethers';
+import { formatUnits, type TransactionResponse } from 'ethers';
 
 import * as serviceConstants from '../../../constants/application';
 import type {
@@ -76,7 +76,15 @@ export class TransactionReplacer {
 
     const needsReplacement = categorized.pending.length + categorized.reverted.length;
     if (needsReplacement > 0) {
-      this.logger.logBlockChangeReplacement(currentBlockNumber + 1, needsReplacement);
+      const displayedFee = this.getDisplayMaxFeePerGas(categorized.pending, maxNetworkFees);
+      const maxFeePerGasGwei = formatUnits(displayedFee, 'gwei');
+      const contractFeeDisplay = TransactionProgressLogger.formatFeeForDisplay(newContractFee);
+      this.logger.logBlockChangeReplacement(
+        currentBlockNumber + 1,
+        needsReplacement,
+        maxFeePerGasGwei,
+        contractFeeDisplay
+      );
     }
 
     const revertedResults = await this.processRevertedTransactions(
@@ -529,6 +537,29 @@ export class TransactionReplacer {
   private calculateBumpedFee(oldFee: bigint, networkFallback: bigint): bigint {
     const feeTobump = oldFee > 0n ? oldFee : networkFallback;
     return (feeTobump * serviceConstants.TRANSACTION_FEE_INCREASE_PERCENTAGE) / 100n;
+  }
+
+  /**
+   * Get the max fee per gas to display in the replacement log message
+   *
+   * For pending transactions (same-nonce replacement), shows the bumped fee
+   * (112% of the original transaction's maxFeePerGas, or current network fee).
+   * For reverted-only batches (fresh nonce, no bumping needed), shows the
+   * current network fee.
+   *
+   * @param pendingTransactions - Transactions still pending (same-nonce replacement)
+   * @param maxNetworkFees - Current network max fees per gas
+   * @returns Fee value appropriate for display in the replacement log
+   */
+  private getDisplayMaxFeePerGas(
+    pendingTransactions: PendingTransactionInfo[],
+    maxNetworkFees: MaxNetworkFees
+  ): bigint {
+    if (pendingTransactions.length === 0) return maxNetworkFees.maxFeePerGas;
+    return this.calculateBumpedFee(
+      pendingTransactions[0]!.response.maxFeePerGas ?? 0n,
+      maxNetworkFees.maxFeePerGas
+    );
   }
 
   /**

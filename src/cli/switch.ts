@@ -8,7 +8,7 @@ import { Command } from 'commander';
 
 import type { GlobalCliOptions, ValidatorOption } from '../model/commander';
 import { switchWithdrawalCredentialType } from '../service/domain/switch';
-import { parseAndValidateValidatorPubKeys } from './validation/cli';
+import { parseAndValidateValidatorPubKeys, resolveMaxFee } from './validation/cli';
 
 const switchWithdrawalCredentialTypeCommand = new Command();
 
@@ -22,7 +22,12 @@ switchWithdrawalCredentialTypeCommand
   )
   .action(async (options: ValidatorOption, command) => {
     const globalOptions: GlobalCliOptions = command.parent.opts();
-    await switchWithdrawalCredentialType(globalOptions, options.validator);
+    await switchWithdrawalCredentialType(
+      globalOptions,
+      options.validator,
+      resolveMaxFee(globalOptions.maxFee),
+      resolveMaxFee(globalOptions.maxFeePerGas)
+    );
   });
 
 export { switchWithdrawalCredentialTypeCommand };

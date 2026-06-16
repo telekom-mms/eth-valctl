@@ -10,7 +10,8 @@ import type { ConsolidationOptions, GlobalCliOptions } from '../model/commander'
 import { consolidate } from '../service/domain/consolidate';
 import {
   parseAndValidateValidatorPubKey,
-  parseAndValidateValidatorPubKeys
+  parseAndValidateValidatorPubKeys,
+  resolveMaxFee
 } from './validation/cli';
 
 const consolidateCommand = new Command();
@@ -39,7 +40,9 @@ consolidateCommand
       globalOptions,
       options.source,
       options.target,
-      options.skipTargetOwnershipCheck
+      options.skipTargetOwnershipCheck,
+      resolveMaxFee(globalOptions.maxFee),
+      resolveMaxFee(globalOptions.maxFeePerGas)
     );
   });
 
