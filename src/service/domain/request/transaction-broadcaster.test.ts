@@ -193,7 +193,7 @@ describe('TransactionBroadcaster', () => {
 
       await broadcaster.broadcastExecutionLayerRequests(['0xdata'], 1000n, 100);
 
-      expect(mockLogger.logBroadcastStart).toHaveBeenCalledWith(1, 101, '25.0');
+      expect(mockLogger.logBroadcastStart).toHaveBeenCalledWith(1, 101, '25.0', '1000 wei');
     });
 
     it('handles fee fetch error gracefully', async () => {
@@ -213,7 +213,7 @@ describe('TransactionBroadcaster', () => {
       await broadcaster.broadcastExecutionLayerRequests(['0xdata'], 1000n, 100);
 
       expect(mockLogger.logBroadcastFeesFetchError).toHaveBeenCalled();
-      expect(mockLogger.logBroadcastStart).toHaveBeenCalledWith(1, 101, '0');
+      expect(mockLogger.logBroadcastStart).toHaveBeenCalledWith(1, 101, '0', '1000 wei');
     });
 
     it('extracts source validator pubkey correctly from request data', async () => {

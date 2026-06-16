@@ -25,13 +25,17 @@ import { TransactionReplacer } from './transaction-replacer';
  * @param jsonRpcProvider - JSON-RPC provider for blockchain interaction
  * @param signer - Signer for transaction signing (wallet or Ledger)
  * @param beaconApiUrl - Beacon API URL for slot-aware broadcasting (required for Ledger)
+ * @param maxFee - Maximum contract fee in wei per request (waits if exceeded)
+ * @param maxFeePerGasCap - Maximum gas fee per gas in wei (waits up to 32 blocks, then errors)
  * @returns Pipeline ready to send execution layer requests and dispose resources
  */
 export async function createTransactionPipeline(
   systemContractAddress: string,
   jsonRpcProvider: JsonRpcProvider,
   signer: ISigner,
-  beaconApiUrl: string
+  beaconApiUrl: string,
+  maxFee?: bigint,
+  maxFeePerGasCap?: bigint
 ): Promise<TransactionPipeline> {
   const ethereumStateService = new EthereumStateService(jsonRpcProvider, systemContractAddress);
   const logger = new TransactionProgressLogger();
@@ -42,7 +46,9 @@ export async function createTransactionPipeline(
     ethereumStateService,
     systemContractAddress,
     beaconApiUrl,
-    logger
+    logger,
+    maxFee,
+    maxFeePerGasCap
   );
   disposables.push(broadcastStrategy);
 
@@ -69,7 +75,9 @@ export async function createTransactionPipeline(
     transactionBroadcaster,
     transactionMonitor,
     transactionReplacer,
-    logger
+    logger,
+    maxFee,
+    maxFeePerGasCap
   );
 
   return new TransactionPipeline(orchestrator, disposables);
@@ -83,6 +91,8 @@ export async function createTransactionPipeline(
  * @param systemContractAddress - Target contract address (sequential only)
  * @param beaconApiUrl - Beacon API URL for slot timing (sequential only)
  * @param logger - Logger for transaction progress
+ * @param maxFee - Maximum contract fee in wei per request (sequential only)
+ * @param maxFeePerGasCap - Maximum gas fee per gas in wei (sequential only)
  * @returns Configured broadcast strategy
  */
 async function createBroadcastStrategy(
@@ -90,7 +100,9 @@ async function createBroadcastStrategy(
   ethereumStateService: EthereumStateService,
   systemContractAddress: string,
   beaconApiUrl: string,
-  logger: TransactionProgressLogger
+  logger: TransactionProgressLogger,
+  maxFee?: bigint,
+  maxFeePerGasCap?: bigint
 ): Promise<IBroadcastStrategy> {
   if (signer.capabilities.supportsParallelSigning) {
     return new ParallelBroadcastStrategy(logger);
@@ -101,6 +113,8 @@ async function createBroadcastStrategy(
     ethereumStateService,
     systemContractAddress,
     beaconService,
-    logger
+    logger,
+    maxFee,
+    maxFeePerGasCap
   );
 }

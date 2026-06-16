@@ -20,6 +20,7 @@ import { exitCommand } from './exit';
 import { safeCommand } from './safe';
 import { switchWithdrawalCredentialTypeCommand } from './switch';
 import {
+  parseAndValidateMaxFee,
   parseAndValidateMaxNumberOfRequestsPerBlock,
   parseAndValidateNodeUrl,
   parseAndValidateSafeAddress,
@@ -80,6 +81,18 @@ program
     `-f, --safe-fee-tip <wei>`,
     'Absolute tip in wei added to system contract fee per operation in Safe proposals',
     String(DEFAULT_SAFE_FEE_TIP)
+  )
+  .option(
+    '-x, --max-fee <fee>',
+    'Maximum contract fee per request (e.g. 100gwei, 0.01eth, 1wei)',
+    parseAndValidateMaxFee,
+    '1wei'
+  )
+  .option(
+    '-g, --max-fee-per-gas <fee>',
+    'Maximum gas fee per gas unit (e.g. 15gwei, 0.001eth, 10000000000wei). Wait up to 32 blocks if exceeded, then error',
+    parseAndValidateMaxFee,
+    '15gwei'
   )
   .hook('preAction', (thisCommand) => {
     console.log(chalk.yellow(DISCLAIMER_INFO));

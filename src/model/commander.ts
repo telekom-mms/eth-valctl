@@ -32,4 +32,6 @@ export interface GlobalCliOptions {
   ledger: boolean;
   safe?: string;
   safeFeeTip?: string;
+  maxFee?: string;
+  maxFeePerGas?: string;
 }

@@ -35,12 +35,15 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
    * @param systemContractAddress - Target system contract address
    * @param slotTimingService - Service for slot-aware timing
    * @param logger - Logger for transaction progress
+   * @param maxFee - Maximum contract fee in wei per request (waits if exceeded)
    */
   constructor(
     private readonly blockchainStateService: EthereumStateService,
     private readonly systemContractAddress: string,
     private readonly slotTimingService: ISlotTimingService,
-    private readonly logger: TransactionProgressLogger
+    private readonly logger: TransactionProgressLogger,
+    private readonly maxFee?: bigint,
+    private readonly maxFeePerGasCap?: bigint
   ) {}
 
   /**
@@ -48,6 +51,33 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
    */
   async dispose(): Promise<void> {
     await this.slotTimingService.dispose();
+  }
+
+  /**
+   * Fetch the contract fee, waiting for it to be within the max fee limit
+   *
+   * If maxFee is not set, returns the current fee immediately.
+   * Otherwise loops until the contract fee drops to or below maxFee.
+   *
+   * @returns Contract fee within acceptable range
+   */
+  private async fetchContractFeeWithinMax(): Promise<bigint> {
+    if (this.maxFee === undefined) {
+      return this.blockchainStateService.fetchContractFee();
+    }
+    return this.blockchainStateService.waitForContractFee(this.maxFee);
+  }
+
+  /**
+   * Fetch and check the current gas fee, waiting for it to be within the cap
+   *
+   * If maxFeePerGasCap is not set, returns immediately.
+   * Otherwise waits up to 32 blocks for the gas fee to drop to or below the cap.
+   */
+  private async fetchMaxFeePerGasWithinCap(): Promise<void> {
+    if (this.maxFeePerGasCap !== undefined) {
+      await this.blockchainStateService.waitForMaxFeePerGas(this.maxFeePerGasCap);
+    }
   }
 
   /**
@@ -84,7 +114,8 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
 
       try {
         await this.slotTimingService.waitForOptimalBroadcastWindow();
-        const freshContractFee = await this.blockchainStateService.fetchContractFee();
+        await this.fetchMaxFeePerGasWithinCap();
+        const freshContractFee = await this.fetchContractFeeWithinMax();
         const freshTransaction = createElTransaction(
           this.systemContractAddress,
           requestData,

@@ -64,13 +64,14 @@ describe('TransactionProgressLogger', () => {
 
   describe('logBroadcastStart', () => {
     it('logs broadcast start information', () => {
-      logger.logBroadcastStart(10, 12345, '25.5');
+      logger.logBroadcastStart(10, 12345, '25.5', '1000000 gwei');
 
       expect(consoleSpy).toHaveBeenCalledTimes(1);
       const callArgs = consoleSpy.mock.calls[0];
       expect(callArgs?.join(' ')).toContain('10');
       expect(callArgs?.join(' ')).toContain('12345');
       expect(callArgs?.join(' ')).toContain('25.5');
+      expect(callArgs?.join(' ')).toContain('1000000');
     });
   });
 

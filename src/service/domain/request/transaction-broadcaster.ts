@@ -44,7 +44,7 @@ export class TransactionBroadcaster {
     requiredFee: bigint,
     blockNumber: number
   ): Promise<BroadcastResult[]> {
-    await this.logBroadcastStart(requestData.length, blockNumber + 1);
+    await this.logBroadcastStart(requestData.length, blockNumber + 1, requiredFee);
 
     const transactions = requestData.map((data) => ({
       transaction: createElTransaction(this.systemContractAddress, data, requiredFee),
@@ -63,12 +63,17 @@ export class TransactionBroadcaster {
    * @param count - Number of execution layer requests being broadcast
    * @param blockNumber - Target block number (only used for parallel mode)
    */
-  private async logBroadcastStart(count: number, blockNumber: number): Promise<void> {
+  private async logBroadcastStart(
+    count: number,
+    blockNumber: number,
+    requiredFee: bigint
+  ): Promise<void> {
     const feeGwei = await this.getFeeForLogging();
+    const contractFeeDisplay = TransactionProgressLogger.formatFeeForDisplay(requiredFee);
     if (this.broadcastStrategy.isParallel) {
-      this.logger.logBroadcastStart(count, blockNumber, feeGwei);
+      this.logger.logBroadcastStart(count, blockNumber, feeGwei, contractFeeDisplay);
     } else {
-      this.logger.logBroadcastStartSequential(count, feeGwei);
+      this.logger.logBroadcastStartSequential(count, feeGwei, contractFeeDisplay);
     }
   }
 

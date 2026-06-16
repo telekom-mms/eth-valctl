@@ -8,6 +8,7 @@ import * as logging from '../../constants/logging';
 import { SAFE_OPTION_REQUIRED_ERROR } from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
 import { networkConfig } from '../../network-config';
+import { formatFeeForDisplay } from '../../service/domain/request/transaction-progress-logger';
 
 /**
  * Check if json rpc url is correctly formatted
@@ -168,6 +169,64 @@ export function validateSafeNetworkSupport(network: string, safeAddress?: string
   if (!config?.safeTransactionServiceUrl) {
     exitWithValidationError(logging.SAFE_NOT_SUPPORTED_ON_NETWORK_ERROR(network));
   }
+}
+
+/**
+ * Parse and validate a max fee string with unit suffix
+ *
+ * Accepts formats like 100gwei, 0.01eth, 1wei.
+ * Returns the fee as a wei numeric string for downstream BigInt parsing.
+ * Validates fee \>= 1 wei. Prints warning if fee \> 0.01 ETH.
+ *
+ * @param value - The fee string with unit (wei, gwei, or eth)
+ * @returns Fee as wei numeric string
+ */
+export function parseAndValidateMaxFee(value: string): string {
+  const match = value.match(/^(\d+(?:\.\d+)?)\s*(wei|gwei|eth)$/i);
+  if (!match) {
+    exitWithValidationError(logging.INVALID_MAX_FEE_FORMAT_ERROR);
+  }
+  const numStr = match[1]!;
+  const unit = match[2]!.toLowerCase();
+
+  const wei = parseFeeToWei(numStr, unit);
+
+  if (wei < 1n) {
+    exitWithValidationError(logging.MAX_FEE_TOO_LOW_ERROR);
+  }
+
+  if (wei > application.MAX_FEE_EXPENSIVE_THRESHOLD) {
+    console.error(chalk.yellow(logging.MAX_FEE_EXPENSIVE_WARNING(formatFeeForDisplay(wei))));
+  }
+
+  return wei.toString();
+}
+
+/**
+ * Resolve a max fee option from CLI input to a numeric wei string
+ *
+ * Handles Commander's default (raw "1wei") vs user-provided parsed values.
+ * Exits on invalid input via parseAndValidateMaxFee.
+ *
+ * @param value - The raw option value (may be undefined, already-parsed number, or raw unit string)
+ * @returns Fee as wei numeric string
+ */
+export function resolveMaxFee(value: string | undefined): string {
+  if (value === undefined) return String(application.DEFAULT_MAX_FEE);
+  if (/^\d+$/.test(value)) return value;
+  return parseAndValidateMaxFee(value);
+}
+
+/**
+ * Parse a decimal number string with a unit to wei as BigInt
+ *
+ * Uses string manipulation to avoid floating-point precision loss.
+ */
+function parseFeeToWei(numStr: string, unit: string): bigint {
+  const [intPart, fracPart = ''] = numStr.split('.');
+  const decimals = unit === 'eth' ? 18 : unit === 'gwei' ? 9 : 0;
+  const paddedFrac = fracPart.padEnd(decimals, '0').slice(0, decimals);
+  return BigInt(intPart || '0') * BigInt(10) ** BigInt(decimals) + BigInt(paddedFrac || '0');
 }
 
 /**
