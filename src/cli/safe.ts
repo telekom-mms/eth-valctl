@@ -7,7 +7,7 @@ import { networkConfig } from '../network-config';
 import { executeReadyTransactions } from '../service/domain/safe/safe-execute-service';
 import { initializeSafe } from '../service/domain/safe/safe-init';
 import { signPendingTransactions } from '../service/domain/safe/safe-sign-service';
-import { validateSafeAddress } from './validation/cli';
+import { resolveMaxRequestFeeWaitBlocks, validateSafeAddress } from './validation/cli';
 
 const SYSTEM_CONTRACT_ADDRESSES = [
   application.CONSOLIDATION_CONTRACT_ADDRESS,
@@ -24,10 +24,9 @@ export const safeCommand = new Command('safe').description(
 safeCommand
   .command('sign')
   .description('Sign pending eth-valctl Safe transactions')
-  .option('-y, --yes', 'Skip confirmation prompts', false)
-  .action(async (options, cmd) => {
+  .action(async (_options, cmd) => {
     const globalOptions: GlobalCliOptions = cmd.parent!.parent!.opts();
-    await handleSafeSign(globalOptions, options.yes);
+    await handleSafeSign(globalOptions, globalOptions.yes ?? false);
   });
 
 safeCommand
@@ -39,25 +38,15 @@ safeCommand
     String(application.DEFAULT_FEE_OVERPAYMENT_THRESHOLD)
   )
   .option(
-    '-y, --yes',
-    'Skip confirmation prompts. On stale fees, poll until fees drop, bounded by --max-fee-wait-blocks (use --stale-fee-action reject to propose rejections instead)',
-    false
-  )
-  .option(
     '-a, --stale-fee-action <action>',
-    'Non-interactive action for stale fees: wait (poll until fee drops, bounded by --max-fee-wait-blocks) or reject (propose rejection transactions)'
-  )
-  .option(
-    '-w, --max-fee-wait-blocks <blocks>',
-    'Max blocks to wait for fee to drop (default: 50, 0 aborts immediately on stale fees)',
-    String(application.DEFAULT_MAX_FEE_WAIT_BLOCKS)
+    'Non-interactive action for stale fees: wait (poll until fee drops, bounded by --max-request-fee-wait-blocks) or reject (propose rejection transactions)'
   )
   .action(async (options, cmd) => {
     const globalOptions: GlobalCliOptions = cmd.parent!.parent!.opts();
     const overpaymentThreshold = BigInt(options.feeOverpaymentThreshold);
     const staleFeeAction = options.staleFeeAction as StaleFeeAction | undefined;
-    const skipConfirmation = options.yes || staleFeeAction !== undefined;
-    const maxFeeWaitBlocks = BigInt(options.maxFeeWaitBlocks);
+    const skipConfirmation = (globalOptions.yes ?? false) || staleFeeAction !== undefined;
+    const maxFeeWaitBlocks = resolveMaxRequestFeeWaitBlocks(globalOptions.maxRequestFeeWaitBlocks);
     await handleSafeExecute(
       globalOptions,
       overpaymentThreshold,

@@ -12,15 +12,28 @@ import chalk from 'chalk';
 import { Command, Option } from 'commander';
 
 import packageJson from '../../package.json';
-import { DEFAULT_SAFE_FEE_TIP } from '../constants/application';
-import { DISCLAIMER_INFO } from '../constants/logging';
+import {
+  DEFAULT_MAX_REQUEST_FEE_INPUT,
+  DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS,
+  DEFAULT_SAFE_FEE_TIP
+} from '../constants/application';
+import {
+  DISCLAIMER_INFO,
+  MAX_REQUEST_FEE_OPTION_DESCRIPTION,
+  MAX_REQUEST_FEE_WAIT_BLOCKS_OPTION_DESCRIPTION,
+  YES_OPTION_DESCRIPTION
+} from '../constants/logging';
 import type { GlobalCliOptions } from '../model/commander';
+import { RequestFeeOperationCancelledError } from '../model/ethereum';
 import { consolidateCommand } from './consolidate';
 import { exitCommand } from './exit';
+import { feesCommand } from './fees';
 import { safeCommand } from './safe';
 import { switchWithdrawalCredentialTypeCommand } from './switch';
 import {
   parseAndValidateMaxNumberOfRequestsPerBlock,
+  parseAndValidateMaxRequestFee,
+  parseAndValidateMaxRequestFeeWaitBlocks,
   parseAndValidateNodeUrl,
   parseAndValidateSafeAddress,
   validateNetwork,
@@ -81,6 +94,23 @@ program
     'Absolute tip in wei added to system contract fee per operation in Safe proposals',
     String(DEFAULT_SAFE_FEE_TIP)
   )
+  .addOption(
+    new Option('-x, --max-request-fee <amount>', MAX_REQUEST_FEE_OPTION_DESCRIPTION)
+      .argParser(parseAndValidateMaxRequestFee)
+      .default(DEFAULT_MAX_REQUEST_FEE_INPUT, DEFAULT_MAX_REQUEST_FEE_INPUT)
+  )
+  .addOption(
+    new Option(
+      '--max-request-fee-wait-blocks <blocks>',
+      MAX_REQUEST_FEE_WAIT_BLOCKS_OPTION_DESCRIPTION
+    )
+      .argParser(parseAndValidateMaxRequestFeeWaitBlocks)
+      .default(
+        String(DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS),
+        String(DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS)
+      )
+  )
+  .option('-y, --yes', YES_OPTION_DESCRIPTION, false)
   .hook('preAction', (thisCommand) => {
     console.log(chalk.yellow(DISCLAIMER_INFO));
     const globalOptions: GlobalCliOptions = thisCommand.opts();
@@ -91,9 +121,15 @@ program
   .addCommand(switchWithdrawalCredentialTypeCommand)
   .addCommand(withdrawCommand)
   .addCommand(exitCommand)
+  .addCommand(feesCommand)
   .addCommand(safeCommand);
 
 program.parseAsync(process.argv).catch((error: unknown) => {
+  if (error instanceof RequestFeeOperationCancelledError) {
+    console.error(chalk.yellow(error.message));
+    process.exit(0);
+  }
+
   console.error(chalk.red('Fatal error:'), error);
   process.exit(1);
 });

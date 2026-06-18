@@ -9,6 +9,8 @@ import { SAFE_OPTION_REQUIRED_ERROR } from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
 import {
   parseAndValidateMaxNumberOfRequestsPerBlock,
+  parseAndValidateMaxRequestFee,
+  parseAndValidateMaxRequestFeeWaitBlocks,
   parseAndValidateNodeUrl,
   parseAndValidateSafeAddress,
   parseAndValidateValidatorPubKey,
@@ -392,6 +394,107 @@ describe('CLI Validation', () => {
       const result = parseAndValidateMaxNumberOfRequestsPerBlock('1');
 
       expect(result).toBe(1);
+    });
+
+    it('rejects zero requests per block', () => {
+      const stderrSpy = spyOn(console, 'error').mockImplementation(() => {});
+      const exitSpy = spyOn(process, 'exit').mockImplementation(() => {
+        throw new Error('process.exit');
+      });
+
+      expect(() => parseAndValidateMaxNumberOfRequestsPerBlock('0')).toThrow('process.exit');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+
+      stderrSpy.mockRestore();
+      exitSpy.mockRestore();
+    });
+  });
+
+  describe('parseAndValidateMaxRequestFee', () => {
+    let stderrSpy: ReturnType<typeof spyOn>;
+    let exitSpy: ReturnType<typeof spyOn>;
+
+    beforeEach(() => {
+      stderrSpy = spyOn(console, 'error').mockImplementation(() => {});
+      exitSpy = spyOn(process, 'exit').mockImplementation(() => {
+        throw new Error('process.exit');
+      });
+    });
+
+    afterEach(() => {
+      stderrSpy.mockRestore();
+      exitSpy.mockRestore();
+    });
+
+    it('returns a wei numeric string for an explicit wei amount', () => {
+      const result = parseAndValidateMaxRequestFee('42wei');
+
+      expect(result).toBe('42');
+    });
+
+    it('returns a wei numeric string for an explicit gwei amount', () => {
+      const result = parseAndValidateMaxRequestFee('1.5gwei');
+
+      expect(result).toBe('1500000000');
+    });
+
+    it('returns a wei numeric string for an explicit eth amount', () => {
+      const result = parseAndValidateMaxRequestFee('0.000000001eth');
+
+      expect(result).toBe('1000000000');
+    });
+
+    it('exits when the amount has no explicit unit', () => {
+      expect(() => parseAndValidateMaxRequestFee('1000')).toThrow('process.exit');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain('wei/gwei/eth');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('exits when the amount is zero', () => {
+      expect(() => parseAndValidateMaxRequestFee('0wei')).toThrow('process.exit');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain('at least 1 wei');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('exits when the amount resolves below one wei', () => {
+      expect(() => parseAndValidateMaxRequestFee('0.0000000001gwei')).toThrow('process.exit');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain('at least 1 wei');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe('parseAndValidateMaxRequestFeeWaitBlocks', () => {
+    let stderrSpy: ReturnType<typeof spyOn>;
+    let exitSpy: ReturnType<typeof spyOn>;
+
+    beforeEach(() => {
+      stderrSpy = spyOn(console, 'error').mockImplementation(() => {});
+      exitSpy = spyOn(process, 'exit').mockImplementation(() => {
+        throw new Error('process.exit');
+      });
+    });
+
+    afterEach(() => {
+      stderrSpy.mockRestore();
+      exitSpy.mockRestore();
+    });
+
+    it('returns a bigint for a valid block count', () => {
+      const result = parseAndValidateMaxRequestFeeWaitBlocks('50');
+
+      expect(result).toBe(50n);
+    });
+
+    it('allows zero blocks for immediate timeout behavior', () => {
+      const result = parseAndValidateMaxRequestFeeWaitBlocks('0');
+
+      expect(result).toBe(0n);
+    });
+
+    it('exits when the block count is negative', () => {
+      expect(() => parseAndValidateMaxRequestFeeWaitBlocks('-1')).toThrow('process.exit');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain('non-negative integer');
+      expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });
 });

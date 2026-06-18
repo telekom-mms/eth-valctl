@@ -126,14 +126,111 @@ export async function validateNetwork(jsonRpcUrl: string, network: string): Prom
  * @returns The validated maximal number of requests allowed in a single block
  */
 export function parseAndValidateMaxNumberOfRequestsPerBlock(maxNumberOfRequests: string): number {
-  const parsedNumber = parseInt(maxNumberOfRequests);
-  if (isNaN(parsedNumber)) {
+  if (!/^\d+$/.test(maxNumberOfRequests)) {
     exitWithValidationError(logging.INVALID_REQUESTS_PER_BLOCK_ERROR);
   }
+
+  const parsedNumber = Number(maxNumberOfRequests);
+  if (parsedNumber < 1) {
+    exitWithValidationError(logging.INVALID_REQUESTS_PER_BLOCK_ERROR);
+  }
+
   if (parsedNumber > application.MAX_NUMBER_OF_REQUESTS_PER_BLOCK) {
     exitWithValidationError(logging.TOO_MANY_REQUESTS_PER_BLOCK_ERROR);
   }
   return parsedNumber;
+}
+
+/**
+ * Parse and validate a request fee amount with an explicit unit.
+ *
+ * @param value - Request fee with unit suffix (`wei`, `gwei`, or `eth`)
+ * @returns Fee amount as a wei numeric string
+ */
+export function parseAndValidateMaxRequestFee(value: string): string {
+  const match = value.match(/^(\d+(?:\.\d+)?)\s*(wei|gwei|eth)$/i);
+  if (!match) {
+    exitWithValidationError(logging.INVALID_MAX_REQUEST_FEE_FORMAT_ERROR);
+  }
+
+  const wei = parseUnitAmountToWei(match[1]!, match[2]!.toLowerCase());
+
+  if (wei < 1n) {
+    exitWithValidationError(logging.MAX_REQUEST_FEE_TOO_LOW_ERROR);
+  }
+
+  return wei.toString();
+}
+
+/**
+ * Parse and validate max request fee wait blocks.
+ *
+ * @param value - User-provided block count
+ * @returns Block count as bigint
+ */
+export function parseAndValidateMaxRequestFeeWaitBlocks(value: string): bigint {
+  if (!/^\d+$/.test(value)) {
+    exitWithValidationError(logging.INVALID_MAX_REQUEST_FEE_WAIT_BLOCKS_ERROR);
+  }
+
+  return BigInt(value);
+}
+
+/**
+ * Parse and validate a total request count for fee projections.
+ *
+ * @param value - User-provided total request count
+ * @returns Request count
+ */
+export function parseAndValidateTotalRequestCount(value: string): number {
+  if (!/^\d+$/.test(value)) {
+    exitWithValidationError(logging.INVALID_TOTAL_REQUEST_COUNT_ERROR);
+  }
+
+  const count = Number(value);
+  if (count < 1) {
+    exitWithValidationError(logging.INVALID_TOTAL_REQUEST_COUNT_ERROR);
+  }
+
+  return count;
+}
+
+/**
+ * Resolve a max request fee value that may still be Commander's raw default.
+ *
+ * @param value - Parsed wei string or raw unit-suffixed default
+ * @returns Request fee in wei
+ */
+export function resolveMaxRequestFee(value: string | undefined): bigint {
+  if (value === undefined) {
+    return application.DEFAULT_MAX_REQUEST_FEE;
+  }
+
+  if (/^\d+$/.test(value)) {
+    return BigInt(value);
+  }
+
+  return BigInt(parseAndValidateMaxRequestFee(value));
+}
+
+/**
+ * Resolve max request fee wait blocks from Commander options.
+ *
+ * @param value - Parsed bigint or raw default string
+ * @returns Wait block count
+ */
+export function resolveMaxRequestFeeWaitBlocks(
+  value: bigint | number | string | undefined
+): bigint {
+  if (value === undefined) {
+    return application.DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS;
+  }
+
+  if (typeof value === 'bigint') {
+    return value;
+  }
+
+  return parseAndValidateMaxRequestFeeWaitBlocks(String(value));
 }
 
 /**
@@ -214,6 +311,27 @@ function readPubkeysFromFile(filePath: string): string[] {
 
   console.error(chalk.blue(logging.READ_PUBKEYS_FROM_FILE_INFO(pubkeys.length, filePath)));
   return pubkeys;
+}
+
+/**
+ * Convert a decimal amount with an Ethereum unit to wei.
+ *
+ * @param amount - Decimal amount string
+ * @param unit - Ethereum unit
+ * @returns Amount in wei
+ */
+function parseUnitAmountToWei(amount: string, unit: string): bigint {
+  const [integerPart = '0', fractionalPart = ''] = amount.split('.');
+  const decimals = unit === 'eth' ? 18 : unit === 'gwei' ? 9 : 0;
+  const excessFraction = fractionalPart.slice(decimals);
+
+  if (excessFraction !== '' && /[1-9]/.test(excessFraction)) {
+    exitWithValidationError(logging.MAX_REQUEST_FEE_TOO_LOW_ERROR);
+  }
+
+  const paddedFraction = fractionalPart.padEnd(decimals, '0').slice(0, decimals);
+
+  return BigInt(integerPart) * 10n ** BigInt(decimals) + BigInt(paddedFraction || '0');
 }
 
 /**

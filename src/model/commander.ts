@@ -32,4 +32,16 @@ export interface GlobalCliOptions {
   ledger: boolean;
   safe?: string;
   safeFeeTip?: string;
+  maxRequestFee?: string;
+  maxRequestFeeWaitBlocks?: bigint | number | string;
+  yes?: boolean;
+}
+
+/**
+ * CLI options for the read-only fees command.
+ */
+export interface FeesOptions {
+  totalRequestCount: number;
+  maxRequestsPerBlock: number;
+  maxRequestFee?: string;
 }

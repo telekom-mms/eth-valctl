@@ -30,6 +30,49 @@ export const GENERAL_JSON_RPC_ERROR = (url: string): string =>
 export const INVALID_REQUESTS_PER_BLOCK_ERROR =
   'Number of max. requests per block should be a number';
 export const TOO_MANY_REQUESTS_PER_BLOCK_ERROR = `Provided maximal number of requests per block is too high. To minimize the risk of transaction reverts/replacements due to underpriced fees, the number should not exceed ${MAX_NUMBER_OF_REQUESTS_PER_BLOCK}.`;
+export const INVALID_MAX_REQUEST_FEE_FORMAT_ERROR =
+  'Invalid max request fee format. Use an explicit unit: wei/gwei/eth, for example 1wei, 0.5gwei, or 0.01eth.';
+export const MAX_REQUEST_FEE_TOO_LOW_ERROR =
+  'Max request fee must be greater than zero and at least 1 wei.';
+export const INVALID_REQUEST_FEE_AMOUNT_ERROR = (value: string): string =>
+  `Invalid request fee amount: ${value}`;
+export const REQUEST_FEE_PRECISION_ERROR = (amount: string, unit: string): string =>
+  `Request fee amount is below 1 wei precision: ${amount}${unit}`;
+export const INVALID_MAX_REQUEST_FEE_WAIT_BLOCKS_ERROR =
+  'Max request fee wait blocks must be a non-negative integer.';
+export const INVALID_TOTAL_REQUEST_COUNT_ERROR = 'Total request count must be a positive integer.';
+export const UNKNOWN_FEES_OPERATION_ERROR = (operation: string): string =>
+  `Unknown fees operation: ${operation}. Use consolidate, switch, withdraw, or exit.`;
+export const FEES_ESTIMATE_HEADER = (operation: string, network: string): string =>
+  `Fee estimate for ${operation} requests on ${network}:`;
+export const FEES_CURRENT_REQUEST_FEE_INFO = (fee: string): string => `Current request fee: ${fee}`;
+export const FEES_CURRENT_EXCESS_INFO = (excess: bigint): string => `Current excess: ${excess}`;
+export const FEES_MAX_FEE_PER_GAS_INFO = (fee: string): string => `Max fee per gas: ${fee} Gwei`;
+export const FEES_GAS_COST_INFO = (cost: string): string => `Gas cost per request: ${cost} ETH`;
+export const FEES_TOTAL_PER_REQUEST_INFO = (total: string): string =>
+  `Estimated total per request: ${total} ETH`;
+export const FEES_BATCH_HEADER = (
+  totalCount: number,
+  batchCount: number,
+  batchSize: number
+): string =>
+  `Idealized batch projection for ${totalCount} request${totalCount === 1 ? '' : 's'} (${batchCount} batch${batchCount === 1 ? '' : 'es'} of up to ${batchSize}):`;
+export const FEES_BATCH_LINE = (
+  batchNumber: number,
+  requestCount: number,
+  requestFee: string,
+  capExceeded: boolean
+): string =>
+  `  Batch ${batchNumber}: ${requestCount} request${requestCount === 1 ? '' : 's'}, request fee ${requestFee}${capExceeded ? ' (above cap)' : ''}`;
+export const FEES_CAP_WARNING =
+  'Warning: A projected batch exceeds --max-request-fee. Real execution will wait or prompt before that above-cap batch.';
+export const FEES_OPTIMAL_RATE_INFO = (target: bigint): string =>
+  `Fee-optimal rate for this request contract is ${target} request${target === 1n ? '' : 's'} per block; lower fee growth can mean longer wall-clock time.`;
+export const MAX_REQUEST_FEE_OPTION_DESCRIPTION =
+  'Maximum request fee per execution layer request before eth-valctl waits or asks what to do, for example 1wei, 0.5gwei, or 0.01eth';
+export const MAX_REQUEST_FEE_WAIT_BLOCKS_OPTION_DESCRIPTION =
+  'Maximum blocks to wait when request fee exceeds --max-request-fee (0 aborts immediately)';
+export const YES_OPTION_DESCRIPTION = 'Skip confirmation prompts by choosing safe default actions';
 
 /** Fetching errors */
 export const BEACON_API_ERROR = 'Error while calling beacon API endpoint:';
@@ -106,6 +149,33 @@ export const REPLACEMENT_FAILED_WARNING = (failed: number, total: number): strin
   `❌ ${failed} of ${total} execution layer requests failed to replace (unexpected error)`;
 export const REPLACEMENT_USER_REJECTED_INFO = (rejected: number, total: number): string =>
   `⚠️ ${rejected} of ${total} replacement execution layer requests rejected by user on Ledger device`;
+export const REQUEST_FEE_CAP_EXCEEDED_WARNING = (
+  currentFee: bigint,
+  maxFee: bigint,
+  operation: string,
+  requestCount: number
+): string =>
+  `Current request fee ${currentFee} wei exceeds --max-request-fee ${maxFee} wei for ${operation} (${requestCount} request${requestCount === 1 ? '' : 's'}).`;
+export const REQUEST_FEE_CAP_PROMPT = 'Choose how to handle the above-cap request fee:';
+export const REQUEST_FEE_CAP_WAIT_ACTION =
+  'Wait until request fee is at or below --max-request-fee';
+export const REQUEST_FEE_CAP_CONTINUE_ACTION =
+  'Continue once (approve only this above-cap batch/replacement/proposal)';
+export const REQUEST_FEE_CAP_ABORT_ACTION = 'Abort';
+export const REQUEST_FEE_CAP_WAIT_PROGRESS_INFO = (
+  currentFee: bigint,
+  maxFee: bigint,
+  blocksWaited: bigint,
+  maxBlocks: bigint
+): string =>
+  `Waiting for request fee to drop... ${blocksWaited}/${maxBlocks} blocks elapsed, current ${currentFee} wei, cap ${maxFee} wei`;
+export const REQUEST_FEE_CAP_WAIT_EXCEEDED_ERROR = (
+  currentFee: bigint,
+  maxFee: bigint,
+  maxBlocks: bigint
+): string =>
+  `request fee ${currentFee} wei stayed above --max-request-fee ${maxFee} wei after waiting ${maxBlocks} blocks.`;
+export const REQUEST_FEE_CAP_ABORTED_INFO = 'Request fee cap check aborted by user.';
 
 /** Other errors */
 export const SYSTEM_CONTRACT_NOT_ACTIVATED_ERROR = (contractAddress: string): string =>
