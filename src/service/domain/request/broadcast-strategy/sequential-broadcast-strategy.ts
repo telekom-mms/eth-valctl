@@ -9,6 +9,7 @@ import type { ISlotTimingService } from '../../../../ports/slot-timing.interface
 import { isInsufficientFundsError } from '../../error-utils';
 import { isFatalLedgerError, type ISigner, isUserRejectedError } from '../../signer';
 import type { EthereumStateService } from '../ethereum-state-service';
+import { isRequestFeePolicyStopError } from '../request-fee-policy';
 import type { TransactionProgressLogger } from '../transaction-progress-logger';
 import {
   createElTransaction,
@@ -104,6 +105,10 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
           )
         );
       } catch (error) {
+        if (isRequestFeePolicyStopError(error)) {
+          throw error;
+        }
+
         if (isUserRejectedError(error)) {
           results.push(createRejectedBroadcastResult(requestData));
           continue;

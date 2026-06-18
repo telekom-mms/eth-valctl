@@ -14,7 +14,7 @@ import type {
   RequestFeeCapPolicy,
   TransactionStatus
 } from '../../../model/ethereum';
-import { TransactionStatusType } from '../../../model/ethereum';
+import { RequestFeeCapExceededError, TransactionStatusType } from '../../../model/ethereum';
 import type { ISigner } from '../signer';
 import type { EthereumStateService } from './ethereum-state-service';
 import type { TransactionMonitor } from './transaction-monitor';
@@ -717,6 +717,48 @@ describe('TransactionReplacer', () => {
         expect(mockSendTransactionWithNonce.mock.calls[1]![0]).toEqual(
           expect.objectContaining({ value: 22n })
         );
+      });
+
+      it('aborts the whole Ledger replacement when the cap resolver rejects', async () => {
+        const tx = createMockPendingTransaction(1, '0xhash1');
+        const statusMap = new Map<string, TransactionStatus>([
+          ['0xhash1', { type: TransactionStatusType.PENDING }]
+        ]);
+        const mockSendTransactionWithNonce = mock(() =>
+          Promise.resolve({ hash: '0xnewhash', nonce: 1 } as TransactionResponse)
+        );
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mockSendTransactionWithNonce
+        });
+        (mockSigner as { capabilities: { supportsParallelSigning: boolean } }).capabilities = {
+          supportsParallelSigning: false
+        };
+        const policy: RequestFeeCapPolicy = {
+          maxRequestFee: 10n,
+          maxWaitBlocks: 50n,
+          skipConfirmation: true
+        };
+        const resolveRequestFee = mock(
+          (_policy: RequestFeeCapPolicy, _context: RequestFeeCapCheckContext) =>
+            Promise.reject(new RequestFeeCapExceededError('cap exceeded'))
+        );
+
+        const replacer = new TransactionReplacer(
+          mockSigner,
+          createMockBlockchainStateService(),
+          '0xcontract',
+          createMockTransactionMonitor(statusMap),
+          createMockLogger(),
+          {
+            policy,
+            resolver: { resolveRequestFee }
+          }
+        );
+
+        await expect(replacer.replaceTransactions([tx], 101)).rejects.toThrow(
+          RequestFeeCapExceededError
+        );
+        expect(mockSendTransactionWithNonce).not.toHaveBeenCalled();
       });
 
       it('skips Ledger prompt when transaction mined before sequential replacement', async () => {

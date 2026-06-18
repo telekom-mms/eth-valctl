@@ -5,9 +5,9 @@ import type {
   CategorizedTransactions,
   MaxNetworkFees,
   PendingTransactionInfo,
+  ReplacementSummary,
   RequestFeeCapCheckContext,
   RequestFeeCapRuntime,
-  ReplacementSummary,
   SigningContext,
   TransactionReplacementResult,
   TransactionStatus
@@ -21,6 +21,7 @@ import {
 import { type ISigner, isUserRejectedError } from '../signer';
 import { createElTransaction, extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
 import { EthereumStateService } from './ethereum-state-service';
+import { isRequestFeePolicyStopError } from './request-fee-policy';
 import { TransactionMonitor } from './transaction-monitor';
 import { TransactionProgressLogger } from './transaction-progress-logger';
 
@@ -320,6 +321,10 @@ export class TransactionReplacer {
         );
         results.push({ status: TransactionReplacementStatusType.SUCCESS, transaction });
       } catch (error) {
+        if (isRequestFeePolicyStopError(error)) {
+          throw error;
+        }
+
         results.push(this.handleReplacementError(error, tx));
       }
     }

@@ -13,14 +13,13 @@ import type {
 import {
   BlockchainStateError,
   BroadcastStatusType,
-  InsufficientFundsAbortError,
-  RequestFeeCapExceededError,
-  RequestFeeOperationCancelledError
+  InsufficientFundsAbortError
 } from '../../../model/ethereum';
 import { splitToBatches } from '../batch-utils';
 import { isInsufficientFundsError } from '../error-utils';
 import { extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
 import { EthereumStateService } from './ethereum-state-service';
+import { isRequestFeePolicyStopError } from './request-fee-policy';
 import { TransactionBroadcaster } from './transaction-broadcaster';
 import { TransactionMonitor } from './transaction-monitor';
 import { TransactionProgressLogger } from './transaction-progress-logger';
@@ -89,7 +88,7 @@ export class TransactionBatchOrchestrator {
           );
           break;
         }
-        if (this.isRequestFeeCapError(error)) {
+        if (isRequestFeePolicyStopError(error)) {
           throw error;
         }
         if (!(error instanceof BlockchainStateError)) {
@@ -302,7 +301,7 @@ export class TransactionBatchOrchestrator {
         rejectedValidatorPubkeys: replacerResult.rejectedValidatorPubkeys
       };
     } catch (error) {
-      if (this.isRequestFeeCapError(error)) {
+      if (isRequestFeePolicyStopError(error)) {
         throw error;
       }
 
@@ -405,15 +404,6 @@ export class TransactionBatchOrchestrator {
     return this.requestFeeCapRuntime.resolver.resolveRequestFee(
       this.requestFeeCapRuntime.policy,
       context
-    );
-  }
-
-  private isRequestFeeCapError(
-    error: unknown
-  ): error is RequestFeeCapExceededError | RequestFeeOperationCancelledError {
-    return (
-      error instanceof RequestFeeCapExceededError ||
-      error instanceof RequestFeeOperationCancelledError
     );
   }
 }

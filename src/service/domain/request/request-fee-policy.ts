@@ -1,6 +1,10 @@
 import * as application from '../../../constants/application';
 import type { GlobalCliOptions } from '../../../model/commander';
 import type { RequestFeeCapPolicy } from '../../../model/ethereum';
+import {
+  RequestFeeCapExceededError,
+  RequestFeeOperationCancelledError
+} from '../../../model/ethereum';
 
 /**
  * Build a request-fee cap policy from global CLI options.
@@ -24,4 +28,19 @@ export function createRequestFeeCapPolicy(
       globalOptions.maxRequestFeeWaitBlocks ?? application.DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS,
     skipConfirmation: globalOptions.yes ?? false
   };
+}
+
+/**
+ * Check whether an error represents a request-fee policy stop.
+ *
+ * @param error - Error caught while signing or replacing a request transaction
+ * @returns True when the operation must abort instead of becoming a per-request failure
+ */
+export function isRequestFeePolicyStopError(
+  error: unknown
+): error is RequestFeeCapExceededError | RequestFeeOperationCancelledError {
+  return (
+    error instanceof RequestFeeCapExceededError ||
+    error instanceof RequestFeeOperationCancelledError
+  );
 }
