@@ -7,6 +7,8 @@ import type { NetworkConfig } from '../../model/ethereum';
 import { networkConfig } from '../../network-config';
 import { createEthereumConnection } from './ethereum';
 import { EthereumStateService } from './request/ethereum-state-service';
+import { RequestFeeCapService } from './request/request-fee-cap-service';
+import { createRequestFeeCapPolicy } from './request/request-fee-policy';
 import { sendExecutionLayerRequests } from './request/send-request';
 import { initializeSafe } from './safe/safe-init';
 import { proposeSafeTransactions } from './safe/safe-propose-service';
@@ -93,6 +95,32 @@ async function executeDirectPipeline(
     await validate(ethereumConnection.signer.address);
   }
 
+  const requestFeeCapPolicy = createRequestFeeCapPolicy(globalOptions);
+
+  if (requestFeeCapPolicy) {
+    const stateService = new EthereumStateService(ethereumConnection.provider, contractAddress);
+    const requestFeeCapService = new RequestFeeCapService(stateService);
+    const initialApprovedRequestFee = await requestFeeCapService.resolveRequestFee(
+      requestFeeCapPolicy,
+      {
+        operation: 'batch',
+        requestCount: Math.min(requestData.length, globalOptions.maxRequestsPerBlock)
+      }
+    );
+
+    await sendExecutionLayerRequests(
+      contractAddress,
+      ethereumConnection.provider,
+      ethereumConnection.signer,
+      requestData,
+      globalOptions.maxRequestsPerBlock,
+      globalOptions.beaconApiUrl,
+      requestFeeCapPolicy,
+      initialApprovedRequestFee
+    );
+    return;
+  }
+
   await sendExecutionLayerRequests(
     contractAddress,
     ethereumConnection.provider,
@@ -134,7 +162,13 @@ async function executeSafePipeline(
     }
 
     const stateService = new EthereumStateService(safeInitResult.provider, contractAddress);
-    const contractFee = await stateService.fetchContractFee();
+    const requestFeeCapPolicy = createRequestFeeCapPolicy(globalOptions);
+    const contractFee = requestFeeCapPolicy
+      ? await new RequestFeeCapService(stateService).resolveRequestFee(requestFeeCapPolicy, {
+          operation: 'safe proposal',
+          requestCount: requestData.length
+        })
+      : await stateService.fetchContractFee();
     const safeFeeTip = BigInt(globalOptions.safeFeeTip ?? String(DEFAULT_SAFE_FEE_TIP));
     const proposalFee = contractFee + safeFeeTip;
 

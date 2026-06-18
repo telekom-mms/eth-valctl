@@ -337,6 +337,69 @@ describe('executeRequestPipeline', () => {
     });
   });
 
+  describe('request fee cap handling', () => {
+    it('broadcasts directly without prompting when the current request fee is equal to the cap', async () => {
+      const options = {
+        ...buildGlobalOptions(),
+        maxRequestFee: String(CONTRACT_FEE)
+      } as GlobalCliOptions;
+
+      await executeRequestPipeline(buildPipelineConfig({ globalOptions: options }));
+
+      expect(sendExecutionLayerRequestsSpy).toHaveBeenCalledTimes(1);
+      expect(stderrSpy.mock.calls.flat().join('\n')).not.toContain('request fee cap');
+    });
+
+    it('does not broadcast direct requests when --yes waits and the cap stays exceeded', async () => {
+      const options = {
+        ...buildGlobalOptions(),
+        maxRequestFee: String(CONTRACT_FEE - 1n),
+        maxRequestFeeWaitBlocks: 0,
+        yes: true
+      } as GlobalCliOptions;
+
+      await expect(
+        executeRequestPipeline(buildPipelineConfig({ globalOptions: options }))
+      ).rejects.toThrow('request fee');
+
+      expect(sendExecutionLayerRequestsSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not propose Safe requests when --yes waits and the raw contract fee exceeds the cap', async () => {
+      const options = {
+        ...buildGlobalOptions({ safe: SAFE_ADDRESS }),
+        maxRequestFee: String(CONTRACT_FEE - 1n),
+        maxRequestFeeWaitBlocks: 0,
+        yes: true
+      } as GlobalCliOptions;
+
+      await expect(
+        executeRequestPipeline(buildPipelineConfig({ globalOptions: options }))
+      ).rejects.toThrow('request fee');
+
+      expect(proposeSafeTransactionsSpy).not.toHaveBeenCalled();
+      expect(mockDispose).toHaveBeenCalledTimes(1);
+    });
+
+    it('compares Safe proposal caps against the raw request fee before adding safe fee tip', async () => {
+      const safeFeeTip = 5_000n;
+      const options = {
+        ...buildGlobalOptions({
+          safe: SAFE_ADDRESS,
+          safeFeeTip: String(safeFeeTip)
+        }),
+        maxRequestFee: String(CONTRACT_FEE)
+      } as GlobalCliOptions;
+
+      await executeRequestPipeline(buildPipelineConfig({ globalOptions: options }));
+
+      const proposeCall = proposeSafeTransactionsSpy.mock.calls[0] as unknown as [
+        { contractFee: bigint }
+      ];
+      expect(proposeCall[0].contractFee).toBe(CONTRACT_FEE + safeFeeTip);
+    });
+  });
+
   describe('safe pipeline resource disposal', () => {
     it('disposes safe init result when validate throws', async () => {
       const options = buildGlobalOptions({ safe: SAFE_ADDRESS });

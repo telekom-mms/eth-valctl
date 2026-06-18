@@ -1,6 +1,7 @@
 import type {
   BroadcastResult,
   ExecutionLayerRequestTransaction,
+  RequestFeeCapPolicy,
   SigningContext
 } from '../../../../model/ethereum';
 import type { IBroadcastStrategy } from '../../../../ports/broadcast-strategy.interface';
@@ -8,6 +9,7 @@ import type { ISlotTimingService } from '../../../../ports/slot-timing.interface
 import { isInsufficientFundsError } from '../../error-utils';
 import { isFatalLedgerError, type ISigner, isUserRejectedError } from '../../signer';
 import type { EthereumStateService } from '../ethereum-state-service';
+import type { RequestFeeCapService } from '../request-fee-cap-service';
 import type { TransactionProgressLogger } from '../transaction-progress-logger';
 import {
   createElTransaction,
@@ -35,12 +37,16 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
    * @param systemContractAddress - Target system contract address
    * @param slotTimingService - Service for slot-aware timing
    * @param logger - Logger for transaction progress
+   * @param requestFeeCapPolicy - Optional request-fee cap policy
+   * @param requestFeeCapService - Optional cap enforcement service
    */
   constructor(
     private readonly blockchainStateService: EthereumStateService,
     private readonly systemContractAddress: string,
     private readonly slotTimingService: ISlotTimingService,
-    private readonly logger: TransactionProgressLogger
+    private readonly logger: TransactionProgressLogger,
+    private readonly requestFeeCapPolicy?: RequestFeeCapPolicy,
+    private readonly requestFeeCapService?: RequestFeeCapService
   ) {}
 
   /**
@@ -84,7 +90,7 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
 
       try {
         await this.slotTimingService.waitForOptimalBroadcastWindow();
-        const freshContractFee = await this.blockchainStateService.fetchContractFee();
+        const freshContractFee = await this.resolveFreshContractFee();
         const freshTransaction = createElTransaction(
           this.systemContractAddress,
           requestData,
@@ -120,5 +126,16 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
     }
 
     return results;
+  }
+
+  private async resolveFreshContractFee(): Promise<bigint> {
+    if (!this.requestFeeCapPolicy || !this.requestFeeCapService) {
+      return this.blockchainStateService.fetchContractFee();
+    }
+
+    return this.requestFeeCapService.resolveRequestFee(this.requestFeeCapPolicy, {
+      operation: 'batch',
+      requestCount: 1
+    });
   }
 }
