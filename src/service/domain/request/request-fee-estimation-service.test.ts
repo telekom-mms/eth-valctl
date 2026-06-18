@@ -4,6 +4,7 @@ import * as application from '../../../constants/application';
 import type { ContractFeeState, MaxNetworkFees } from '../../../model/ethereum';
 import type { EthereumStateService } from './ethereum-state-service';
 import {
+  calculateRequestFee,
   estimateBlocksUntilRequestFeeDrops,
   RequestFeeEstimationService
 } from './request-fee-estimation-service';
@@ -72,6 +73,43 @@ describe('RequestFeeEstimationService', () => {
     expect(estimate.batches[1]?.requestFee).toBeGreaterThan(1n);
     expect(estimate.batches[1]?.capExceeded).toBe(true);
   });
+
+  it('uses the withdrawal contract target when projecting withdrawal batches', async () => {
+    const service = new RequestFeeEstimationService(
+      createMockStateService({
+        feeState: { fee: 1n, excess: 12n },
+        maxNetworkFees: { maxFeePerGas: 20n, maxPriorityFeePerGas: 2n }
+      }),
+      application.WITHDRAWAL_CONTRACT_ADDRESS
+    );
+
+    const estimate = await service.estimateBatchFees({
+      maxRequestFee: 1n,
+      maxRequestsPerBlock: 2,
+      totalRequestCount: 4
+    });
+
+    expect(estimate.batches).toEqual([
+      { batchNumber: 1, requestCount: 2, requestFee: 1n, capExceeded: false },
+      { batchNumber: 2, requestCount: 2, requestFee: 1n, capExceeded: false }
+    ]);
+  });
+});
+
+describe('calculateRequestFee', () => {
+  it('matches exact fake-exponential fee vectors', () => {
+    expect(calculateRequestFee(0n)).toBe(1n);
+    expect(calculateRequestFee(1n)).toBe(1n);
+    expect(calculateRequestFee(10n)).toBe(1n);
+    expect(calculateRequestFee(12n)).toBe(1n);
+    expect(calculateRequestFee(13n)).toBe(2n);
+    expect(calculateRequestFee(17n)).toBe(2n);
+    expect(calculateRequestFee(20n)).toBe(3n);
+    expect(calculateRequestFee(34n)).toBe(7n);
+    expect(calculateRequestFee(50n)).toBe(18n);
+    expect(calculateRequestFee(51n)).toBe(19n);
+    expect(calculateRequestFee(100n)).toBe(357n);
+  });
 });
 
 describe('estimateBlocksUntilRequestFeeDrops', () => {
@@ -93,5 +131,25 @@ describe('estimateBlocksUntilRequestFeeDrops', () => {
     });
 
     expect(blocks).toBe(8n);
+  });
+
+  it('uses the withdrawal target requests per block for withdrawal contracts', () => {
+    const blocks = estimateBlocksUntilRequestFeeDrops({
+      currentExcess: 20n,
+      targetFee: 1n,
+      systemContractAddress: application.WITHDRAWAL_CONTRACT_ADDRESS
+    });
+
+    expect(blocks).toBe(4n);
+  });
+
+  it('estimates at least one block when the target fee is below the minimum fee', () => {
+    const blocks = estimateBlocksUntilRequestFeeDrops({
+      currentExcess: 5n,
+      targetFee: 0n,
+      systemContractAddress: application.CONSOLIDATION_CONTRACT_ADDRESS
+    });
+
+    expect(blocks).toBe(6n);
   });
 });

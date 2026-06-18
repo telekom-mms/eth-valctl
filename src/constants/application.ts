@@ -73,10 +73,21 @@ export const CONSOLIDATION_TARGET_PER_BLOCK = 1n;
 export const WITHDRAWAL_TARGET_PER_BLOCK = 2n;
 export const DEFAULT_FEE_OVERPAYMENT_THRESHOLD = 100n;
 export const DEFAULT_SAFE_FEE_TIP = 100n;
+export const WEI_UNIT = 'wei';
+export const GWEI_UNIT = 'gwei';
+export const ETHER_UNIT = 'ether';
+export const ETH_UNIT = 'eth';
+export const ETH_SYMBOL = 'ETH';
+export const WEI_PER_GWEI = 1_000_000_000n;
+export const WEI_PER_ETHER = 1_000_000_000_000_000_000n;
+export const REQUEST_FEE_AMOUNT_PATTERN = /^(\d+(?:\.\d+)?)\s*(wei|gwei|eth)$/i;
+export type RequestFeeInputUnit = typeof WEI_UNIT | typeof GWEI_UNIT | typeof ETH_UNIT;
+export type RequestFeeEthersUnit = typeof WEI_UNIT | typeof GWEI_UNIT | typeof ETHER_UNIT;
 export const DEFAULT_MAX_REQUEST_FEE = 1n;
 export const DEFAULT_MAX_REQUEST_FEE_INPUT = '1wei';
 export const DEFAULT_MAX_FEE_WAIT_BLOCKS = 50n;
 export const DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS = DEFAULT_MAX_FEE_WAIT_BLOCKS;
+export const DEFAULT_TOTAL_REQUEST_COUNT = 1;
 export const FEE_WAIT_POLL_INTERVAL_MS = 12_000;
 
 export const TARGET_PER_BLOCK_BY_CONTRACT: Record<string, bigint> = {
@@ -111,6 +122,7 @@ export const OWNER_LABEL_SAFE = 'Safe';
 
 /** Safe fee validation action values */
 export const FEE_ACTION_WAIT = 'wait';
+export const FEE_ACTION_CONTINUE = 'continue';
 export const FEE_ACTION_REJECT = 'reject';
 export const FEE_ACTION_PROCEED = 'proceed';
 export const FEE_ACTION_ABORT = 'abort';

@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { formatEther, formatUnits, parseUnits } from 'ethers';
+import { formatEther, formatUnits } from 'ethers';
 
 import * as application from '../constants/application';
 import * as logging from '../constants/logging';
@@ -25,7 +25,7 @@ feesCommand
     '-c, --total-request-count <count>',
     'Total number of execution layer requests to estimate',
     parseAndValidateTotalRequestCount,
-    1
+    application.DEFAULT_TOTAL_REQUEST_COUNT
   )
   .option(
     '-m, --max-requests-per-block <number>',
@@ -69,7 +69,9 @@ async function showFees(
   console.log(logging.FEES_CURRENT_REQUEST_FEE_INFO(formatRequestFee(estimate.currentRequestFee)));
   console.log(logging.FEES_CURRENT_EXCESS_INFO(estimate.currentExcess));
   console.log(
-    logging.FEES_MAX_FEE_PER_GAS_INFO(formatUnits(estimate.maxNetworkFees.maxFeePerGas, 'gwei'))
+    logging.FEES_MAX_FEE_PER_GAS_INFO(
+      formatUnits(estimate.maxNetworkFees.maxFeePerGas, application.GWEI_UNIT)
+    )
   );
   console.log(logging.FEES_GAS_COST_INFO(formatEther(estimate.gasCost)));
   console.log(logging.FEES_TOTAL_PER_REQUEST_INFO(formatEther(estimate.totalPerRequest)));
@@ -97,6 +99,13 @@ async function showFees(
   );
 }
 
+/**
+ * Resolve the request contract address for a fees operation.
+ *
+ * @param operation - Request operation name
+ * @param network - Selected network
+ * @returns System contract address for the operation
+ */
 function resolveFeesContractAddress(operation: string, network: string): string {
   const config = networkConfig[network];
   if (!config) {
@@ -117,6 +126,12 @@ function resolveFeesContractAddress(operation: string, network: string): string 
   }
 }
 
+/**
+ * Format a projected batch line for CLI output.
+ *
+ * @param batch - Projected batch fee state
+ * @returns User-facing batch line
+ */
 function formatBatchLine(batch: RequestFeeBatchProjection): string {
   return logging.FEES_BATCH_LINE(
     batch.batchNumber,
@@ -126,23 +141,35 @@ function formatBatchLine(batch: RequestFeeBatchProjection): string {
   );
 }
 
+/**
+ * Format a request fee using the most compact Ethereum unit for display.
+ *
+ * @param fee - Request fee in wei
+ * @returns Formatted request fee and display unit
+ */
 function formatRequestFee(fee: bigint): string {
   const unit = resolveRequestFeeDisplayUnit(fee);
-  const unitLabel = unit === 'ether' ? 'ETH' : unit;
+  const unitLabel = unit === application.ETHER_UNIT ? application.ETH_SYMBOL : unit;
 
   return `${formatUnits(fee, unit)} ${unitLabel}`;
 }
 
-function resolveRequestFeeDisplayUnit(fee: bigint): 'wei' | 'gwei' | 'ether' {
-  if (fee < parseUnits('1', 'gwei')) {
-    return 'wei';
+/**
+ * Resolve the display unit for a request fee amount.
+ *
+ * @param fee - Request fee in wei
+ * @returns Ethers-compatible display unit
+ */
+function resolveRequestFeeDisplayUnit(fee: bigint): application.RequestFeeEthersUnit {
+  if (fee < application.WEI_PER_GWEI) {
+    return application.WEI_UNIT;
   }
 
-  if (fee < parseUnits('1', 'ether')) {
-    return 'gwei';
+  if (fee < application.WEI_PER_ETHER) {
+    return application.GWEI_UNIT;
   }
 
-  return 'ether';
+  return application.ETHER_UNIT;
 }
 
 export { feesCommand };

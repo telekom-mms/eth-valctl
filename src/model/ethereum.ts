@@ -1,5 +1,6 @@
 import type { JsonRpcProvider, TransactionReceipt, TransactionResponse } from 'ethers';
 
+import type * as application from '../constants/application';
 import type { ISigner } from '../ports/signer.interface';
 
 /**
@@ -231,6 +232,33 @@ export interface RequestFeeStateReader {
 }
 
 /**
+ * Minimal reader required for request-fee cap enforcement.
+ */
+export interface RequestFeeReader {
+  fetchContractFee(): Promise<bigint>;
+  fetchBlockNumber(): Promise<number>;
+}
+
+/**
+ * Service contract for resolving an approved request fee under a cap policy.
+ */
+export interface RequestFeeCapResolver {
+  resolveRequestFee(
+    policy: RequestFeeCapPolicy,
+    context: RequestFeeCapCheckContext
+  ): Promise<bigint>;
+}
+
+/**
+ * Runtime request-fee cap dependencies shared by request orchestration components.
+ */
+export interface RequestFeeCapRuntime {
+  policy: RequestFeeCapPolicy;
+  resolver: RequestFeeCapResolver;
+  initialApprovedRequestFee?: bigint;
+}
+
+/**
  * Input for request-fee projection across idealized batches.
  */
 export interface RequestFeeEstimateConfig {
@@ -267,7 +295,10 @@ export interface RequestFeeEstimate {
 /**
  * User-facing behavior when a request fee exceeds the configured cap.
  */
-export type FeeCapDecision = 'wait' | 'continue' | 'abort';
+export type FeeCapDecision =
+  | typeof application.FEE_ACTION_WAIT
+  | typeof application.FEE_ACTION_CONTINUE
+  | typeof application.FEE_ACTION_ABORT;
 
 /**
  * Request-fee cap policy used before broadcasting or proposing requests.
