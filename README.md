@@ -82,15 +82,18 @@ Print the help message with `--help`. This works also for every subcommand.
 
 ### Global Options
 
-| Short Option | Long Option              | Description                                                                                      |
-| ------------ | ------------------------ | ------------------------------------------------------------------------------------------------ |
-| -n           | --network                | The network name which you want to connect to                                                    |
-| -r           | --json-rpc-url           | The json rpc endpoint which is used for sending execution layer requests                         |
-| -b           | --beacon-api-url         | The beacon api endpoint which is used for sanity checks like e.g.checking withdrawal credentials |
-| -m           | --max-requests-per-block | The max. number of EL requests which are tried to be packaged into one block                     |
-| -l           | --ledger                 | Use Ledger hardware wallet for signing (requires Ledger device with Ethereum app)                |
-| -s           | --safe \<address\>       | Safe multisig address for proposal, signing, and execution                                       |
-| -f           | --safe-fee-tip \<wei\>   | Tip in wei added to system contract fee per operation (default: 100)                             |
+| Short Option | Long Option                                  | Description                                                                                      |
+| ------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| -n           | --network                                    | The network name which you want to connect to                                                    |
+| -r           | --json-rpc-url                               | The json rpc endpoint which is used for sending execution layer requests                         |
+| -b           | --beacon-api-url                             | The beacon api endpoint which is used for sanity checks like e.g.checking withdrawal credentials |
+| -m           | --max-requests-per-block                     | The max. number of EL requests which are tried to be packaged into one block                     |
+| -l           | --ledger                                     | Use Ledger hardware wallet for signing (requires Ledger device with Ethereum app)                |
+| -s           | --safe \<address\>                           | Safe multisig address for proposal, signing, and execution                                       |
+| -f           | --safe-fee-tip \<wei\>                       | Tip in wei added to system contract fee per operation (default: 100)                             |
+| -x           | --max-request-fee \<amount\>                 | Maximum request fee per execution layer request before eth-valctl waits or asks what to do       |
+|              | --max-request-fee-wait-blocks \<blocks\>     | Max blocks to wait when request fee exceeds `--max-request-fee`                                  |
+| -y           | --yes                                        | Skip confirmation prompts by choosing safe default actions                                       |
 
 When using `--safe`, `--max-requests-per-block` also controls how many EL requests get bundled into a single on-chain MultiSend transaction. This makes the option gas-sensitive. See [Batch size and gas cost](#batch-size-and-gas-cost) for guidance on tuning it under network congestion.
 
@@ -125,9 +128,8 @@ When using `--safe`, `--max-requests-per-block` also controls how many EL reques
 
 Sign pending eth-valctl Safe transactions. Requires `--safe`.
 
-| Short Option | Long Option | Description                |
-| ------------ | ----------- | -------------------------- |
-| -y           | --yes       | Skip confirmation prompts  |
+Safe signing has no subcommand-specific options. Use global options before `safe`, for example
+`eth-valctl --yes --safe <address> safe sign`.
 
 ### Safe execute
 
@@ -138,11 +140,12 @@ Execute fully-signed eth-valctl Safe transactions on-chain. Requires `--safe`.
 | Short Option | Long Option                          | Description                                                                                  |
 | ------------ | ------------------------------------ | -------------------------------------------------------------------------------------------- |
 | -o           | --fee-overpayment-threshold \<wei\>  | Wei threshold above which fee overpayment is flagged (default: 100)                          |
-| -y           | --yes                                | Skip confirmation prompts. On stale fees, poll until fees drop, bounded by `--max-fee-wait-blocks` (use `--stale-fee-action reject` to propose rejections instead) |
 | -a           | --stale-fee-action \<action\>        | Non-interactive stale fee handling: `wait` (poll) or `reject` (propose rejection)            |
-| -w           | --max-fee-wait-blocks \<blocks\>     | Max blocks to wait for fee to drop (default: 50, 0 aborts immediately on stale fees)         |
 
 <!-- markdownlint-enable MD060 -->
+
+Use global options before `safe execute`, for example
+`eth-valctl --yes --max-request-fee-wait-blocks 0 --safe <address> safe execute --stale-fee-action wait`.
 
 ## Transaction handling
 
@@ -219,16 +222,16 @@ When stale fees are detected, the tool supports two resolution strategies:
 
 | Action | Behavior |
 | ------ | -------- |
-| **Wait** (default) | Poll every slot (~12s) until fees drop to the proposed level, bounded by `--max-fee-wait-blocks` (default: 50). Aborts if the estimated number of blocks to fee recovery exceeds the bound, or if the bound is exhausted. Useful when the fee spike is temporary. |
+| **Wait** (default) | Poll every slot (~12s) until fees drop to the proposed level, bounded by `--max-request-fee-wait-blocks` (default: 50). Aborts if the estimated number of blocks to fee recovery exceeds the bound, or if the bound is exhausted. Useful when the fee spike is temporary. |
 | **Reject** | Propose zero-value rejection transactions at the same nonces. Other owners must sign the rejections. Once executed, the original stale transactions become non-executable and new proposals with updated fees can be created. Opt in via `--stale-fee-action reject`. |
 
-Resolution happens **per Safe transaction** in the execution loop: before each tx is sent, its fee is re-checked against the current on-chain fee. If still stale, the tool either polls (Wait) or aborts with an Abort prompt (interactive) / an immediate abort (non-interactive when the estimated block count exceeds `--max-fee-wait-blocks`). Transactions whose proposed fee is no longer stale at their execution slot proceed silently.
+Resolution happens **per Safe transaction** in the execution loop: before each tx is sent, its fee is re-checked against the current on-chain fee. If still stale, the tool either polls (Wait) or aborts with an Abort prompt (interactive) / an immediate abort (non-interactive when the estimated block count exceeds `--max-request-fee-wait-blocks`). Transactions whose proposed fee is no longer stale at their execution slot proceed silently.
 
-To skip waiting entirely and abort immediately on any stale fee, set `--max-fee-wait-blocks 0`.
+To skip waiting entirely and abort immediately on any stale fee, set `--max-request-fee-wait-blocks 0` before the `safe execute` command.
 
-For non-interactive usage (`--yes`), the default action on stale fees is Wait (bounded by `--max-fee-wait-blocks`). Use `--stale-fee-action reject` to propose rejections instead.
+For non-interactive usage (`--yes`), the default action on stale fees is Wait (bounded by `--max-request-fee-wait-blocks`). Use `--stale-fee-action reject` to propose rejections instead.
 
-The `~N blocks remaining` estimate shown during a wait is recomputed from live on-chain excess on every poll. If other parties submit requests mid-wait, the estimate may increase; if demand drops, it decreases. `--max-fee-wait-blocks` bounds the real elapsed blocks regardless of how the estimate moves.
+The `~N blocks remaining` estimate shown during a wait is recomputed from live on-chain excess on every poll. If other parties submit requests mid-wait, the estimate may increase; if demand drops, it decreases. `--max-request-fee-wait-blocks` bounds the real elapsed blocks regardless of how the estimate moves.
 
 ### Rejecting stale transactions
 
@@ -239,7 +242,7 @@ Rejection is a whole-batch, non-interactive decision — there is no "Reject" op
 | Known upfront — all stale txs should be cancelled | `safe execute --stale-fee-action reject` |
 | Changed mind during execution | At the per-tx prompt, select **Abort**, then re-run with `--stale-fee-action reject` |
 
-Rejection proposes zero-value transactions at each stale nonce; owners must still sign them (`safe sign`) and execute them (`safe execute --yes`) to cancel the originals. If some transactions already executed before you aborted, only the remaining pending nonces are rejected — the executed ones are on-chain and permanent.
+Rejection proposes zero-value transactions at each stale nonce; owners must still sign them (`safe sign`) and execute them (`eth-valctl --yes --safe <address> safe execute`) to cancel the originals. If some transactions already executed before you aborted, only the remaining pending nonces are rejected — the executed ones are on-chain and permanent.
 
 ### Limitations
 

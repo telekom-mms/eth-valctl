@@ -76,12 +76,34 @@ describe('CLI entrypoint', () => {
       expect(result.stdout).not.toContain('-y, --yes');
     });
 
+    it('accepts global --yes before safe sign', async () => {
+      const result = await runCli(['--yes', 'safe', 'sign', '--help']);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Usage: eth-valctl safe sign');
+      expect(result.stderr).not.toContain("unknown option '--yes'");
+    });
+
     it('does not expose safe execute specific --yes or max fee wait options', async () => {
       const result = await runCli(['safe', 'execute', '--help']);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).not.toContain('-y, --yes');
       expect(result.stdout).not.toContain('--max-fee-wait-blocks');
+    });
+
+    it('accepts global wait budget before safe execute', async () => {
+      const result = await runCli([
+        '--max-request-fee-wait-blocks',
+        '0',
+        'safe',
+        'execute',
+        '--help'
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Usage: eth-valctl safe execute');
+      expect(result.stderr).not.toContain("unknown option '--max-request-fee-wait-blocks'");
     });
   });
 });

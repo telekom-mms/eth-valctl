@@ -426,14 +426,30 @@ safe_propose() {
 safe_sign() {
 	local private_key=$1
 	# shellcheck disable=SC2086
-	capture_cmd bash -c "echo '${private_key}' | ${SAFE_BASE_CMD} safe sign --yes"
+	capture_cmd bash -c "echo '${private_key}' | ${SAFE_BASE_CMD} --yes safe sign"
 }
 
 safe_execute() {
 	local private_key=$1
 	shift
+	local global_args=("--yes")
+	local execute_args=()
+
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+		--max-request-fee-wait-blocks)
+			global_args+=("$1" "$2")
+			shift 2
+			;;
+		*)
+			execute_args+=("$1")
+			shift
+			;;
+		esac
+	done
+
 	# shellcheck disable=SC2086
-	capture_cmd bash -c "echo '${private_key}' | ${SAFE_BASE_CMD} safe execute --yes $*"
+	capture_cmd bash -c "echo '${private_key}' | ${SAFE_BASE_CMD} ${global_args[*]} safe execute ${execute_args[*]}"
 }
 
 safe_full_cycle() {

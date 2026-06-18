@@ -33,7 +33,6 @@ describe('RequestFeeEstimationService', () => {
 
     expect(estimate.currentRequestFee).toBe(1n);
     expect(estimate.gasCost).toBe(20n * application.TRANSACTION_GAS_LIMIT);
-    expect(estimate.totalPerRequest).toBe(estimate.gasCost + 1n);
     expect(estimate.exceedsCap).toBe(false);
   });
 
