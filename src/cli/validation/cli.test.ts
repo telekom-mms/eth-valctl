@@ -4,8 +4,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-import { MAX_NUMBER_OF_REQUESTS_PER_BLOCK } from '../../constants/application';
-import { SAFE_OPTION_REQUIRED_ERROR } from '../../constants/logging';
+import { GWEI_UNIT, MAX_NUMBER_OF_REQUESTS_PER_BLOCK } from '../../constants/application';
+import {
+  INVALID_MAX_REQUEST_FEE_FORMAT_ERROR,
+  INVALID_MAX_REQUEST_FEE_WAIT_BLOCKS_ERROR,
+  MAX_REQUEST_FEE_TOO_LOW_ERROR,
+  REQUEST_FEE_PRECISION_ERROR,
+  SAFE_OPTION_REQUIRED_ERROR
+} from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
 import {
   parseAndValidateMaxNumberOfRequestsPerBlock,
@@ -426,39 +432,49 @@ describe('CLI Validation', () => {
       exitSpy.mockRestore();
     });
 
-    it('returns a wei numeric string for an explicit wei amount', () => {
+    it('returns wei for an explicit wei amount', () => {
       const result = parseAndValidateMaxRequestFee('42wei');
 
-      expect(result).toBe('42');
+      expect(result).toBe(42n);
     });
 
-    it('returns a wei numeric string for an explicit gwei amount', () => {
+    it('returns wei for an explicit gwei amount', () => {
       const result = parseAndValidateMaxRequestFee('1.5gwei');
 
-      expect(result).toBe('1500000000');
+      expect(result).toBe(1_500_000_000n);
     });
 
-    it('returns a wei numeric string for an explicit eth amount', () => {
+    it('returns wei for an explicit eth amount', () => {
       const result = parseAndValidateMaxRequestFee('0.000000001eth');
 
-      expect(result).toBe('1000000000');
+      expect(result).toBe(1_000_000_000n);
+    });
+
+    it('returns wei for an amount with whitespace and mixed-case unit', () => {
+      const result = parseAndValidateMaxRequestFee('2 GWEI');
+
+      expect(result).toBe(2_000_000_000n);
     });
 
     it('exits when the amount has no explicit unit', () => {
       expect(() => parseAndValidateMaxRequestFee('1000')).toThrow('process.exit');
-      expect(stderrSpy.mock.calls.flat().join('\n')).toContain('wei/gwei/eth');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(
+        INVALID_MAX_REQUEST_FEE_FORMAT_ERROR
+      );
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
     it('exits when the amount is zero', () => {
       expect(() => parseAndValidateMaxRequestFee('0wei')).toThrow('process.exit');
-      expect(stderrSpy.mock.calls.flat().join('\n')).toContain('at least 1 wei');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(MAX_REQUEST_FEE_TOO_LOW_ERROR);
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
     it('exits when the amount resolves below one wei', () => {
       expect(() => parseAndValidateMaxRequestFee('0.0000000001gwei')).toThrow('process.exit');
-      expect(stderrSpy.mock.calls.flat().join('\n')).toContain('at least 1 wei');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(
+        REQUEST_FEE_PRECISION_ERROR('0.0000000001', GWEI_UNIT)
+      );
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });
@@ -493,7 +509,9 @@ describe('CLI Validation', () => {
 
     it('exits when the block count is negative', () => {
       expect(() => parseAndValidateMaxRequestFeeWaitBlocks('-1')).toThrow('process.exit');
-      expect(stderrSpy.mock.calls.flat().join('\n')).toContain('non-negative integer');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(
+        INVALID_MAX_REQUEST_FEE_WAIT_BLOCKS_ERROR
+      );
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });

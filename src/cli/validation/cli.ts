@@ -8,6 +8,7 @@ import * as logging from '../../constants/logging';
 import { SAFE_OPTION_REQUIRED_ERROR } from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
 import { networkConfig } from '../../network-config';
+import { parseRequestFeeAmount } from '../../service/domain/request/request-fee-amount';
 
 /**
  * Check if json rpc url is correctly formatted
@@ -145,21 +146,23 @@ export function parseAndValidateMaxNumberOfRequestsPerBlock(maxNumberOfRequests:
  * Parse and validate a request fee amount with an explicit unit.
  *
  * @param value - Request fee with unit suffix (`wei`, `gwei`, or `eth`)
- * @returns Fee amount as a wei numeric string
+ * @returns Fee amount as wei
  */
-export function parseAndValidateMaxRequestFee(value: string): string {
-  const match = value.match(/^(\d+(?:\.\d+)?)\s*(wei|gwei|eth)$/i);
-  if (!match) {
-    exitWithValidationError(logging.INVALID_MAX_REQUEST_FEE_FORMAT_ERROR);
+export function parseAndValidateMaxRequestFee(value: string): bigint {
+  let wei: bigint;
+  try {
+    wei = parseRequestFeeAmount(value);
+  } catch (error) {
+    exitWithValidationError(
+      error instanceof Error ? error.message : logging.INVALID_MAX_REQUEST_FEE_FORMAT_ERROR
+    );
   }
-
-  const wei = parseUnitAmountToWei(match[1]!, match[2]!.toLowerCase());
 
   if (wei < 1n) {
     exitWithValidationError(logging.MAX_REQUEST_FEE_TOO_LOW_ERROR);
   }
 
-  return wei.toString();
+  return wei;
 }
 
 /**
@@ -196,41 +199,23 @@ export function parseAndValidateTotalRequestCount(value: string): number {
 }
 
 /**
- * Resolve a max request fee value that may still be Commander's raw default.
+ * Resolve a max request fee value with the application default.
  *
- * @param value - Parsed wei string or raw unit-suffixed default
+ * @param value - Parsed request fee in wei
  * @returns Request fee in wei
  */
-export function resolveMaxRequestFee(value: string | undefined): bigint {
-  if (value === undefined) {
-    return application.DEFAULT_MAX_REQUEST_FEE;
-  }
-
-  if (/^\d+$/.test(value)) {
-    return BigInt(value);
-  }
-
-  return BigInt(parseAndValidateMaxRequestFee(value));
+export function resolveMaxRequestFee(value: bigint | undefined): bigint {
+  return value ?? application.DEFAULT_MAX_REQUEST_FEE;
 }
 
 /**
  * Resolve max request fee wait blocks from Commander options.
  *
- * @param value - Parsed bigint or raw default string
+ * @param value - Parsed bigint
  * @returns Wait block count
  */
-export function resolveMaxRequestFeeWaitBlocks(
-  value: bigint | number | string | undefined
-): bigint {
-  if (value === undefined) {
-    return application.DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS;
-  }
-
-  if (typeof value === 'bigint') {
-    return value;
-  }
-
-  return parseAndValidateMaxRequestFeeWaitBlocks(String(value));
+export function resolveMaxRequestFeeWaitBlocks(value: bigint | undefined): bigint {
+  return value ?? application.DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS;
 }
 
 /**
@@ -311,27 +296,6 @@ function readPubkeysFromFile(filePath: string): string[] {
 
   console.error(chalk.blue(logging.READ_PUBKEYS_FROM_FILE_INFO(pubkeys.length, filePath)));
   return pubkeys;
-}
-
-/**
- * Convert a decimal amount with an Ethereum unit to wei.
- *
- * @param amount - Decimal amount string
- * @param unit - Ethereum unit
- * @returns Amount in wei
- */
-function parseUnitAmountToWei(amount: string, unit: string): bigint {
-  const [integerPart = '0', fractionalPart = ''] = amount.split('.');
-  const decimals = unit === 'eth' ? 18 : unit === 'gwei' ? 9 : 0;
-  const excessFraction = fractionalPart.slice(decimals);
-
-  if (excessFraction !== '' && /[1-9]/.test(excessFraction)) {
-    exitWithValidationError(logging.MAX_REQUEST_FEE_TOO_LOW_ERROR);
-  }
-
-  const paddedFraction = fractionalPart.padEnd(decimals, '0').slice(0, decimals);
-
-  return BigInt(integerPart) * 10n ** BigInt(decimals) + BigInt(paddedFraction || '0');
 }
 
 /**

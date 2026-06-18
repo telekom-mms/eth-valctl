@@ -32,8 +32,8 @@ export interface GlobalCliOptions {
   ledger: boolean;
   safe?: string;
   safeFeeTip?: string;
-  maxRequestFee?: string;
-  maxRequestFeeWaitBlocks?: bigint | number | string;
+  maxRequestFee?: bigint;
+  maxRequestFeeWaitBlocks?: bigint;
   yes?: boolean;
 }
 
@@ -42,6 +42,6 @@ export interface GlobalCliOptions {
  */
 export interface FeesOptions {
   totalRequestCount: number;
-  maxRequestsPerBlock: number;
-  maxRequestFee?: string;
+  maxRequestsPerBlock?: number;
+  maxRequestFee?: bigint;
 }

@@ -68,11 +68,6 @@ export const FEES_CAP_WARNING =
   'Warning: A projected batch exceeds --max-request-fee. Real execution will wait or prompt before that above-cap batch.';
 export const FEES_OPTIMAL_RATE_INFO = (target: bigint): string =>
   `Fee-optimal rate for this request contract is ${target} request${target === 1n ? '' : 's'} per block; lower fee growth can mean longer wall-clock time.`;
-export const MAX_REQUEST_FEE_OPTION_DESCRIPTION =
-  'Maximum request fee per execution layer request before eth-valctl waits or asks what to do, for example 1wei, 0.5gwei, or 0.01eth';
-export const MAX_REQUEST_FEE_WAIT_BLOCKS_OPTION_DESCRIPTION =
-  'Maximum blocks to wait when request fee exceeds --max-request-fee (0 aborts immediately)';
-export const YES_OPTION_DESCRIPTION = 'Skip confirmation prompts by choosing safe default actions';
 
 /** Fetching errors */
 export const BEACON_API_ERROR = 'Error while calling beacon API endpoint:';
@@ -160,7 +155,7 @@ export const REQUEST_FEE_CAP_PROMPT = 'Choose how to handle the above-cap reques
 export const REQUEST_FEE_CAP_WAIT_ACTION =
   'Wait until request fee is at or below --max-request-fee';
 export const REQUEST_FEE_CAP_CONTINUE_ACTION =
-  'Continue once (approve only this above-cap batch/replacement/proposal)';
+  'Continue at this request fee and ask again if a later request fee is higher';
 export const REQUEST_FEE_CAP_ABORT_ACTION = 'Abort';
 export const REQUEST_FEE_CAP_WAIT_PROGRESS_INFO = (
   currentFee: bigint,
@@ -358,7 +353,7 @@ export const SAFE_FEE_OVERPAYMENT_INFO = (
 export const SAFE_FEE_ALL_SUFFICIENT_INFO = (count: number): string =>
   `  ✅ All ${count} transaction${count === 1 ? '' : 's'}: contract fees sufficient`;
 export const SAFE_FEE_STALE_SUMMARY_INFO = (staleCount: number, total: number): string =>
-  `Stale fees detected (${staleCount} of ${total} transaction${total === 1 ? '' : 's'}) — continuing will wait per transaction for fees to decrease, bounded by --max-fee-wait-blocks.`;
+  `Stale fees detected (${staleCount} of ${total} transaction${total === 1 ? '' : 's'}) — continuing will wait per transaction for fees to decrease, bounded by --max-request-fee-wait-blocks.`;
 export const SAFE_FEE_REJECTING_INFO = (count: number): string =>
   `Proposing ${count} rejection transaction${count === 1 ? '' : 's'}...`;
 export const SAFE_FEE_REJECTED_INFO = (batch: number, nonce: number, safeTxHash: string): string =>

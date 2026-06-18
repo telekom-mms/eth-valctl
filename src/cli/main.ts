@@ -13,16 +13,12 @@ import { Command, Option } from 'commander';
 
 import packageJson from '../../package.json';
 import {
+  DEFAULT_MAX_REQUEST_FEE,
   DEFAULT_MAX_REQUEST_FEE_INPUT,
   DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS,
   DEFAULT_SAFE_FEE_TIP
 } from '../constants/application';
-import {
-  DISCLAIMER_INFO,
-  MAX_REQUEST_FEE_OPTION_DESCRIPTION,
-  MAX_REQUEST_FEE_WAIT_BLOCKS_OPTION_DESCRIPTION,
-  YES_OPTION_DESCRIPTION
-} from '../constants/logging';
+import { DISCLAIMER_INFO } from '../constants/logging';
 import type { GlobalCliOptions } from '../model/commander';
 import { RequestFeeOperationCancelledError } from '../model/ethereum';
 import { consolidateCommand } from './consolidate';
@@ -95,22 +91,22 @@ program
     String(DEFAULT_SAFE_FEE_TIP)
   )
   .addOption(
-    new Option('-x, --max-request-fee <amount>', MAX_REQUEST_FEE_OPTION_DESCRIPTION)
+    new Option(
+      '-x, --max-request-fee <amount>',
+      'Maximum request fee per execution layer request before eth-valctl waits or asks what to do, for example 1wei, 0.5gwei, or 0.01eth'
+    )
       .argParser(parseAndValidateMaxRequestFee)
-      .default(DEFAULT_MAX_REQUEST_FEE_INPUT, DEFAULT_MAX_REQUEST_FEE_INPUT)
+      .default(DEFAULT_MAX_REQUEST_FEE, DEFAULT_MAX_REQUEST_FEE_INPUT)
   )
   .addOption(
     new Option(
       '--max-request-fee-wait-blocks <blocks>',
-      MAX_REQUEST_FEE_WAIT_BLOCKS_OPTION_DESCRIPTION
+      'Maximum blocks to wait when request fee exceeds --max-request-fee (0 aborts immediately)'
     )
       .argParser(parseAndValidateMaxRequestFeeWaitBlocks)
-      .default(
-        String(DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS),
-        String(DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS)
-      )
+      .default(DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS, String(DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS))
   )
-  .option('-y, --yes', YES_OPTION_DESCRIPTION, false)
+  .option('-y, --yes', 'Skip confirmation prompts by choosing safe default actions', false)
   .hook('preAction', (thisCommand) => {
     console.log(chalk.yellow(DISCLAIMER_INFO));
     const globalOptions: GlobalCliOptions = thisCommand.opts();
