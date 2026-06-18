@@ -18,10 +18,10 @@ import {
   DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS,
   DEFAULT_SAFE_FEE_TIP
 } from '../constants/application';
-import { DISCLAIMER_INFO } from '../constants/logging';
+import { DISCLAIMER_INFO, UNHANDLED_PROMISE_REJECTION_PREFIX } from '../constants/logging';
 import type { GlobalCliOptions } from '../model/commander';
-import { RequestFeeOperationCancelledError } from '../model/ethereum';
 import { consolidateCommand } from './consolidate';
+import { handleCliError } from './error-handler';
 import { exitCommand } from './exit';
 import { feesCommand } from './fees';
 import { safeCommand } from './safe';
@@ -38,7 +38,7 @@ import {
 import { withdrawCommand } from './withdraw';
 
 process.on('unhandledRejection', (reason) => {
-  console.error(chalk.red('Unhandled promise rejection:'), reason);
+  console.error(chalk.red(UNHANDLED_PROMISE_REJECTION_PREFIX), reason);
 });
 
 const program = new Command();
@@ -120,12 +120,4 @@ program
   .addCommand(feesCommand)
   .addCommand(safeCommand);
 
-program.parseAsync(process.argv).catch((error: unknown) => {
-  if (error instanceof RequestFeeOperationCancelledError) {
-    console.error(chalk.yellow(error.message));
-    process.exit(0);
-  }
-
-  console.error(chalk.red('Fatal error:'), error);
-  process.exit(1);
-});
+program.parseAsync(process.argv).catch(handleCliError);

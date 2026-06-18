@@ -176,4 +176,17 @@ describe('RequestFeeCapService', () => {
 
     timeoutSpy.mockRestore();
   });
+
+  it('throws when observed block advancement overshoots the wait budget', async () => {
+    const timeoutSpy = mockImmediateTimeout();
+    const reader = buildReader([11n, 10n], [100, 103]);
+    const service = new RequestFeeCapService(reader);
+
+    await expect(
+      service.resolveRequestFee(buildPolicy({ maxWaitBlocks: 1n, skipConfirmation: true }), CONTEXT)
+    ).rejects.toThrow(RequestFeeCapExceededError);
+    expect(reader.fetchContractFee).toHaveBeenCalledTimes(1);
+
+    timeoutSpy.mockRestore();
+  });
 });

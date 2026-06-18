@@ -43,14 +43,15 @@ export const INVALID_MAX_REQUEST_FEE_WAIT_BLOCKS_ERROR =
 export const INVALID_TOTAL_REQUEST_COUNT_ERROR = 'Total request count must be a positive integer.';
 export const UNKNOWN_FEES_OPERATION_ERROR = (operation: string): string =>
   `Unknown fees operation: ${operation}. Use consolidate, switch, withdraw, or exit.`;
+export const FATAL_ERROR_PREFIX = 'Fatal error:';
+export const UNHANDLED_PROMISE_REJECTION_PREFIX = 'Unhandled promise rejection:';
 export const FEES_ESTIMATE_HEADER = (operation: string, network: string): string =>
   `Fee estimate for ${operation} requests on ${network}:`;
 export const FEES_CURRENT_REQUEST_FEE_INFO = (fee: string): string => `Current request fee: ${fee}`;
-export const FEES_CURRENT_EXCESS_INFO = (excess: bigint): string => `Current excess: ${excess}`;
-export const FEES_MAX_FEE_PER_GAS_INFO = (fee: string): string => `Max fee per gas: ${fee} Gwei`;
-export const FEES_GAS_COST_INFO = (cost: string): string => `Gas cost per request: ${cost} ETH`;
-export const FEES_TOTAL_PER_REQUEST_INFO = (total: string): string =>
-  `Estimated total per request: ${total} ETH`;
+export const FEES_MAX_TRANSACTION_GAS_BUDGET_INFO = (
+  gasBudget: string,
+  maxFeePerGas: string
+): string => `Max transaction gas budget: ${gasBudget} ETH at ${maxFeePerGas} Gwei max fee per gas`;
 export const FEES_BATCH_HEADER = (
   totalCount: number,
   batchCount: number,

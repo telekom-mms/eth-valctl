@@ -100,13 +100,7 @@ export class RequestFeeCapService implements RequestFeeCapResolver {
     let blocksWaited = 0n;
 
     if (policy.maxWaitBlocks === 0n) {
-      throw new RequestFeeCapExceededError(
-        logging.REQUEST_FEE_CAP_WAIT_EXCEEDED_ERROR(
-          currentFee,
-          policy.maxRequestFee,
-          policy.maxWaitBlocks
-        )
-      );
+      throw this.createWaitExceededError(currentFee, policy);
     }
 
     let lastBlockNumber = await this.requestFeeReader.fetchBlockNumber();
@@ -121,6 +115,11 @@ export class RequestFeeCapService implements RequestFeeCapResolver {
 
       blocksWaited += BigInt(nextBlockNumber - lastBlockNumber);
       lastBlockNumber = nextBlockNumber;
+
+      if (blocksWaited > policy.maxWaitBlocks) {
+        throw this.createWaitExceededError(currentFee, policy);
+      }
+
       currentFee = await this.requestFeeReader.fetchContractFee();
 
       if (currentFee <= policy.maxRequestFee) {
@@ -140,7 +139,21 @@ export class RequestFeeCapService implements RequestFeeCapResolver {
       );
     }
 
-    throw new RequestFeeCapExceededError(
+    throw this.createWaitExceededError(currentFee, policy);
+  }
+
+  /**
+   * Create a wait-budget exceeded error for the current cap policy.
+   *
+   * @param currentFee - Last known request fee in wei
+   * @param policy - Configured cap policy
+   * @returns Error describing the exhausted wait budget
+   */
+  private createWaitExceededError(
+    currentFee: bigint,
+    policy: RequestFeeCapPolicy
+  ): RequestFeeCapExceededError {
+    return new RequestFeeCapExceededError(
       logging.REQUEST_FEE_CAP_WAIT_EXCEEDED_ERROR(
         currentFee,
         policy.maxRequestFee,
