@@ -420,9 +420,9 @@ phase_g_fee_validation() {
 	assert_output_contains "${LAST_CMD_OUTPUT}" "Mined execution layer request" "Large queue fill mined"
 
 	# --- G.4: Stale fee — wait action with immediate-abort budget ---
-	log_test "Stale fee — wait action with --max-fee-wait-blocks 0"
-	log_info "Executing with --stale-fee-action wait --max-fee-wait-blocks 0 (should detect stale and abort immediately)..."
-	safe_execute "${OWNER_0_KEY}" --stale-fee-action wait --max-fee-wait-blocks 0
+	log_test "Stale fee — wait action with --max-request-fee-wait-blocks 0"
+	log_info "Executing with --stale-fee-action wait --max-request-fee-wait-blocks 0 (should detect stale and abort immediately)..."
+	safe_execute "${OWNER_0_KEY}" --stale-fee-action wait --max-request-fee-wait-blocks 0
 	assert_output_contains "${LAST_CMD_OUTPUT}" "Stale fees detected" "Wait action: stale fee summary logged"
 	assert_output_contains "${LAST_CMD_OUTPUT}" "exceeds max wait" "Wait action: immediate abort logged"
 
@@ -496,7 +496,7 @@ phase_h_safe_edge_cases() {
 
 	local fake_safe="0x0000000000000000000000000000000000001234"
 	# shellcheck disable=SC2086
-	capture_cmd bash -c "echo '${OWNER_0_KEY}' | SAFE_API_KEY=${SAFE_API_KEY} bun run start -n kurtosis_devnet -r ${RPC_URL} -b ${BEACON_URL} --safe ${fake_safe} -m 3 safe sign --yes"
+	capture_cmd bash -c "echo '${OWNER_0_KEY}' | SAFE_API_KEY=${SAFE_API_KEY} bun run start -n kurtosis_devnet -r ${RPC_URL} -b ${BEACON_URL} --safe ${fake_safe} -m 3 --yes safe sign"
 	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Fake Safe address rejected"
 	assert_output_contains "${LAST_CMD_OUTPUT}" "No Safe found" "Safe not found error present"
 
@@ -505,7 +505,7 @@ phase_h_safe_edge_cases() {
 
 	stop_mock_tx_service
 
-	run_ethvalctl_safe "${OWNER_0_KEY}" safe sign --yes
+	run_ethvalctl_safe "${OWNER_0_KEY}" --yes safe sign
 	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Unreachable TX Service causes failure"
 	assert_output_contains "${LAST_CMD_OUTPUT}" "unreachable" "TX Service unreachable error present"
 	assert_output_not_contains "${LAST_CMD_OUTPUT}" "Fatal error" "TX Service unreachable shows clean error (no stack trace)"
@@ -580,7 +580,7 @@ phase_i_rate_limit() {
 	assert_exit_code "${LAST_CMD_EXIT_CODE}" 0 "Rate limit test: propose succeeds"
 
 	log_info "Signing without API key (triggers rate limiting)..."
-	run_ethvalctl_safe_no_apikey "${OWNER_1_KEY}" safe sign --yes
+	run_ethvalctl_safe_no_apikey "${OWNER_1_KEY}" --yes safe sign
 	assert_exit_code "${LAST_CMD_EXIT_CODE}" 0 "Unauthenticated sign completes (retries succeed)"
 	assert_output_contains "${LAST_CMD_OUTPUT}" "retrying" "Rate limit retry warning present"
 
@@ -594,7 +594,7 @@ phase_i_rate_limit() {
 	mock_admin_set_rate_limit 1
 	mock_admin_reset_rate_limit
 
-	run_ethvalctl_safe_no_apikey "${OWNER_0_KEY}" safe sign --yes
+	run_ethvalctl_safe_no_apikey "${OWNER_0_KEY}" --yes safe sign
 	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Exhausted rate limit causes failure"
 	assert_output_contains "${LAST_CMD_OUTPUT}" "rate limit exceeded" "Rate limit exhausted error present"
 

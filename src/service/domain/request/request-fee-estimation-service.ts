@@ -73,7 +73,6 @@ export class RequestFeeEstimationService {
       maxNetworkFees,
       gasLimit: application.TRANSACTION_GAS_LIMIT,
       gasCost,
-      totalPerRequest: gasCost + feeState.fee,
       exceedsCap: feeState.fee > config.maxRequestFee,
       estimatedBlocksUntilCap: estimateBlocksUntilRequestFeeDrops({
         currentExcess: feeState.excess,

@@ -286,7 +286,6 @@ export interface RequestFeeEstimate {
   maxNetworkFees: MaxNetworkFees;
   gasLimit: bigint;
   gasCost: bigint;
-  totalPerRequest: bigint;
   exceedsCap: boolean;
   estimatedBlocksUntilCap: bigint;
   batches: RequestFeeBatchProjection[];

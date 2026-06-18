@@ -5,7 +5,7 @@ import { formatEther, formatUnits } from 'ethers';
 import * as application from '../constants/application';
 import * as logging from '../constants/logging';
 import type { FeesOptions, GlobalCliOptions } from '../model/commander';
-import type { RequestFeeBatchProjection } from '../model/ethereum';
+import type { RequestFeeBatchProjection, RequestFeeEstimate } from '../model/ethereum';
 import { networkConfig } from '../network-config';
 import { createValidatedProvider } from '../service/domain/ethereum';
 import { EthereumStateService } from '../service/domain/request/ethereum-state-service';
@@ -65,38 +65,57 @@ async function showFees(
     maxRequestFee
   });
 
-  console.log(logging.FEES_ESTIMATE_HEADER(operation, globalOptions.network));
-  console.log(logging.FEES_CURRENT_REQUEST_FEE_INFO(formatRequestFee(estimate.currentRequestFee)));
-  console.log(logging.FEES_CURRENT_EXCESS_INFO(estimate.currentExcess));
-  console.log(
-    logging.FEES_MAX_FEE_PER_GAS_INFO(
-      formatUnits(estimate.maxNetworkFees.maxFeePerGas, application.GWEI_UNIT)
-    )
-  );
-  console.log(logging.FEES_GAS_COST_INFO(formatEther(estimate.gasCost)));
-  console.log(logging.FEES_TOTAL_PER_REQUEST_INFO(formatEther(estimate.totalPerRequest)));
-  console.log('');
-  console.log(
-    logging.FEES_BATCH_HEADER(
-      options.totalRequestCount,
-      estimate.batches.length,
-      maxRequestsPerBlock
-    )
-  );
-  for (const batch of estimate.batches) {
-    console.log(formatBatchLine(batch));
+  for (const line of renderFeeEstimate({
+    operation,
+    network: globalOptions.network,
+    estimate,
+    totalRequestCount: options.totalRequestCount,
+    maxRequestsPerBlock,
+    contractAddress
+  })) {
+    console.log(line);
   }
 
   if (estimate.batches.some((batch) => batch.capExceeded)) {
     console.error(chalk.yellow(logging.FEES_CAP_WARNING));
   }
+}
 
-  console.log(
+type FeeEstimateRenderConfig = {
+  operation: string;
+  network: string;
+  estimate: RequestFeeEstimate;
+  totalRequestCount: number;
+  maxRequestsPerBlock: number;
+  contractAddress: string;
+};
+
+/**
+ * Render user-facing fee estimate lines.
+ *
+ * @param config - Fee estimate and display metadata
+ * @returns Ordered stdout lines for the fees command
+ */
+export function renderFeeEstimate(config: FeeEstimateRenderConfig): string[] {
+  return [
+    chalk.blue(logging.FEES_ESTIMATE_HEADER(config.operation, config.network)),
+    logging.FEES_CURRENT_REQUEST_FEE_INFO(formatRequestFee(config.estimate.currentRequestFee)),
+    logging.FEES_MAX_TRANSACTION_GAS_BUDGET_INFO(
+      formatEther(config.estimate.gasCost),
+      formatUnits(config.estimate.maxNetworkFees.maxFeePerGas, application.GWEI_UNIT)
+    ),
+    '',
+    logging.FEES_BATCH_HEADER(
+      config.totalRequestCount,
+      config.estimate.batches.length,
+      config.maxRequestsPerBlock
+    ),
+    ...config.estimate.batches.map(formatBatchLine),
     logging.FEES_OPTIMAL_RATE_INFO(
-      application.TARGET_PER_BLOCK_BY_CONTRACT[contractAddress.toLowerCase()] ??
+      application.TARGET_PER_BLOCK_BY_CONTRACT[config.contractAddress.toLowerCase()] ??
         application.CONSOLIDATION_TARGET_PER_BLOCK
     )
-  );
+  ];
 }
 
 /**

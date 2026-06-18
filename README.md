@@ -18,9 +18,11 @@ Supports private key signing (default), Ledger hardware wallet signing (`--ledge
   - [Consolidate](#consolidate)
   - [Withdraw](#withdraw)
   - [Exit](#exit)
+  - [Fees](#fees)
   - [Safe sign](#safe-sign)
   - [Safe execute](#safe-execute)
 - [Transaction handling](#transaction-handling)
+  - [Request fee cap](#request-fee-cap)
 - [Safe multisig workflow](#safe-multisig-workflow)
   - [Phase 1: Propose](#phase-1-propose)
     - [Batch size and gas cost](#batch-size-and-gas-cost)
@@ -82,17 +84,22 @@ Print the help message with `--help`. This works also for every subcommand.
 
 ### Global Options
 
-| Short Option | Long Option              | Description                                                                                      |
-| ------------ | ------------------------ | ------------------------------------------------------------------------------------------------ |
-| -n           | --network                | The network name which you want to connect to                                                    |
-| -r           | --json-rpc-url           | The json rpc endpoint which is used for sending execution layer requests                         |
-| -b           | --beacon-api-url         | The beacon api endpoint which is used for sanity checks like e.g.checking withdrawal credentials |
-| -m           | --max-requests-per-block | The max. number of EL requests which are tried to be packaged into one block                     |
-| -l           | --ledger                 | Use Ledger hardware wallet for signing (requires Ledger device with Ethereum app)                |
-| -s           | --safe \<address\>       | Safe multisig address for proposal, signing, and execution                                       |
-| -f           | --safe-fee-tip \<wei\>   | Tip in wei added to system contract fee per operation (default: 100)                             |
+| Short Option | Long Option                                  | Description                                                                                      |
+| ------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| -n           | --network                                    | The network name which you want to connect to                                                    |
+| -r           | --json-rpc-url                               | The json rpc endpoint which is used for sending execution layer requests                         |
+| -b           | --beacon-api-url                             | The beacon api endpoint which is used for sanity checks like e.g.checking withdrawal credentials |
+| -m           | --max-requests-per-block                     | The max. number of EL requests which are tried to be packaged into one block                     |
+| -l           | --ledger                                     | Use Ledger hardware wallet for signing (requires Ledger device with Ethereum app)                |
+| -s           | --safe \<address\>                           | Safe multisig address for proposal, signing, and execution                                       |
+| -f           | --safe-fee-tip \<wei\>                       | Tip in wei added to system contract fee per operation (default: 100)                             |
+| -x           | --max-request-fee \<amount\>                 | Maximum request fee per EL request before eth-valctl waits or asks what to do (default: 10wei)   |
+|              | --max-request-fee-wait-blocks \<blocks\>     | Max blocks to wait when request fee exceeds `--max-request-fee` (default: 50)                    |
+| -y           | --yes                                        | Skip confirmation prompts by choosing safe default actions                                       |
 
 When using `--safe`, `--max-requests-per-block` also controls how many EL requests get bundled into a single on-chain MultiSend transaction. This makes the option gas-sensitive. See [Batch size and gas cost](#batch-size-and-gas-cost) for guidance on tuning it under network congestion.
+
+Global options must be placed **before** the subcommand, for example `eth-valctl --yes --safe <address> safe execute`; placing them after the subcommand (e.g. `safe execute --yes`) fails with an unknown-option error.
 
 ### Switch
 
@@ -121,13 +128,56 @@ When using `--safe`, `--max-requests-per-block` also controls how many EL reques
 | ------------ | ----------- | ------------------------------------------------------------------------------------------------------- |
 | -v           | --validator | Validator pubkeys (space-separated list or path to file with one pubkey per line) which will be exited  |
 
+### Fees
+
+Read-only command: shows the current execution layer request fee and projects fees for an idealized
+batch plan, without sending anything on-chain.
+
+```text
+eth-valctl fees <operation>
+```
+
+| Argument/Option | Description | Default |
+| --- | --- | --- |
+| `<operation>` | Positional argument: `consolidate`, `switch`, `withdraw`, or `exit` | required |
+| `-c, --total-request-count <count>` | Total execution layer requests to project fees for | `1` |
+| `-m, --max-requests-per-block <number>` | Batch size used for the projection | global `--max-requests-per-block` |
+| `-x, --max-request-fee <amount>` | Cap used to flag which projected batches would exceed it | global `--max-request-fee` |
+
+Example output when the current fee is below the configured cap:
+
+```text
+Fee estimate for consolidate requests on hoodi:
+Current request fee: 1 wei
+Max transaction gas budget: 0.004 ETH at 20.0 Gwei max fee per gas
+
+Idealized batch projection for 20 requests (2 batches of up to 10):
+  Batch 1: 10 requests, request fee 1 wei
+  Batch 2: 10 requests, request fee 2 wei
+Fee-optimal rate for this request contract is 1 request per block; lower fee growth can mean longer wall-clock time.
+```
+
+When the current fee exceeds `--max-request-fee`, an extra line estimates how long it would take to
+drop back below the cap (assuming no new requests arrive), and above-cap batches are flagged:
+
+```text
+Fee estimate for consolidate requests on hoodi:
+Current request fee: 13 wei
+~3 blocks until the fee drops below --max-request-fee (assuming no new requests)
+Max transaction gas budget: 0.004 ETH at 20.0 Gwei max fee per gas
+
+Idealized batch projection for 20 requests (2 batches of up to 10):
+  Batch 1: 10 requests, request fee 13 wei (above cap)
+  Batch 2: 10 requests, request fee 23 wei (above cap)
+Fee-optimal rate for this request contract is 1 request per block; lower fee growth can mean longer wall-clock time.
+```
+
 ### Safe sign
 
 Sign pending eth-valctl Safe transactions. Requires `--safe`.
 
-| Short Option | Long Option | Description                |
-| ------------ | ----------- | -------------------------- |
-| -y           | --yes       | Skip confirmation prompts  |
+Safe signing has no subcommand-specific options. Use global options before `safe`, for example
+`eth-valctl --yes --safe <address> safe sign`.
 
 ### Safe execute
 
@@ -138,11 +188,12 @@ Execute fully-signed eth-valctl Safe transactions on-chain. Requires `--safe`.
 | Short Option | Long Option                          | Description                                                                                  |
 | ------------ | ------------------------------------ | -------------------------------------------------------------------------------------------- |
 | -o           | --fee-overpayment-threshold \<wei\>  | Wei threshold above which fee overpayment is flagged (default: 100)                          |
-| -y           | --yes                                | Skip confirmation prompts. On stale fees, poll until fees drop, bounded by `--max-fee-wait-blocks` (use `--stale-fee-action reject` to propose rejections instead) |
 | -a           | --stale-fee-action \<action\>        | Non-interactive stale fee handling: `wait` (poll) or `reject` (propose rejection)            |
-| -w           | --max-fee-wait-blocks \<blocks\>     | Max blocks to wait for fee to drop (default: 50, 0 aborts immediately on stale fees)         |
 
 <!-- markdownlint-enable MD060 -->
+
+Use global options before `safe execute`, for example
+`eth-valctl --yes --max-request-fee-wait-blocks 0 --safe <address> safe execute --stale-fee-action wait`.
 
 ## Transaction handling
 
@@ -154,6 +205,24 @@ Execute fully-signed eth-valctl Safe transactions on-chain. Requires `--safe`.
 - Replacement transactions pay 12% higher gas fees (required by execution clients for replacements to be accepted)
 - Transaction replacements are mostly necessary when the system contract fees increase between signing and mining. This is especially relevant when using Ledger signing, as the manual confirmation on the device adds latency, increasing the chance of fee changes. Consider using smaller batch sizes with `--ledger` to mitigate this.
 - An `INSUFFICIENT_FUNDS` error aborts all remaining batches immediately. Ensure your wallet is sufficiently funded before starting a large operation.
+
+### Request fee cap
+
+The EIP-7002/EIP-7251 system contracts price requests on an exponential curve that grows with
+queue depth, and can rise sharply under sustained load. `--max-request-fee` protects against this:
+
+- **Default is `10wei`.** The fee curve is near-flat for small queue depths and steepens sharply
+  afterward, so this default catches runaway fee growth long before it becomes expensive, while
+  still letting routine, low-queue-depth operations through without prompting. Use
+  `eth-valctl fees <operation>` to check the current fee and project it for a planned batch before
+  raising or lowering the cap.
+- **The unit suffix is mandatory** — `1000` is rejected, `1000wei` is not. Accepted units are `wei`,
+  `gwei`, and `eth` (case-insensitive).
+- **On breach**, the interactive prompt offers three choices: **Wait** (poll until the fee drops
+  below the cap, bounded by `--max-request-fee-wait-blocks`), **Continue** (proceed at the current
+  fee — this also approves any fee at or below it for the rest of the run, until a further increase
+  re-prompts), or **Abort**.
+- **With `--yes`**, the wait action is selected automatically instead of prompting.
 
 ## Safe multisig workflow
 
@@ -219,16 +288,18 @@ When stale fees are detected, the tool supports two resolution strategies:
 
 | Action | Behavior |
 | ------ | -------- |
-| **Wait** (default) | Poll every slot (~12s) until fees drop to the proposed level, bounded by `--max-fee-wait-blocks` (default: 50). Aborts if the estimated number of blocks to fee recovery exceeds the bound, or if the bound is exhausted. Useful when the fee spike is temporary. |
+| **Wait** (default) | Poll every slot (~12s) until fees drop to the proposed level, bounded by `--max-request-fee-wait-blocks` (default: 50). Aborts if the estimated number of blocks to fee recovery exceeds the bound, or if the bound is exhausted. Useful when the fee spike is temporary. |
 | **Reject** | Propose zero-value rejection transactions at the same nonces. Other owners must sign the rejections. Once executed, the original stale transactions become non-executable and new proposals with updated fees can be created. Opt in via `--stale-fee-action reject`. |
 
-Resolution happens **per Safe transaction** in the execution loop: before each tx is sent, its fee is re-checked against the current on-chain fee. If still stale, the tool either polls (Wait) or aborts with an Abort prompt (interactive) / an immediate abort (non-interactive when the estimated block count exceeds `--max-fee-wait-blocks`). Transactions whose proposed fee is no longer stale at their execution slot proceed silently.
+Resolution happens **per Safe transaction** in the execution loop: before each tx is sent, its fee is re-checked against the current on-chain fee. If still stale, the tool either polls (Wait) or aborts with an Abort prompt (interactive) / an immediate abort (non-interactive when the estimated block count exceeds `--max-request-fee-wait-blocks`). Transactions whose proposed fee is no longer stale at their execution slot proceed silently.
 
-To skip waiting entirely and abort immediately on any stale fee, set `--max-fee-wait-blocks 0`.
+To skip waiting entirely and abort immediately on any stale fee, set `--max-request-fee-wait-blocks 0` before the `safe execute` command.
 
-For non-interactive usage (`--yes`), the default action on stale fees is Wait (bounded by `--max-fee-wait-blocks`). Use `--stale-fee-action reject` to propose rejections instead.
+For non-interactive usage (`--yes`), the default action on stale fees is Wait (bounded by `--max-request-fee-wait-blocks`). Use `--stale-fee-action reject` to propose rejections instead.
 
-The `~N blocks remaining` estimate shown during a wait is recomputed from live on-chain excess on every poll. If other parties submit requests mid-wait, the estimate may increase; if demand drops, it decreases. `--max-fee-wait-blocks` bounds the real elapsed blocks regardless of how the estimate moves.
+The `~N blocks remaining` estimate shown during a wait is recomputed from live on-chain excess on every poll. If other parties submit requests mid-wait, the estimate may increase; if demand drops, it decreases. `--max-request-fee-wait-blocks` bounds the real elapsed blocks regardless of how the estimate moves.
+
+`--max-request-fee-wait-blocks` is a global option shared with the direct-mode request fee cap — see [Request fee cap](#request-fee-cap). The bound applies independently in each context: here it bounds waiting for a stale Safe transaction's fee to drop, while in direct mode it bounds waiting for the request fee to drop below `--max-request-fee`.
 
 ### Rejecting stale transactions
 
@@ -239,7 +310,7 @@ Rejection is a whole-batch, non-interactive decision — there is no "Reject" op
 | Known upfront — all stale txs should be cancelled | `safe execute --stale-fee-action reject` |
 | Changed mind during execution | At the per-tx prompt, select **Abort**, then re-run with `--stale-fee-action reject` |
 
-Rejection proposes zero-value transactions at each stale nonce; owners must still sign them (`safe sign`) and execute them (`safe execute --yes`) to cancel the originals. If some transactions already executed before you aborted, only the remaining pending nonces are rejected — the executed ones are on-chain and permanent.
+Rejection proposes zero-value transactions at each stale nonce; owners must still sign them (`safe sign`) and execute them (`eth-valctl --yes --safe <address> safe execute`) to cancel the originals. If some transactions already executed before you aborted, only the remaining pending nonces are rejected — the executed ones are on-chain and permanent.
 
 ### Limitations
 
