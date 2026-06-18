@@ -1,9 +1,15 @@
 import chalk from 'chalk';
+import type { JsonRpcProvider } from 'ethers';
 
 import { DEFAULT_SAFE_FEE_TIP, OWNER_LABEL_SAFE } from '../../constants/application';
 import { SAFE_FEE_TIP_INFO } from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
-import type { NetworkConfig } from '../../model/ethereum';
+import type {
+  NetworkConfig,
+  RequestFeeCapCheckContext,
+  RequestFeeCapPolicy,
+  RequestFeeCapRuntime
+} from '../../model/ethereum';
 import { networkConfig } from '../../network-config';
 import { createEthereumConnection } from './ethereum';
 import { EthereumStateService } from './request/ethereum-state-service';
@@ -96,18 +102,19 @@ async function executeDirectPipeline(
   }
 
   const requestFeeCapPolicy = createRequestFeeCapPolicy(globalOptions);
+  const requestFeeCapRuntime = requestFeeCapPolicy
+    ? await createRequestFeeCapRuntime(
+        ethereumConnection.provider,
+        contractAddress,
+        requestFeeCapPolicy,
+        {
+          operation: 'batch',
+          requestCount: Math.min(requestData.length, globalOptions.maxRequestsPerBlock)
+        }
+      )
+    : undefined;
 
-  if (requestFeeCapPolicy) {
-    const stateService = new EthereumStateService(ethereumConnection.provider, contractAddress);
-    const requestFeeCapService = new RequestFeeCapService(stateService);
-    const initialApprovedRequestFee = await requestFeeCapService.resolveRequestFee(
-      requestFeeCapPolicy,
-      {
-        operation: 'batch',
-        requestCount: Math.min(requestData.length, globalOptions.maxRequestsPerBlock)
-      }
-    );
-
+  if (requestFeeCapRuntime) {
     await sendExecutionLayerRequests(
       contractAddress,
       ethereumConnection.provider,
@@ -115,8 +122,7 @@ async function executeDirectPipeline(
       requestData,
       globalOptions.maxRequestsPerBlock,
       globalOptions.beaconApiUrl,
-      requestFeeCapPolicy,
-      initialApprovedRequestFee
+      requestFeeCapRuntime
     );
     return;
   }
@@ -191,4 +197,26 @@ async function executeSafePipeline(
   } finally {
     await safeInitResult.dispose();
   }
+}
+
+/**
+ * Create request-fee cap runtime and pre-approve the first operation boundary.
+ *
+ * @param provider - JSON-RPC provider for request fee reads
+ * @param contractAddress - System contract address
+ * @param policy - Request-fee cap policy
+ * @param context - Initial operation boundary to approve
+ * @returns Request-fee cap runtime shared by the direct request pipeline
+ */
+async function createRequestFeeCapRuntime(
+  provider: JsonRpcProvider,
+  contractAddress: string,
+  policy: RequestFeeCapPolicy,
+  context: RequestFeeCapCheckContext
+): Promise<RequestFeeCapRuntime> {
+  const stateService = new EthereumStateService(provider, contractAddress);
+  const resolver = new RequestFeeCapService(stateService);
+  const initialApprovedRequestFee = await resolver.resolveRequestFee(policy, context);
+
+  return { policy, resolver, initialApprovedRequestFee };
 }

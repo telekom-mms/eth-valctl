@@ -7,7 +7,7 @@ import type {
   BroadcastResult,
   PendingTransactionInfo,
   RequestFeeCapCheckContext,
-  RequestFeeCapPolicy,
+  RequestFeeCapRuntime,
   TransactionRetryResult
 } from '../../../model/ethereum';
 import {
@@ -21,7 +21,6 @@ import { splitToBatches } from '../batch-utils';
 import { isInsufficientFundsError } from '../error-utils';
 import { extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
 import { EthereumStateService } from './ethereum-state-service';
-import { RequestFeeCapService } from './request-fee-cap-service';
 import { TransactionBroadcaster } from './transaction-broadcaster';
 import { TransactionMonitor } from './transaction-monitor';
 import { TransactionProgressLogger } from './transaction-progress-logger';
@@ -39,9 +38,7 @@ export class TransactionBatchOrchestrator {
    * @param transactionMonitor - Service for monitoring transactions
    * @param transactionReplacer - Service for replacing transactions
    * @param logger - Service for logging progress
-   * @param requestFeeCapPolicy - Optional request-fee cap policy
-   * @param requestFeeCapService - Optional cap enforcement service
-   * @param initialApprovedRequestFee - Optional approved fee for the first batch
+   * @param requestFeeCapRuntime - Optional request-fee cap runtime dependencies
    */
   constructor(
     private readonly blockchainStateService: EthereumStateService,
@@ -49,9 +46,7 @@ export class TransactionBatchOrchestrator {
     private readonly transactionMonitor: TransactionMonitor,
     private readonly transactionReplacer: TransactionReplacer,
     private readonly logger: TransactionProgressLogger,
-    private readonly requestFeeCapPolicy?: RequestFeeCapPolicy,
-    private readonly requestFeeCapService?: RequestFeeCapService,
-    private initialApprovedRequestFee?: bigint
+    private readonly requestFeeCapRuntime?: RequestFeeCapRuntime
   ) {}
 
   /**
@@ -297,13 +292,8 @@ export class TransactionBatchOrchestrator {
     };
 
     try {
-      const newContractFee = await this.resolveContractFee({
-        operation: 'replacement',
-        requestCount: unresolvedTransactions.length
-      });
       const replacerResult = await this.transactionReplacer.replaceTransactions(
         unresolvedTransactions,
-        newContractFee,
         newBlockNumber
       );
       return {
@@ -402,17 +392,20 @@ export class TransactionBatchOrchestrator {
   }
 
   private async resolveContractFee(context: RequestFeeCapCheckContext): Promise<bigint> {
-    if (this.initialApprovedRequestFee !== undefined) {
-      const approvedFee = this.initialApprovedRequestFee;
-      this.initialApprovedRequestFee = undefined;
+    if (this.requestFeeCapRuntime?.initialApprovedRequestFee !== undefined) {
+      const approvedFee = this.requestFeeCapRuntime.initialApprovedRequestFee;
+      this.requestFeeCapRuntime.initialApprovedRequestFee = undefined;
       return approvedFee;
     }
 
-    if (!this.requestFeeCapPolicy || !this.requestFeeCapService) {
+    if (!this.requestFeeCapRuntime) {
       return this.blockchainStateService.fetchContractFee();
     }
 
-    return this.requestFeeCapService.resolveRequestFee(this.requestFeeCapPolicy, context);
+    return this.requestFeeCapRuntime.resolver.resolveRequestFee(
+      this.requestFeeCapRuntime.policy,
+      context
+    );
   }
 
   private isRequestFeeCapError(

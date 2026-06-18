@@ -1,7 +1,7 @@
 import type {
   BroadcastResult,
   ExecutionLayerRequestTransaction,
-  RequestFeeCapPolicy,
+  RequestFeeCapRuntime,
   SigningContext
 } from '../../../../model/ethereum';
 import type { IBroadcastStrategy } from '../../../../ports/broadcast-strategy.interface';
@@ -9,7 +9,6 @@ import type { ISlotTimingService } from '../../../../ports/slot-timing.interface
 import { isInsufficientFundsError } from '../../error-utils';
 import { isFatalLedgerError, type ISigner, isUserRejectedError } from '../../signer';
 import type { EthereumStateService } from '../ethereum-state-service';
-import type { RequestFeeCapService } from '../request-fee-cap-service';
 import type { TransactionProgressLogger } from '../transaction-progress-logger';
 import {
   createElTransaction,
@@ -37,16 +36,14 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
    * @param systemContractAddress - Target system contract address
    * @param slotTimingService - Service for slot-aware timing
    * @param logger - Logger for transaction progress
-   * @param requestFeeCapPolicy - Optional request-fee cap policy
-   * @param requestFeeCapService - Optional cap enforcement service
+   * @param requestFeeCapRuntime - Optional request-fee cap runtime dependencies
    */
   constructor(
     private readonly blockchainStateService: EthereumStateService,
     private readonly systemContractAddress: string,
     private readonly slotTimingService: ISlotTimingService,
     private readonly logger: TransactionProgressLogger,
-    private readonly requestFeeCapPolicy?: RequestFeeCapPolicy,
-    private readonly requestFeeCapService?: RequestFeeCapService
+    private readonly requestFeeCapRuntime?: RequestFeeCapRuntime
   ) {}
 
   /**
@@ -129,11 +126,11 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
   }
 
   private async resolveFreshContractFee(): Promise<bigint> {
-    if (!this.requestFeeCapPolicy || !this.requestFeeCapService) {
+    if (!this.requestFeeCapRuntime) {
       return this.blockchainStateService.fetchContractFee();
     }
 
-    return this.requestFeeCapService.resolveRequestFee(this.requestFeeCapPolicy, {
+    return this.requestFeeCapRuntime.resolver.resolveRequestFee(this.requestFeeCapRuntime.policy, {
       operation: 'batch',
       requestCount: 1
     });

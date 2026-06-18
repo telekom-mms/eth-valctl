@@ -1,6 +1,6 @@
 import type { JsonRpcProvider } from 'ethers';
 
-import type { RequestFeeCapPolicy } from '../../../model/ethereum';
+import type { RequestFeeCapRuntime } from '../../../model/ethereum';
 import type { ISigner } from '../../../ports/signer.interface';
 import { createTransactionPipeline } from './execution-layer-request-factory';
 
@@ -16,8 +16,7 @@ import { createTransactionPipeline } from './execution-layer-request-factory';
  * @param requestData - Array of encoded request data to send
  * @param executionLayerRequestBatchSize - Maximum number of requests per batch
  * @param beaconApiUrl - Beacon API URL for slot-aware broadcasting (required for Ledger)
- * @param requestFeeCapPolicy - Optional request-fee cap policy
- * @param initialApprovedRequestFee - Optional approved fee for the first batch
+ * @param requestFeeCapRuntime - Optional request-fee cap runtime dependencies
  */
 export async function sendExecutionLayerRequests(
   systemContractAddress: string,
@@ -26,16 +25,14 @@ export async function sendExecutionLayerRequests(
   requestData: string[],
   executionLayerRequestBatchSize: number,
   beaconApiUrl: string,
-  requestFeeCapPolicy?: RequestFeeCapPolicy,
-  initialApprovedRequestFee?: bigint
+  requestFeeCapRuntime?: RequestFeeCapRuntime
 ): Promise<void> {
   const pipeline = await createTransactionPipeline(
     systemContractAddress,
     jsonRpcProvider,
     signer,
     beaconApiUrl,
-    requestFeeCapPolicy,
-    initialApprovedRequestFee
+    requestFeeCapRuntime
   );
 
   try {

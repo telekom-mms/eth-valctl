@@ -341,7 +341,7 @@ describe('executeRequestPipeline', () => {
     it('broadcasts directly without prompting when the current request fee is equal to the cap', async () => {
       const options = {
         ...buildGlobalOptions(),
-        maxRequestFee: String(CONTRACT_FEE)
+        maxRequestFee: CONTRACT_FEE
       } as GlobalCliOptions;
 
       await executeRequestPipeline(buildPipelineConfig({ globalOptions: options }));
@@ -353,8 +353,8 @@ describe('executeRequestPipeline', () => {
     it('does not broadcast direct requests when --yes waits and the cap stays exceeded', async () => {
       const options = {
         ...buildGlobalOptions(),
-        maxRequestFee: String(CONTRACT_FEE - 1n),
-        maxRequestFeeWaitBlocks: 0,
+        maxRequestFee: CONTRACT_FEE - 1n,
+        maxRequestFeeWaitBlocks: 0n,
         yes: true
       } as GlobalCliOptions;
 
@@ -368,8 +368,8 @@ describe('executeRequestPipeline', () => {
     it('does not propose Safe requests when --yes waits and the raw contract fee exceeds the cap', async () => {
       const options = {
         ...buildGlobalOptions({ safe: SAFE_ADDRESS }),
-        maxRequestFee: String(CONTRACT_FEE - 1n),
-        maxRequestFeeWaitBlocks: 0,
+        maxRequestFee: CONTRACT_FEE - 1n,
+        maxRequestFeeWaitBlocks: 0n,
         yes: true
       } as GlobalCliOptions;
 
@@ -388,7 +388,7 @@ describe('executeRequestPipeline', () => {
           safe: SAFE_ADDRESS,
           safeFeeTip: String(safeFeeTip)
         }),
-        maxRequestFee: String(CONTRACT_FEE)
+        maxRequestFee: CONTRACT_FEE
       } as GlobalCliOptions;
 
       await executeRequestPipeline(buildPipelineConfig({ globalOptions: options }));

@@ -5,6 +5,8 @@ import type {
   CategorizedTransactions,
   MaxNetworkFees,
   PendingTransactionInfo,
+  RequestFeeCapCheckContext,
+  RequestFeeCapRuntime,
   ReplacementSummary,
   SigningContext,
   TransactionReplacementResult,
@@ -34,13 +36,15 @@ export class TransactionReplacer {
    * @param systemContractAddress - Target system contract address for requests
    * @param transactionMonitor - Service for checking transaction status
    * @param logger - Service for logging progress
+   * @param requestFeeCapRuntime - Optional request-fee cap runtime dependencies
    */
   constructor(
     private readonly signer: ISigner,
     private readonly blockchainStateService: EthereumStateService,
     private readonly systemContractAddress: string,
     private readonly transactionMonitor: TransactionMonitor,
-    private readonly logger: TransactionProgressLogger
+    private readonly logger: TransactionProgressLogger,
+    private readonly requestFeeCapRuntime?: RequestFeeCapRuntime
   ) {}
 
   /**
@@ -53,13 +57,11 @@ export class TransactionReplacer {
    * 4. Aggregate and return results
    *
    * @param pendingTransactions - Transactions that need to be replaced
-   * @param newContractFee - Updated system contract fee (transaction value) for the new block
    * @param currentBlockNumber - Current block number for replacement
    * @returns Array of pending transactions that still need processing
    */
   async replaceTransactions(
     pendingTransactions: PendingTransactionInfo[],
-    newContractFee: bigint,
     currentBlockNumber: number
   ): Promise<{
     pendingTransactions: PendingTransactionInfo[];
@@ -81,13 +83,11 @@ export class TransactionReplacer {
 
     const revertedResults = await this.processRevertedTransactions(
       categorized.reverted,
-      newContractFee,
       currentBlockNumber
     );
 
     const pendingResults = await this.processPendingTransactions(
       categorized.pending,
-      newContractFee,
       maxNetworkFees,
       currentBlockNumber
     );
@@ -166,17 +166,22 @@ export class TransactionReplacer {
    * signer type because of the nonce dependency.
    *
    * @param revertedTransactions - Transactions that reverted
-   * @param newContractFee - Updated system contract fee for new block
    * @param currentBlockNumber - Current block number
    * @returns Array of replacement results
    */
   private async processRevertedTransactions(
     revertedTransactions: PendingTransactionInfo[],
-    newContractFee: bigint,
     currentBlockNumber: number
   ): Promise<TransactionReplacementResult[]> {
     const results: TransactionReplacementResult[] = [];
     const total = revertedTransactions.length;
+    const newContractFee =
+      total > 0
+        ? await this.resolveReplacementContractFee({
+            operation: 'replacement',
+            requestCount: total
+          })
+        : 0n;
 
     for (let index = 0; index < total; index++) {
       const tx = revertedTransactions[index]!;
@@ -218,18 +223,24 @@ export class TransactionReplacer {
    * For Ledger (sequential signing), processes one at a time with user prompts.
    *
    * @param pendingTransactions - Transactions still pending
-   * @param newContractFee - Updated system contract fee for new block
    * @param maxNetworkFees - Current network max fees
    * @param currentBlockNumber - Current block number
    * @returns Array of replacement results
    */
   private async processPendingTransactions(
     pendingTransactions: PendingTransactionInfo[],
-    newContractFee: bigint,
     maxNetworkFees: MaxNetworkFees,
     currentBlockNumber: number
   ): Promise<TransactionReplacementResult[]> {
     if (this.signer.capabilities.supportsParallelSigning) {
+      const newContractFee =
+        pendingTransactions.length > 0
+          ? await this.resolveReplacementContractFee({
+              operation: 'replacement',
+              requestCount: pendingTransactions.length
+            })
+          : 0n;
+
       return this.processPendingTransactionsParallel(
         pendingTransactions,
         newContractFee,
@@ -240,7 +251,6 @@ export class TransactionReplacer {
 
     return this.processPendingTransactionsSequential(
       pendingTransactions,
-      newContractFee,
       maxNetworkFees,
       currentBlockNumber
     );
@@ -279,7 +289,6 @@ export class TransactionReplacer {
    */
   private async processPendingTransactionsSequential(
     pendingTransactions: PendingTransactionInfo[],
-    newContractFee: bigint,
     maxNetworkFees: MaxNetworkFees,
     currentBlockNumber: number
   ): Promise<TransactionReplacementResult[]> {
@@ -298,6 +307,10 @@ export class TransactionReplacer {
       const context = this.createSigningContext(tx, index, total);
 
       try {
+        const newContractFee = await this.resolveReplacementContractFee({
+          operation: 'replacement',
+          requestCount: 1
+        });
         const transaction = await this.handlePendingTransaction(
           tx,
           newContractFee,
@@ -312,6 +325,23 @@ export class TransactionReplacer {
     }
 
     return results;
+  }
+
+  /**
+   * Resolve the request fee for replacement transactions.
+   *
+   * @param context - Replacement cap-check context
+   * @returns Contract request fee in wei
+   */
+  private async resolveReplacementContractFee(context: RequestFeeCapCheckContext): Promise<bigint> {
+    if (!this.requestFeeCapRuntime) {
+      return this.blockchainStateService.fetchContractFee();
+    }
+
+    return this.requestFeeCapRuntime.resolver.resolveRequestFee(
+      this.requestFeeCapRuntime.policy,
+      context
+    );
   }
 
   /**

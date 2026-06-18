@@ -1,26 +1,26 @@
 import chalk from 'chalk';
 import prompts from 'prompts';
 
-import { FEE_WAIT_POLL_INTERVAL_MS } from '../../../constants/application';
+import * as application from '../../../constants/application';
 import * as logging from '../../../constants/logging';
 import type {
   FeeCapDecision,
   RequestFeeCapCheckContext,
-  RequestFeeCapPolicy
+  RequestFeeCapPolicy,
+  RequestFeeCapResolver,
+  RequestFeeReader
 } from '../../../model/ethereum';
 import {
   RequestFeeCapExceededError,
   RequestFeeOperationCancelledError
 } from '../../../model/ethereum';
 
-interface RequestFeeReader {
-  fetchContractFee(): Promise<bigint>;
-}
-
 /**
  * Enforces the user-configured execution-layer request fee cap before sending work.
  */
-export class RequestFeeCapService {
+export class RequestFeeCapService implements RequestFeeCapResolver {
+  private approvedAboveCapRequestFee?: bigint;
+
   constructor(private readonly requestFeeReader: RequestFeeReader) {}
 
   /**
@@ -40,12 +40,28 @@ export class RequestFeeCapService {
     const currentFee = await this.requestFeeReader.fetchContractFee();
 
     if (currentFee <= policy.maxRequestFee) {
+      this.approvedAboveCapRequestFee = undefined;
+      return currentFee;
+    }
+
+    if (
+      this.approvedAboveCapRequestFee !== undefined &&
+      currentFee <= this.approvedAboveCapRequestFee
+    ) {
       return currentFee;
     }
 
     return this.handleExceededFee(currentFee, policy, context);
   }
 
+  /**
+   * Handle a request fee that exceeds both the configured cap and prior approvals.
+   *
+   * @param currentFee - Current request fee in wei
+   * @param policy - Configured cap policy
+   * @param context - Current operation boundary
+   * @returns Approved request fee
+   */
   private async handleExceededFee(
     currentFee: bigint,
     policy: RequestFeeCapPolicy,
@@ -53,19 +69,29 @@ export class RequestFeeCapService {
   ): Promise<bigint> {
     this.logCapExceeded(currentFee, policy.maxRequestFee, context);
 
-    const decision = policy.skipConfirmation ? 'wait' : await this.promptForDecision();
+    const decision = policy.skipConfirmation
+      ? application.FEE_ACTION_WAIT
+      : await this.promptForDecision();
 
-    if (decision === 'continue') {
+    if (decision === application.FEE_ACTION_CONTINUE) {
+      this.approvedAboveCapRequestFee = currentFee;
       return currentFee;
     }
 
-    if (decision === 'abort') {
+    if (decision === application.FEE_ACTION_ABORT) {
       throw new RequestFeeOperationCancelledError(logging.REQUEST_FEE_CAP_ABORTED_INFO);
     }
 
     return this.waitForFeeBelowCap(currentFee, policy);
   }
 
+  /**
+   * Wait until actual execution-layer block advancement lowers the request fee below the cap.
+   *
+   * @param initialFee - Fee that exceeded the cap before waiting
+   * @param policy - Configured cap policy
+   * @returns Fee at or below the configured cap
+   */
   private async waitForFeeBelowCap(
     initialFee: bigint,
     policy: RequestFeeCapPolicy
@@ -73,12 +99,32 @@ export class RequestFeeCapService {
     let currentFee = initialFee;
     let blocksWaited = 0n;
 
+    if (policy.maxWaitBlocks === 0n) {
+      throw new RequestFeeCapExceededError(
+        logging.REQUEST_FEE_CAP_WAIT_EXCEEDED_ERROR(
+          currentFee,
+          policy.maxRequestFee,
+          policy.maxWaitBlocks
+        )
+      );
+    }
+
+    let lastBlockNumber = await this.requestFeeReader.fetchBlockNumber();
+
     while (blocksWaited < policy.maxWaitBlocks) {
-      await new Promise((resolve) => setTimeout(resolve, FEE_WAIT_POLL_INTERVAL_MS));
-      blocksWaited++;
+      await this.waitForNextFeePoll();
+      const nextBlockNumber = await this.requestFeeReader.fetchBlockNumber();
+
+      if (nextBlockNumber <= lastBlockNumber) {
+        continue;
+      }
+
+      blocksWaited += BigInt(nextBlockNumber - lastBlockNumber);
+      lastBlockNumber = nextBlockNumber;
       currentFee = await this.requestFeeReader.fetchContractFee();
 
       if (currentFee <= policy.maxRequestFee) {
+        this.approvedAboveCapRequestFee = undefined;
         return currentFee;
       }
 
@@ -103,26 +149,41 @@ export class RequestFeeCapService {
     );
   }
 
+  /**
+   * Prompt the user for a cap handling decision.
+   *
+   * @returns Selected cap handling decision
+   */
   private async promptForDecision(): Promise<FeeCapDecision> {
     const { action } = await prompts({
       type: 'select',
       name: 'action',
       message: logging.REQUEST_FEE_CAP_PROMPT,
       choices: [
-        { title: logging.REQUEST_FEE_CAP_WAIT_ACTION, value: 'wait' },
-        { title: logging.REQUEST_FEE_CAP_CONTINUE_ACTION, value: 'continue' },
-        { title: logging.REQUEST_FEE_CAP_ABORT_ACTION, value: 'abort' }
+        { title: logging.REQUEST_FEE_CAP_WAIT_ACTION, value: application.FEE_ACTION_WAIT },
+        {
+          title: logging.REQUEST_FEE_CAP_CONTINUE_ACTION,
+          value: application.FEE_ACTION_CONTINUE
+        },
+        { title: logging.REQUEST_FEE_CAP_ABORT_ACTION, value: application.FEE_ACTION_ABORT }
       ],
       initial: 0
     });
 
     if (action === undefined) {
-      return 'abort';
+      return application.FEE_ACTION_ABORT;
     }
 
-    return action as FeeCapDecision;
+    return this.isFeeCapDecision(action) ? action : application.FEE_ACTION_ABORT;
   }
 
+  /**
+   * Log that the current request fee exceeded the configured cap.
+   *
+   * @param currentFee - Current request fee in wei
+   * @param maxFee - Configured max request fee in wei
+   * @param context - Current operation boundary
+   */
   private logCapExceeded(
     currentFee: bigint,
     maxFee: bigint,
@@ -137,6 +198,27 @@ export class RequestFeeCapService {
           context.requestCount
         )
       )
+    );
+  }
+
+  /**
+   * Wait until the next request-fee poll interval.
+   */
+  private async waitForNextFeePoll(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, application.FEE_WAIT_POLL_INTERVAL_MS));
+  }
+
+  /**
+   * Check whether a prompt value is a supported cap decision.
+   *
+   * @param action - Prompt value
+   * @returns True when the prompt value is a fee cap decision
+   */
+  private isFeeCapDecision(action: unknown): action is FeeCapDecision {
+    return (
+      action === application.FEE_ACTION_WAIT ||
+      action === application.FEE_ACTION_CONTINUE ||
+      action === application.FEE_ACTION_ABORT
     );
   }
 }
