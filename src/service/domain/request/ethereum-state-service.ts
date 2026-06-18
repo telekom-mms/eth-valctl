@@ -6,8 +6,14 @@ import {
   FAILED_TO_FETCH_REQUIRED_FEE_ERROR,
   SYSTEM_CONTRACT_NOT_ACTIVATED_ERROR
 } from '../../../constants/logging';
-import type { ContractFeeState, MaxNetworkFees } from '../../../model/ethereum';
+import type {
+  ContractFeeState,
+  MaxNetworkFees,
+  RequestFeeEstimate,
+  RequestFeeEstimateConfig
+} from '../../../model/ethereum';
 import { BlockchainStateError } from '../../../model/ethereum';
+import { calculateRequestFee, RequestFeeEstimationService } from './request-fee-estimation-service';
 
 /**
  * Service for querying Ethereum state including block numbers, network fees, and contract fees.
@@ -96,20 +102,7 @@ export class EthereumStateService {
    * @returns The contract fee for sending an execution layer request
    */
   static calculateContractFee(numerator: bigint): bigint {
-    // https://eips.ethereum.org/EIPS/eip-7251#fee-calculation
-    let i = 1n;
-    let output = 0n;
-    let numeratorAccum =
-      serviceConstants.MIN_CONSOLIDATION_REQUEST_FEE *
-      serviceConstants.CONSOLIDATION_REQUEST_FEE_UPDATE_FRACTION;
-    while (numeratorAccum > 0n) {
-      output += numeratorAccum;
-      numeratorAccum =
-        (numeratorAccum * numerator) /
-        (serviceConstants.CONSOLIDATION_REQUEST_FEE_UPDATE_FRACTION * i);
-      i += 1n;
-    }
-    return output / serviceConstants.CONSOLIDATION_REQUEST_FEE_UPDATE_FRACTION;
+    return calculateRequestFee(numerator);
   }
 
   /**
@@ -123,6 +116,17 @@ export class EthereumStateService {
    */
   async getMaxNetworkFees(): Promise<MaxNetworkFees> {
     return fetchMaxNetworkFees(this.provider);
+  }
+
+  /**
+   * Estimate current and idealized batched request fees for this system contract.
+   *
+   * @param config - Request count, batch size, and cap
+   * @returns Request fee estimate
+   */
+  async estimateRequestFees(config: RequestFeeEstimateConfig): Promise<RequestFeeEstimate> {
+    const service = new RequestFeeEstimationService(this, this.systemContractAddress);
+    return service.estimateRequestFees(config);
   }
 }
 

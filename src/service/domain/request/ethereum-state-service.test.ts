@@ -2,9 +2,36 @@ import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:te
 import type { FeeData, JsonRpcProvider } from 'ethers';
 import { toBeHex } from 'ethers';
 
-import { CONSOLIDATION_CONTRACT_ADDRESS, EXCESS_INHIBITOR } from '../../../constants/application';
+import {
+  CONSOLIDATION_CONTRACT_ADDRESS,
+  EXCESS_INHIBITOR,
+  WITHDRAWAL_CONTRACT_ADDRESS
+} from '../../../constants/application';
 import { BlockchainStateError } from '../../../model/ethereum';
 import { EthereumStateService } from './ethereum-state-service';
+
+interface RequestFeeEstimate {
+  currentExcess: bigint;
+  currentRequestFee: bigint;
+  maxNetworkFees: {
+    maxFeePerGas: bigint;
+    maxPriorityFeePerGas: bigint;
+  };
+  batches: {
+    batchNumber: number;
+    requestCount: number;
+    requestFee: bigint;
+    capExceeded: boolean;
+  }[];
+}
+
+type RequestFeeEstimator = EthereumStateService & {
+  estimateRequestFees(config: {
+    totalRequestCount: number;
+    maxRequestsPerBlock: number;
+    maxRequestFee: bigint;
+  }): Promise<RequestFeeEstimate>;
+};
 
 const createMockProvider = (overrides?: {
   getStorage?: ReturnType<typeof mock>;
@@ -228,6 +255,57 @@ describe('EthereumStateService', () => {
       const service = new EthereumStateService(mockProvider, CONSOLIDATION_CONTRACT_ADDRESS);
 
       expect(service.getMaxNetworkFees()).rejects.toThrow(BlockchainStateError);
+    });
+  });
+
+  describe('estimateRequestFees', () => {
+    it('uses current fee, current excess, and network max fees to project cap-exceeded batches', async () => {
+      const mockProvider = createMockProvider({
+        getStorage: mock(() => Promise.resolve('0x0')),
+        getFeeData: mock(() =>
+          Promise.resolve({
+            maxFeePerGas: 2000n,
+            maxPriorityFeePerGas: 200n
+          } as FeeData)
+        )
+      });
+      const service = new EthereumStateService(
+        mockProvider,
+        CONSOLIDATION_CONTRACT_ADDRESS
+      ) as RequestFeeEstimator;
+
+      const estimate = await service.estimateRequestFees({
+        totalRequestCount: 30,
+        maxRequestsPerBlock: 10,
+        maxRequestFee: 1n
+      });
+
+      expect(estimate.currentExcess).toBe(0n);
+      expect(estimate.currentRequestFee).toBe(1n);
+      expect(estimate.maxNetworkFees.maxFeePerGas).toBe(2000n);
+      expect(estimate.maxNetworkFees.maxPriorityFeePerGas).toBe(200n);
+      expect(estimate.batches).toHaveLength(3);
+      expect(estimate.batches[0]?.batchNumber).toBe(1);
+      expect(estimate.batches[0]?.requestCount).toBe(10);
+      expect(estimate.batches.some((batch) => batch.capExceeded)).toBe(true);
+    });
+
+    it('uses the withdrawal target when projecting withdrawal contract fees', async () => {
+      const mockProvider = createMockProviderWithStorage('0x0');
+      const service = new EthereumStateService(
+        mockProvider,
+        WITHDRAWAL_CONTRACT_ADDRESS
+      ) as RequestFeeEstimator;
+
+      const estimate = await service.estimateRequestFees({
+        totalRequestCount: 4,
+        maxRequestsPerBlock: 2,
+        maxRequestFee: 1n
+      });
+
+      expect(estimate.batches).toHaveLength(2);
+      expect(estimate.batches.every((batch) => batch.requestFee === 1n)).toBe(true);
+      expect(estimate.batches.every((batch) => !batch.capExceeded)).toBe(true);
     });
   });
 });

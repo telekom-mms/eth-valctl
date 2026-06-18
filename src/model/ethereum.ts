@@ -222,6 +222,84 @@ export interface ContractFeeState {
   excess: bigint;
 }
 
+/**
+ * Minimal state reader required for request-fee estimation.
+ */
+export interface RequestFeeStateReader {
+  fetchContractFeeWithExcess(): Promise<ContractFeeState>;
+  getMaxNetworkFees(): Promise<MaxNetworkFees>;
+}
+
+/**
+ * Input for request-fee projection across idealized batches.
+ */
+export interface RequestFeeEstimateConfig {
+  totalRequestCount: number;
+  maxRequestsPerBlock: number;
+  maxRequestFee: bigint;
+}
+
+/**
+ * Per-batch request-fee projection.
+ */
+export interface RequestFeeBatchProjection {
+  batchNumber: number;
+  requestCount: number;
+  requestFee: bigint;
+  capExceeded: boolean;
+}
+
+/**
+ * Current request-fee and network-fee estimate.
+ */
+export interface RequestFeeEstimate {
+  currentExcess: bigint;
+  currentRequestFee: bigint;
+  maxNetworkFees: MaxNetworkFees;
+  gasLimit: bigint;
+  gasCost: bigint;
+  totalPerRequest: bigint;
+  exceedsCap: boolean;
+  estimatedBlocksUntilCap: bigint;
+  batches: RequestFeeBatchProjection[];
+}
+
+/**
+ * User-facing behavior when a request fee exceeds the configured cap.
+ */
+export type FeeCapDecision = 'wait' | 'continue' | 'abort';
+
+/**
+ * Request-fee cap policy used before broadcasting or proposing requests.
+ */
+export interface RequestFeeCapPolicy {
+  maxRequestFee: bigint;
+  maxWaitBlocks: bigint;
+  skipConfirmation: boolean;
+}
+
+/**
+ * Context for checking a request-fee cap at a broadcast/proposal boundary.
+ */
+export interface RequestFeeCapCheckContext {
+  operation: 'batch' | 'replacement' | 'safe proposal';
+  requestCount: number;
+}
+
+export class RequestFeeCapExceededError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RequestFeeCapExceededError';
+  }
+}
+
+export class RequestFeeOperationCancelledError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RequestFeeOperationCancelledError';
+  }
+}
+
 export class BlockchainStateError extends Error {
   constructor(
     message: string,
