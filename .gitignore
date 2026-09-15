@@ -138,6 +138,10 @@ bin
 dev
 tickets/**/*
 
+# codex
+.codex/**/*
+AGENTS.md
+
 # other
 internal-docs/**/*
 tmp/
