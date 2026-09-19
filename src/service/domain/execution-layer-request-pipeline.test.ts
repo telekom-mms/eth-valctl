@@ -94,6 +94,7 @@ describe('executeRequestPipeline', () => {
     spyOn(console, 'log').mockImplementation(() => {});
 
     mockDispose = mock(() => Promise.resolve());
+    (mockSigner.dispose as ReturnType<typeof mock>).mockClear();
 
     createEthereumConnectionSpy = spyOn(
       ethereumModule,
@@ -187,7 +188,8 @@ describe('executeRequestPipeline', () => {
         mockSigner,
         ['data:0xaaa', 'data:0xbbb'],
         5,
-        'http://b:1'
+        'http://b:1',
+        undefined
       );
     });
 
@@ -363,6 +365,7 @@ describe('executeRequestPipeline', () => {
       ).rejects.toThrow('request fee');
 
       expect(sendExecutionLayerRequestsSpy).not.toHaveBeenCalled();
+      expect(mockSigner.dispose).toHaveBeenCalledTimes(1);
     });
 
     it('does not propose Safe requests when --yes waits and the raw contract fee exceeds the cap', async () => {

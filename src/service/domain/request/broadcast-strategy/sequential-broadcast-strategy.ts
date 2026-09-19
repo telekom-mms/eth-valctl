@@ -1,3 +1,4 @@
+import { FEE_CAP_OPERATION_BATCH } from '../../../../constants/application';
 import type {
   BroadcastResult,
   ExecutionLayerRequestTransaction,
@@ -9,7 +10,7 @@ import type { ISlotTimingService } from '../../../../ports/slot-timing.interface
 import { isInsufficientFundsError } from '../../error-utils';
 import { isFatalLedgerError, type ISigner, isUserRejectedError } from '../../signer';
 import type { EthereumStateService } from '../ethereum-state-service';
-import { isRequestFeePolicyStopError } from '../request-fee-policy';
+import { isRequestFeePolicyStopError, resolveRequestFee } from '../request-fee-policy';
 import type { TransactionProgressLogger } from '../transaction-progress-logger';
 import {
   createElTransaction,
@@ -88,7 +89,11 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
 
       try {
         await this.slotTimingService.waitForOptimalBroadcastWindow();
-        const freshContractFee = await this.resolveFreshContractFee();
+        const freshContractFee = await resolveRequestFee(
+          this.requestFeeCapRuntime,
+          this.blockchainStateService,
+          { operation: FEE_CAP_OPERATION_BATCH, requestCount: 1 }
+        );
         const freshTransaction = createElTransaction(
           this.systemContractAddress,
           requestData,
@@ -128,16 +133,5 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
     }
 
     return results;
-  }
-
-  private async resolveFreshContractFee(): Promise<bigint> {
-    if (!this.requestFeeCapRuntime) {
-      return this.blockchainStateService.fetchContractFee();
-    }
-
-    return this.requestFeeCapRuntime.resolver.resolveRequestFee(this.requestFeeCapRuntime.policy, {
-      operation: 'batch',
-      requestCount: 1
-    });
   }
 }

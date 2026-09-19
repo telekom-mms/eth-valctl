@@ -1,10 +1,15 @@
 import * as application from '../../../constants/application';
 import type { GlobalCliOptions } from '../../../model/commander';
-import type { RequestFeeCapPolicy } from '../../../model/ethereum';
+import type {
+  RequestFeeCapCheckContext,
+  RequestFeeCapPolicy,
+  RequestFeeCapRuntime
+} from '../../../model/ethereum';
 import {
   RequestFeeCapExceededError,
   RequestFeeOperationCancelledError
 } from '../../../model/ethereum';
+import type { EthereumStateService } from './ethereum-state-service';
 
 /**
  * Build a request-fee cap policy from global CLI options.
@@ -23,7 +28,7 @@ export function createRequestFeeCapPolicy(
   }
 
   return {
-    maxRequestFee: globalOptions.maxRequestFee ?? application.DEFAULT_MAX_REQUEST_FEE,
+    maxRequestFee: globalOptions.maxRequestFee,
     maxWaitBlocks:
       globalOptions.maxRequestFeeWaitBlocks ?? application.DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS,
     skipConfirmation: globalOptions.yes ?? false
@@ -43,4 +48,27 @@ export function isRequestFeePolicyStopError(
     error instanceof RequestFeeCapExceededError ||
     error instanceof RequestFeeOperationCancelledError
   );
+}
+
+/**
+ * Resolve the contract fee to use for a request-fee-cap check boundary.
+ *
+ * Falls back to a plain contract-fee read when no cap runtime is configured, otherwise enforces
+ * the cap via the runtime's resolver.
+ *
+ * @param runtime - Optional request-fee cap runtime dependencies
+ * @param stateService - Blockchain state service used when no cap runtime is configured
+ * @param context - Current operation boundary
+ * @returns Contract request fee in wei
+ */
+export async function resolveRequestFee(
+  runtime: RequestFeeCapRuntime | undefined,
+  stateService: EthereumStateService,
+  context: RequestFeeCapCheckContext
+): Promise<bigint> {
+  if (!runtime) {
+    return stateService.fetchContractFee();
+  }
+
+  return runtime.resolver.resolveRequestFee(runtime.policy, context);
 }

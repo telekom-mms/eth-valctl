@@ -19,7 +19,7 @@ import { splitToBatches } from '../batch-utils';
 import { isInsufficientFundsError } from '../error-utils';
 import { extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
 import { EthereumStateService } from './ethereum-state-service';
-import { isRequestFeePolicyStopError } from './request-fee-policy';
+import { isRequestFeePolicyStopError, resolveRequestFee } from './request-fee-policy';
 import { TransactionBroadcaster } from './transaction-broadcaster';
 import { TransactionMonitor } from './transaction-monitor';
 import { TransactionProgressLogger } from './transaction-progress-logger';
@@ -29,6 +29,8 @@ import { TransactionReplacer } from './transaction-replacer';
  * Orchestrates batch processing of execution layer requests with retry logic and fee recalculation.
  */
 export class TransactionBatchOrchestrator {
+  private initialFeeConsumed = false;
+
   /**
    * Creates a transaction batch orchestrator
    *
@@ -130,7 +132,7 @@ export class TransactionBatchOrchestrator {
   private async processBatch(batch: string[]): Promise<BatchProcessingResult> {
     const currentBlockNumber = await this.blockchainStateService.fetchBlockNumber();
     const contractFee = await this.resolveContractFee({
-      operation: 'batch',
+      operation: serviceConstants.FEE_CAP_OPERATION_BATCH,
       requestCount: batch.length
     });
     const broadcastResults = await this.transactionBroadcaster.broadcastExecutionLayerRequests(
@@ -391,19 +393,14 @@ export class TransactionBatchOrchestrator {
   }
 
   private async resolveContractFee(context: RequestFeeCapCheckContext): Promise<bigint> {
-    if (this.requestFeeCapRuntime?.initialApprovedRequestFee !== undefined) {
-      const approvedFee = this.requestFeeCapRuntime.initialApprovedRequestFee;
-      this.requestFeeCapRuntime.initialApprovedRequestFee = undefined;
-      return approvedFee;
+    if (
+      !this.initialFeeConsumed &&
+      this.requestFeeCapRuntime?.initialApprovedRequestFee !== undefined
+    ) {
+      this.initialFeeConsumed = true;
+      return this.requestFeeCapRuntime.initialApprovedRequestFee;
     }
 
-    if (!this.requestFeeCapRuntime) {
-      return this.blockchainStateService.fetchContractFee();
-    }
-
-    return this.requestFeeCapRuntime.resolver.resolveRequestFee(
-      this.requestFeeCapRuntime.policy,
-      context
-    );
+    return resolveRequestFee(this.requestFeeCapRuntime, this.blockchainStateService, context);
   }
 }

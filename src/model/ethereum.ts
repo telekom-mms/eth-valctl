@@ -268,6 +268,23 @@ export interface RequestFeeEstimateConfig {
 }
 
 /**
+ * Parameters for estimating how long a request fee needs to drain to a target fee.
+ */
+export interface FeeDropEstimateConfig {
+  currentExcess: bigint;
+  targetFee: bigint;
+  systemContractAddress: string;
+}
+
+/**
+ * Input for projecting per-batch request fees, including the starting excess and contract address.
+ */
+export interface BatchProjectionConfig extends RequestFeeEstimateConfig {
+  currentExcess: bigint;
+  systemContractAddress: string;
+}
+
+/**
  * Per-batch request-fee projection.
  */
 export interface RequestFeeBatchProjection {
@@ -309,10 +326,18 @@ export interface RequestFeeCapPolicy {
 }
 
 /**
+ * Request-fee cap check boundary operation.
+ */
+export type RequestFeeCapOperation =
+  | typeof application.FEE_CAP_OPERATION_BATCH
+  | typeof application.FEE_CAP_OPERATION_REPLACEMENT
+  | typeof application.FEE_CAP_OPERATION_SAFE_PROPOSAL;
+
+/**
  * Context for checking a request-fee cap at a broadcast/proposal boundary.
  */
 export interface RequestFeeCapCheckContext {
-  operation: 'batch' | 'replacement' | 'safe proposal';
+  operation: RequestFeeCapOperation;
   requestCount: number;
 }
 

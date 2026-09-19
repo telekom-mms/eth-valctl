@@ -6,7 +6,6 @@ import type {
   MaxNetworkFees,
   PendingTransactionInfo,
   ReplacementSummary,
-  RequestFeeCapCheckContext,
   RequestFeeCapRuntime,
   SigningContext,
   TransactionReplacementResult,
@@ -21,7 +20,7 @@ import {
 import { type ISigner, isUserRejectedError } from '../signer';
 import { createElTransaction, extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
 import { EthereumStateService } from './ethereum-state-service';
-import { isRequestFeePolicyStopError } from './request-fee-policy';
+import { isRequestFeePolicyStopError, resolveRequestFee } from './request-fee-policy';
 import { TransactionMonitor } from './transaction-monitor';
 import { TransactionProgressLogger } from './transaction-progress-logger';
 
@@ -178,8 +177,8 @@ export class TransactionReplacer {
     const total = revertedTransactions.length;
     const newContractFee =
       total > 0
-        ? await this.resolveReplacementContractFee({
-            operation: 'replacement',
+        ? await resolveRequestFee(this.requestFeeCapRuntime, this.blockchainStateService, {
+            operation: serviceConstants.FEE_CAP_OPERATION_REPLACEMENT,
             requestCount: total
           })
         : 0n;
@@ -236,8 +235,8 @@ export class TransactionReplacer {
     if (this.signer.capabilities.supportsParallelSigning) {
       const newContractFee =
         pendingTransactions.length > 0
-          ? await this.resolveReplacementContractFee({
-              operation: 'replacement',
+          ? await resolveRequestFee(this.requestFeeCapRuntime, this.blockchainStateService, {
+              operation: serviceConstants.FEE_CAP_OPERATION_REPLACEMENT,
               requestCount: pendingTransactions.length
             })
           : 0n;
@@ -308,10 +307,11 @@ export class TransactionReplacer {
       const context = this.createSigningContext(tx, index, total);
 
       try {
-        const newContractFee = await this.resolveReplacementContractFee({
-          operation: 'replacement',
-          requestCount: 1
-        });
+        const newContractFee = await resolveRequestFee(
+          this.requestFeeCapRuntime,
+          this.blockchainStateService,
+          { operation: serviceConstants.FEE_CAP_OPERATION_REPLACEMENT, requestCount: 1 }
+        );
         const transaction = await this.handlePendingTransaction(
           tx,
           newContractFee,
@@ -330,23 +330,6 @@ export class TransactionReplacer {
     }
 
     return results;
-  }
-
-  /**
-   * Resolve the request fee for replacement transactions.
-   *
-   * @param context - Replacement cap-check context
-   * @returns Contract request fee in wei
-   */
-  private async resolveReplacementContractFee(context: RequestFeeCapCheckContext): Promise<bigint> {
-    if (!this.requestFeeCapRuntime) {
-      return this.blockchainStateService.fetchContractFee();
-    }
-
-    return this.requestFeeCapRuntime.resolver.resolveRequestFee(
-      this.requestFeeCapRuntime.policy,
-      context
-    );
   }
 
   /**

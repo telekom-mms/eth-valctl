@@ -266,8 +266,7 @@ describe('LedgerSigner', () => {
       await signer.sendTransaction(buildTxFixture());
 
       const firstCallTxData = mockCreateFeeMarket1559Tx.mock.calls[0]?.[0] as
-        | { nonce: bigint }
-        | undefined;
+        { nonce: bigint } | undefined;
       expect(firstCallTxData?.nonce).toBe(BigInt(TEST_INITIAL_NONCE));
       expect(broadcastTransaction).toHaveBeenCalledTimes(1);
     });

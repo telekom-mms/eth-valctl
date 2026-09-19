@@ -1,19 +1,12 @@
 import * as application from '../../../constants/application';
 import type {
+  BatchProjectionConfig,
+  FeeDropEstimateConfig,
   RequestFeeBatchProjection,
   RequestFeeEstimate,
   RequestFeeEstimateConfig,
   RequestFeeStateReader
 } from '../../../model/ethereum';
-
-/**
- * Parameters for estimating how long a request fee needs to drain to a target fee.
- */
-interface FeeDropEstimateConfig {
-  currentExcess: bigint;
-  targetFee: bigint;
-  systemContractAddress: string;
-}
 
 /**
  * Service for estimating execution layer request fees without broadcasting.
@@ -29,30 +22,6 @@ export class RequestFeeEstimationService {
     private readonly stateReader: RequestFeeStateReader,
     private readonly systemContractAddress: string
   ) {}
-
-  /**
-   * Estimate current request and gas fee state.
-   *
-   * @param maxRequestFee - Cap used to mark whether the current fee is acceptable
-   * @returns Current fee estimate
-   */
-  async estimateCurrentFees(maxRequestFee: bigint): Promise<RequestFeeEstimate> {
-    return this.estimateRequestFees({
-      totalRequestCount: 1,
-      maxRequestsPerBlock: 1,
-      maxRequestFee
-    });
-  }
-
-  /**
-   * Estimate request fees for an idealized batch plan.
-   *
-   * @param config - Request count, batch size, and cap
-   * @returns Current state plus per-batch projection
-   */
-  async estimateBatchFees(config: RequestFeeEstimateConfig): Promise<RequestFeeEstimate> {
-    return this.estimateRequestFees(config);
-  }
 
   /**
    * Estimate request fees for a planned operation.
@@ -131,11 +100,6 @@ export function estimateBlocksUntilRequestFeeDrops(config: FeeDropEstimateConfig
 
   const excessDelta = config.currentExcess - targetExcess;
   return (excessDelta + targetPerBlock - 1n) / targetPerBlock;
-}
-
-interface BatchProjectionConfig extends RequestFeeEstimateConfig {
-  currentExcess: bigint;
-  systemContractAddress: string;
 }
 
 function projectBatchFees(config: BatchProjectionConfig): RequestFeeBatchProjection[] {

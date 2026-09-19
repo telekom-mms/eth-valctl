@@ -16,7 +16,7 @@ export function parseRequestFeeAmount(value: string): bigint {
   }
 
   const amount = match[1]!;
-  const inputUnit = normalizeRequestFeeInputUnit(match[2]!);
+  const inputUnit = match[2]!.toLowerCase() as application.RequestFeeInputUnit;
 
   try {
     return parseUnits(amount, toEthersRequestFeeUnit(inputUnit));
@@ -35,24 +35,4 @@ export function toEthersRequestFeeUnit(
   inputUnit: application.RequestFeeInputUnit
 ): application.RequestFeeEthersUnit {
   return inputUnit === application.ETH_UNIT ? application.ETHER_UNIT : inputUnit;
-}
-
-/**
- * Normalize a request fee input unit after regex validation.
- *
- * @param unit - Unit suffix from user input
- * @returns Lowercase request fee input unit
- */
-function normalizeRequestFeeInputUnit(unit: string): application.RequestFeeInputUnit {
-  const normalizedUnit = unit.toLowerCase();
-
-  if (
-    normalizedUnit === application.WEI_UNIT ||
-    normalizedUnit === application.GWEI_UNIT ||
-    normalizedUnit === application.ETH_UNIT
-  ) {
-    return normalizedUnit;
-  }
-
-  throw new Error(logging.INVALID_MAX_REQUEST_FEE_FORMAT_ERROR);
 }

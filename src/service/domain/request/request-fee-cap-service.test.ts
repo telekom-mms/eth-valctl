@@ -189,4 +189,21 @@ describe('RequestFeeCapService', () => {
 
     timeoutSpy.mockRestore();
   });
+
+  it('keeps polling without consuming budget while the chain is stalled', async () => {
+    const timeoutSpy = mockImmediateTimeout();
+    const reader = buildReader([11n, 9n], [100, 100, 100, 101]);
+    const service = new RequestFeeCapService(reader);
+
+    const fee = await service.resolveRequestFee(
+      buildPolicy({ maxWaitBlocks: 1n, skipConfirmation: true }),
+      CONTEXT
+    );
+
+    expect(fee).toBe(9n);
+    expect(reader.fetchBlockNumber).toHaveBeenCalledTimes(4);
+    expect(reader.fetchContractFee).toHaveBeenCalledTimes(2);
+
+    timeoutSpy.mockRestore();
+  });
 });

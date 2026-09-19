@@ -127,7 +127,7 @@ export async function validateNetwork(jsonRpcUrl: string, network: string): Prom
  * @returns The validated maximal number of requests allowed in a single block
  */
 export function parseAndValidateMaxNumberOfRequestsPerBlock(maxNumberOfRequests: string): number {
-  if (!/^\d+$/.test(maxNumberOfRequests)) {
+  if (!application.DIGITS_PATTERN.test(maxNumberOfRequests)) {
     exitWithValidationError(logging.INVALID_REQUESTS_PER_BLOCK_ERROR);
   }
 
@@ -172,7 +172,7 @@ export function parseAndValidateMaxRequestFee(value: string): bigint {
  * @returns Block count as bigint
  */
 export function parseAndValidateMaxRequestFeeWaitBlocks(value: string): bigint {
-  if (!/^\d+$/.test(value)) {
+  if (!application.DIGITS_PATTERN.test(value)) {
     exitWithValidationError(logging.INVALID_MAX_REQUEST_FEE_WAIT_BLOCKS_ERROR);
   }
 
@@ -186,7 +186,7 @@ export function parseAndValidateMaxRequestFeeWaitBlocks(value: string): bigint {
  * @returns Request count
  */
 export function parseAndValidateTotalRequestCount(value: string): number {
-  if (!/^\d+$/.test(value)) {
+  if (!application.DIGITS_PATTERN.test(value)) {
     exitWithValidationError(logging.INVALID_TOTAL_REQUEST_COUNT_ERROR);
   }
 
@@ -196,16 +196,6 @@ export function parseAndValidateTotalRequestCount(value: string): number {
   }
 
   return count;
-}
-
-/**
- * Resolve a max request fee value with the application default.
- *
- * @param value - Parsed request fee in wei
- * @returns Request fee in wei
- */
-export function resolveMaxRequestFee(value: bigint | undefined): bigint {
-  return value ?? application.DEFAULT_MAX_REQUEST_FEE;
 }
 
 /**

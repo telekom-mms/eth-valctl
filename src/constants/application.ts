@@ -60,6 +60,7 @@ export const PUBKEY_PATTERN = /^(0x)?[a-fA-F0-9]{96}$/;
 
 /** General */
 export const PREFIX_0x = '0x';
+export const DIGITS_PATTERN = /^\d+$/;
 
 /** Time conversion */
 export const MS_PER_SECOND = 1000;
@@ -83,12 +84,17 @@ export const WEI_PER_ETHER = 1_000_000_000_000_000_000n;
 export const REQUEST_FEE_AMOUNT_PATTERN = /^(\d+(?:\.\d+)?)\s*(wei|gwei|eth)$/i;
 export type RequestFeeInputUnit = typeof WEI_UNIT | typeof GWEI_UNIT | typeof ETH_UNIT;
 export type RequestFeeEthersUnit = typeof WEI_UNIT | typeof GWEI_UNIT | typeof ETHER_UNIT;
-export const DEFAULT_MAX_REQUEST_FEE = 1n;
-export const DEFAULT_MAX_REQUEST_FEE_INPUT = '1wei';
-export const DEFAULT_MAX_FEE_WAIT_BLOCKS = 50n;
-export const DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS = DEFAULT_MAX_FEE_WAIT_BLOCKS;
+export const DEFAULT_MAX_REQUEST_FEE = 10n;
+export const DEFAULT_MAX_REQUEST_FEE_INPUT = '10wei';
+export const DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS = 50n;
 export const DEFAULT_TOTAL_REQUEST_COUNT = 1;
 export const FEE_WAIT_POLL_INTERVAL_MS = 12_000;
+
+/** Supported `fees` command operation names */
+export const FEES_OPERATION_CONSOLIDATE = 'consolidate';
+export const FEES_OPERATION_SWITCH = 'switch';
+export const FEES_OPERATION_WITHDRAW = 'withdraw';
+export const FEES_OPERATION_EXIT = 'exit';
 
 export const TARGET_PER_BLOCK_BY_CONTRACT: Record<string, bigint> = {
   [CONSOLIDATION_CONTRACT_ADDRESS.toLowerCase()]: CONSOLIDATION_TARGET_PER_BLOCK,
@@ -126,6 +132,11 @@ export const FEE_ACTION_CONTINUE = 'continue';
 export const FEE_ACTION_REJECT = 'reject';
 export const FEE_ACTION_PROCEED = 'proceed';
 export const FEE_ACTION_ABORT = 'abort';
+
+/** Request-fee cap check boundary operation values */
+export const FEE_CAP_OPERATION_BATCH = 'batch';
+export const FEE_CAP_OPERATION_REPLACEMENT = 'replacement';
+export const FEE_CAP_OPERATION_SAFE_PROPOSAL = 'safe proposal';
 
 /** Safe multisig constants */
 export const SAFE_TRANSACTION_SERVICE_NAME = 'Safe Transaction Service';

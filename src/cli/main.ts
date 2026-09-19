@@ -12,12 +12,7 @@ import chalk from 'chalk';
 import { Command, Option } from 'commander';
 
 import packageJson from '../../package.json';
-import {
-  DEFAULT_MAX_REQUEST_FEE,
-  DEFAULT_MAX_REQUEST_FEE_INPUT,
-  DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS,
-  DEFAULT_SAFE_FEE_TIP
-} from '../constants/application';
+import * as application from '../constants/application';
 import { DISCLAIMER_INFO, UNHANDLED_PROMISE_REJECTION_PREFIX } from '../constants/logging';
 import type { GlobalCliOptions } from '../model/commander';
 import { consolidateCommand } from './consolidate';
@@ -88,7 +83,7 @@ program
   .option(
     `-f, --safe-fee-tip <wei>`,
     'Absolute tip in wei added to system contract fee per operation in Safe proposals',
-    String(DEFAULT_SAFE_FEE_TIP)
+    String(application.DEFAULT_SAFE_FEE_TIP)
   )
   .addOption(
     new Option(
@@ -96,7 +91,7 @@ program
       'Maximum request fee per execution layer request before eth-valctl waits or asks what to do, for example 1wei, 0.5gwei, or 0.01eth'
     )
       .argParser(parseAndValidateMaxRequestFee)
-      .default(DEFAULT_MAX_REQUEST_FEE, DEFAULT_MAX_REQUEST_FEE_INPUT)
+      .default(application.DEFAULT_MAX_REQUEST_FEE, application.DEFAULT_MAX_REQUEST_FEE_INPUT)
   )
   .addOption(
     new Option(
@@ -104,7 +99,10 @@ program
       'Maximum blocks to wait when request fee exceeds --max-request-fee (0 aborts immediately)'
     )
       .argParser(parseAndValidateMaxRequestFeeWaitBlocks)
-      .default(DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS, String(DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS))
+      .default(
+        application.DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS,
+        String(application.DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS)
+      )
   )
   .option('-y, --yes', 'Skip confirmation prompts by choosing safe default actions', false)
   .hook('preAction', (thisCommand) => {

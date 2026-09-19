@@ -52,5 +52,24 @@ describe('renderFeeEstimate', () => {
     expect(output).toContain('Batch 2: 20 requests, request fee 2 wei (above cap)');
     expect(output).not.toContain('Current excess');
     expect(output).not.toContain('Estimated total per request');
+    expect(output).not.toContain('until the fee drops below --max-request-fee');
+  });
+
+  it('shows the blocks-until-cap line when the current fee currently exceeds the cap', () => {
+    const lines = renderFeeEstimate({
+      operation: 'consolidate',
+      network: 'hoodi',
+      estimate: { ...ESTIMATE, exceedsCap: true, estimatedBlocksUntilCap: 28n },
+      totalRequestCount: 40,
+      maxRequestsPerBlock: 20,
+      contractAddress: application.CONSOLIDATION_CONTRACT_ADDRESS
+    });
+    const output = lines.join('\n');
+
+    expect(output).toContain(
+      chalk.yellow(
+        '~28 blocks until the fee drops below --max-request-fee (assuming no new requests)'
+      )
+    );
   });
 });

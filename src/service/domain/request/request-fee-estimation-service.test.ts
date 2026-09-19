@@ -29,7 +29,11 @@ describe('RequestFeeEstimationService', () => {
       application.CONSOLIDATION_CONTRACT_ADDRESS
     );
 
-    const estimate = await service.estimateCurrentFees(1n);
+    const estimate = await service.estimateRequestFees({
+      totalRequestCount: 1,
+      maxRequestsPerBlock: 1,
+      maxRequestFee: 1n
+    });
 
     expect(estimate.currentRequestFee).toBe(1n);
     expect(estimate.gasCost).toBe(20n * application.TRANSACTION_GAS_LIMIT);
@@ -45,7 +49,11 @@ describe('RequestFeeEstimationService', () => {
       application.CONSOLIDATION_CONTRACT_ADDRESS
     );
 
-    const estimate = await service.estimateCurrentFees(1n);
+    const estimate = await service.estimateRequestFees({
+      totalRequestCount: 1,
+      maxRequestsPerBlock: 1,
+      maxRequestFee: 1n
+    });
 
     expect(estimate.exceedsCap).toBe(true);
     expect(estimate.estimatedBlocksUntilCap).toBeGreaterThan(0n);
@@ -60,7 +68,7 @@ describe('RequestFeeEstimationService', () => {
       application.CONSOLIDATION_CONTRACT_ADDRESS
     );
 
-    const estimate = await service.estimateBatchFees({
+    const estimate = await service.estimateRequestFees({
       maxRequestFee: 1n,
       maxRequestsPerBlock: 20,
       totalRequestCount: 40
@@ -82,7 +90,7 @@ describe('RequestFeeEstimationService', () => {
       application.WITHDRAWAL_CONTRACT_ADDRESS
     );
 
-    const estimate = await service.estimateBatchFees({
+    const estimate = await service.estimateRequestFees({
       maxRequestFee: 1n,
       maxRequestsPerBlock: 2,
       totalRequestCount: 4

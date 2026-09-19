@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import type { JsonRpcProvider } from 'ethers';
 
-import { DEFAULT_SAFE_FEE_TIP, OWNER_LABEL_SAFE } from '../../constants/application';
+import * as application from '../../constants/application';
 import { SAFE_FEE_TIP_INFO } from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
 import type {
@@ -97,34 +97,27 @@ async function executeDirectPipeline(
   const signerType = globalOptions.ledger ? 'ledger' : 'wallet';
   const ethereumConnection = await createEthereumConnection(globalOptions.jsonRpcUrl, signerType);
 
-  if (validate) {
-    await validate(ethereumConnection.signer.address);
-  }
+  let requestFeeCapRuntime: RequestFeeCapRuntime | undefined;
+  try {
+    if (validate) {
+      await validate(ethereumConnection.signer.address);
+    }
 
-  const requestFeeCapPolicy = createRequestFeeCapPolicy(globalOptions);
-  const requestFeeCapRuntime = requestFeeCapPolicy
-    ? await createRequestFeeCapRuntime(
-        ethereumConnection.provider,
-        contractAddress,
-        requestFeeCapPolicy,
-        {
-          operation: 'batch',
-          requestCount: Math.min(requestData.length, globalOptions.maxRequestsPerBlock)
-        }
-      )
-    : undefined;
-
-  if (requestFeeCapRuntime) {
-    await sendExecutionLayerRequests(
-      contractAddress,
-      ethereumConnection.provider,
-      ethereumConnection.signer,
-      requestData,
-      globalOptions.maxRequestsPerBlock,
-      globalOptions.beaconApiUrl,
-      requestFeeCapRuntime
-    );
-    return;
+    const requestFeeCapPolicy = createRequestFeeCapPolicy(globalOptions);
+    requestFeeCapRuntime = requestFeeCapPolicy
+      ? await createRequestFeeCapRuntime(
+          ethereumConnection.provider,
+          contractAddress,
+          requestFeeCapPolicy,
+          {
+            operation: application.FEE_CAP_OPERATION_BATCH,
+            requestCount: Math.min(requestData.length, globalOptions.maxRequestsPerBlock)
+          }
+        )
+      : undefined;
+  } catch (error) {
+    await ethereumConnection.signer.dispose();
+    throw error;
   }
 
   await sendExecutionLayerRequests(
@@ -133,7 +126,8 @@ async function executeDirectPipeline(
     ethereumConnection.signer,
     requestData,
     globalOptions.maxRequestsPerBlock,
-    globalOptions.beaconApiUrl
+    globalOptions.beaconApiUrl,
+    requestFeeCapRuntime
   );
 }
 
@@ -164,18 +158,18 @@ async function executeSafePipeline(
 
   try {
     if (validate) {
-      await validate(safeAddress, OWNER_LABEL_SAFE);
+      await validate(safeAddress, application.OWNER_LABEL_SAFE);
     }
 
     const stateService = new EthereumStateService(safeInitResult.provider, contractAddress);
     const requestFeeCapPolicy = createRequestFeeCapPolicy(globalOptions);
     const contractFee = requestFeeCapPolicy
       ? await new RequestFeeCapService(stateService).resolveRequestFee(requestFeeCapPolicy, {
-          operation: 'safe proposal',
+          operation: application.FEE_CAP_OPERATION_SAFE_PROPOSAL,
           requestCount: requestData.length
         })
       : await stateService.fetchContractFee();
-    const safeFeeTip = BigInt(globalOptions.safeFeeTip ?? String(DEFAULT_SAFE_FEE_TIP));
+    const safeFeeTip = BigInt(globalOptions.safeFeeTip ?? String(application.DEFAULT_SAFE_FEE_TIP));
     const proposalFee = contractFee + safeFeeTip;
 
     if (safeFeeTip > 0n) {

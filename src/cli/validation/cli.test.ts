@@ -8,6 +8,7 @@ import { GWEI_UNIT, MAX_NUMBER_OF_REQUESTS_PER_BLOCK } from '../../constants/app
 import {
   INVALID_MAX_REQUEST_FEE_FORMAT_ERROR,
   INVALID_MAX_REQUEST_FEE_WAIT_BLOCKS_ERROR,
+  INVALID_TOTAL_REQUEST_COUNT_ERROR,
   MAX_REQUEST_FEE_TOO_LOW_ERROR,
   REQUEST_FEE_PRECISION_ERROR,
   SAFE_OPTION_REQUIRED_ERROR
@@ -19,6 +20,7 @@ import {
   parseAndValidateMaxRequestFeeWaitBlocks,
   parseAndValidateNodeUrl,
   parseAndValidateSafeAddress,
+  parseAndValidateTotalRequestCount,
   parseAndValidateValidatorPubKey,
   parseAndValidateValidatorPubKeys,
   parseAndValidateWithdrawAmount,
@@ -512,6 +514,47 @@ describe('CLI Validation', () => {
       expect(stderrSpy.mock.calls.flat().join('\n')).toContain(
         INVALID_MAX_REQUEST_FEE_WAIT_BLOCKS_ERROR
       );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe('parseAndValidateTotalRequestCount', () => {
+    let stderrSpy: ReturnType<typeof spyOn>;
+    let exitSpy: ReturnType<typeof spyOn>;
+
+    beforeEach(() => {
+      stderrSpy = spyOn(console, 'error').mockImplementation(() => {});
+      exitSpy = spyOn(process, 'exit').mockImplementation(() => {
+        throw new Error('process.exit');
+      });
+    });
+
+    afterEach(() => {
+      stderrSpy.mockRestore();
+      exitSpy.mockRestore();
+    });
+
+    it('returns a number for a valid count', () => {
+      const result = parseAndValidateTotalRequestCount('40');
+
+      expect(result).toBe(40);
+    });
+
+    it('returns a number for the minimum valid count', () => {
+      const result = parseAndValidateTotalRequestCount('1');
+
+      expect(result).toBe(1);
+    });
+
+    it('exits when the count is not a digit string', () => {
+      expect(() => parseAndValidateTotalRequestCount('abc')).toThrow('process.exit');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(INVALID_TOTAL_REQUEST_COUNT_ERROR);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('exits when the count is zero', () => {
+      expect(() => parseAndValidateTotalRequestCount('0')).toThrow('process.exit');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(INVALID_TOTAL_REQUEST_COUNT_ERROR);
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });

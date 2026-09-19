@@ -4,16 +4,15 @@ import { formatEther, formatUnits } from 'ethers';
 
 import * as application from '../constants/application';
 import * as logging from '../constants/logging';
-import type { FeesOptions, GlobalCliOptions } from '../model/commander';
-import type { RequestFeeBatchProjection, RequestFeeEstimate } from '../model/ethereum';
+import type { FeeEstimateRenderConfig, FeesOptions, GlobalCliOptions } from '../model/commander';
+import type { RequestFeeBatchProjection } from '../model/ethereum';
 import { networkConfig } from '../network-config';
 import { createValidatedProvider } from '../service/domain/ethereum';
 import { EthereumStateService } from '../service/domain/request/ethereum-state-service';
 import {
   parseAndValidateMaxNumberOfRequestsPerBlock,
   parseAndValidateMaxRequestFee,
-  parseAndValidateTotalRequestCount,
-  resolveMaxRequestFee
+  parseAndValidateTotalRequestCount
 } from './validation/cli';
 
 const feesCommand = new Command('fees');
@@ -57,7 +56,8 @@ async function showFees(
   const contractAddress = resolveFeesContractAddress(operation, globalOptions.network);
   const provider = await createValidatedProvider(globalOptions.jsonRpcUrl);
   const stateService = new EthereumStateService(provider, contractAddress);
-  const maxRequestFee = resolveMaxRequestFee(options.maxRequestFee ?? globalOptions.maxRequestFee);
+  const maxRequestFee =
+    options.maxRequestFee ?? globalOptions.maxRequestFee ?? application.DEFAULT_MAX_REQUEST_FEE;
   const maxRequestsPerBlock = options.maxRequestsPerBlock ?? globalOptions.maxRequestsPerBlock;
   const estimate = await stateService.estimateRequestFees({
     totalRequestCount: options.totalRequestCount,
@@ -81,15 +81,6 @@ async function showFees(
   }
 }
 
-type FeeEstimateRenderConfig = {
-  operation: string;
-  network: string;
-  estimate: RequestFeeEstimate;
-  totalRequestCount: number;
-  maxRequestsPerBlock: number;
-  contractAddress: string;
-};
-
 /**
  * Render user-facing fee estimate lines.
  *
@@ -100,6 +91,7 @@ export function renderFeeEstimate(config: FeeEstimateRenderConfig): string[] {
   return [
     chalk.blue(logging.FEES_ESTIMATE_HEADER(config.operation, config.network)),
     logging.FEES_CURRENT_REQUEST_FEE_INFO(formatRequestFee(config.estimate.currentRequestFee)),
+    ...renderBlocksUntilCapLine(config.estimate.estimatedBlocksUntilCap),
     logging.FEES_MAX_TRANSACTION_GAS_BUDGET_INFO(
       formatEther(config.estimate.gasCost),
       formatUnits(config.estimate.maxNetworkFees.maxFeePerGas, application.GWEI_UNIT)
@@ -119,6 +111,20 @@ export function renderFeeEstimate(config: FeeEstimateRenderConfig): string[] {
 }
 
 /**
+ * Render the "blocks until below cap" line when the current fee exceeds the cap.
+ *
+ * @param estimatedBlocksUntilCap - Estimated blocks until the fee drops below the cap
+ * @returns Zero or one output line, only shown while the cap is currently exceeded
+ */
+function renderBlocksUntilCapLine(estimatedBlocksUntilCap: bigint): string[] {
+  if (estimatedBlocksUntilCap <= 0n) {
+    return [];
+  }
+
+  return [chalk.yellow(logging.FEES_BLOCKS_UNTIL_CAP_INFO(estimatedBlocksUntilCap))];
+}
+
+/**
  * Resolve the request contract address for a fees operation.
  *
  * @param operation - Request operation name
@@ -133,11 +139,11 @@ function resolveFeesContractAddress(operation: string, network: string): string 
   }
 
   switch (operation) {
-    case 'consolidate':
-    case 'switch':
+    case application.FEES_OPERATION_CONSOLIDATE:
+    case application.FEES_OPERATION_SWITCH:
       return config.consolidationContractAddress;
-    case 'withdraw':
-    case 'exit':
+    case application.FEES_OPERATION_WITHDRAW:
+    case application.FEES_OPERATION_EXIT:
       return config.withdrawalContractAddress;
     default:
       console.error(chalk.red(logging.UNKNOWN_FEES_OPERATION_ERROR(operation)));

@@ -1,4 +1,4 @@
-import { MAX_NUMBER_OF_REQUESTS_PER_BLOCK } from './application';
+import * as application from './application';
 
 /** User related input errors */
 export const NO_PRIVATE_KEY_ERROR = 'Please provide a valid private key';
@@ -29,25 +29,25 @@ export const GENERAL_JSON_RPC_ERROR = (url: string): string =>
   `Error while trying to open connection for provided json rpc url ${url}:`;
 export const INVALID_REQUESTS_PER_BLOCK_ERROR =
   'Number of max. requests per block should be a number';
-export const TOO_MANY_REQUESTS_PER_BLOCK_ERROR = `Provided maximal number of requests per block is too high. To minimize the risk of transaction reverts/replacements due to underpriced fees, the number should not exceed ${MAX_NUMBER_OF_REQUESTS_PER_BLOCK}.`;
+export const TOO_MANY_REQUESTS_PER_BLOCK_ERROR = `Provided maximal number of requests per block is too high. To minimize the risk of transaction reverts/replacements due to underpriced fees, the number should not exceed ${application.MAX_NUMBER_OF_REQUESTS_PER_BLOCK}.`;
 export const INVALID_MAX_REQUEST_FEE_FORMAT_ERROR =
   'Invalid max request fee format. Use an explicit unit: wei/gwei/eth, for example 1wei, 0.5gwei, or 0.01eth.';
 export const MAX_REQUEST_FEE_TOO_LOW_ERROR =
   'Max request fee must be greater than zero and at least 1 wei.';
-export const INVALID_REQUEST_FEE_AMOUNT_ERROR = (value: string): string =>
-  `Invalid request fee amount: ${value}`;
 export const REQUEST_FEE_PRECISION_ERROR = (amount: string, unit: string): string =>
   `Request fee amount is below 1 wei precision: ${amount}${unit}`;
 export const INVALID_MAX_REQUEST_FEE_WAIT_BLOCKS_ERROR =
   'Max request fee wait blocks must be a non-negative integer.';
 export const INVALID_TOTAL_REQUEST_COUNT_ERROR = 'Total request count must be a positive integer.';
 export const UNKNOWN_FEES_OPERATION_ERROR = (operation: string): string =>
-  `Unknown fees operation: ${operation}. Use consolidate, switch, withdraw, or exit.`;
+  `Unknown fees operation: ${operation}. Use ${application.FEES_OPERATION_CONSOLIDATE}, ${application.FEES_OPERATION_SWITCH}, ${application.FEES_OPERATION_WITHDRAW}, or ${application.FEES_OPERATION_EXIT}.`;
 export const FATAL_ERROR_PREFIX = 'Fatal error:';
 export const UNHANDLED_PROMISE_REJECTION_PREFIX = 'Unhandled promise rejection:';
 export const FEES_ESTIMATE_HEADER = (operation: string, network: string): string =>
   `Fee estimate for ${operation} requests on ${network}:`;
 export const FEES_CURRENT_REQUEST_FEE_INFO = (fee: string): string => `Current request fee: ${fee}`;
+export const FEES_BLOCKS_UNTIL_CAP_INFO = (blocks: bigint): string =>
+  `~${blocks} block${blocks === 1n ? '' : 's'} until the fee drops below --max-request-fee (assuming no new requests)`;
 export const FEES_MAX_TRANSACTION_GAS_BUDGET_INFO = (
   gasBudget: string,
   maxFeePerGas: string

@@ -26,7 +26,7 @@ describe('CLI entrypoint', () => {
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('-x, --max-request-fee <amount>');
-      expect(result.stdout).toContain('default: 1wei');
+      expect(result.stdout).toContain('default: 10wei');
     });
 
     it('lists --max-request-fee-wait-blocks and global --yes in help', async () => {
