@@ -102,6 +102,8 @@ setup_phase() {
 	fetch_pubkeys "${FEE_SAFE_START}" "${FEE_SAFE_STOP}" "${TMP_DIR}/fee-safe-pubkeys.txt"
 	fetch_pubkeys "${FEE_QUEUE_SMALL_DIRECT_START}" "${FEE_QUEUE_SMALL_DIRECT_STOP}" "${TMP_DIR}/fee-queue-small-pubkeys.txt"
 	fetch_pubkeys "${FEE_QUEUE_DIRECT_START}" "${FEE_QUEUE_DIRECT_STOP}" "${TMP_DIR}/fee-queue-pubkeys.txt"
+	fetch_pubkeys "${DEFAULT_CAP_BELOW_DIRECT_START}" "${DEFAULT_CAP_BELOW_DIRECT_STOP}" "${TMP_DIR}/default-cap-below-pubkeys.txt"
+	fetch_pubkeys "${DEFAULT_CAP_ABOVE_DIRECT_START}" "${DEFAULT_CAP_ABOVE_DIRECT_STOP}" "${TMP_DIR}/default-cap-above-pubkeys.txt"
 
 	fetch_pubkeys "${DUPLICATE_SAFE_START}" "${DUPLICATE_SAFE_STOP}" "${TMP_DIR}/duplicate-safe-pubkeys.txt"
 	fetch_pubkeys "${NO_EXEC_SAFE_START}" "${NO_EXEC_SAFE_STOP}" "${TMP_DIR}/no-exec-safe-pubkeys.txt"
@@ -432,6 +434,24 @@ phase_g_fee_validation() {
 	safe_execute "${OWNER_0_KEY}" --stale-fee-action reject
 	assert_output_contains "${LAST_CMD_OUTPUT}" "Stale fees detected" "Reject action: stale fee summary logged"
 	assert_output_contains "${LAST_CMD_OUTPUT}" "rejection transaction" "Reject action: rejection transactions proposed"
+
+	# --- G.6: Default request-fee cap (10 wei) does not block a normal-sized batch ---
+	log_test "Default request-fee cap — normal queue depth does not block or prompt"
+	log_info "Resetting consolidation contract fee to minimum before the default-cap check..."
+	wait_for_fee_decay "0x0000BBdDc7CE488642fb579F8B00f3a590007251"
+
+	log_info "Below-cap queue fill: ${DEFAULT_CAP_BELOW_DIRECT_START}-${DEFAULT_CAP_BELOW_DIRECT_STOP} direct switches (no -x flag, exercises the real default)..."
+	run_ethvalctl "${OWNER_0_KEY}" switch -v "${TMP_DIR}/default-cap-below-pubkeys.txt"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 0 "Default cap: below-cap batch succeeds without --yes"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "Mined execution layer request" "Default cap: below-cap batch mined"
+	assert_output_not_contains "${LAST_CMD_OUTPUT}" "exceeds --max-request-fee" "Default cap: no cap-exceeded warning at normal queue depth"
+
+	# --- G.7: Default request-fee cap engages once the fee genuinely exceeds 10 wei ---
+	log_test "Default request-fee cap — engages once fee exceeds 10 wei"
+	log_info "Above-cap queue fill: ${DEFAULT_CAP_ABOVE_DIRECT_START}-${DEFAULT_CAP_ABOVE_DIRECT_STOP} direct switches (continues from G.6's excess, pushes fee past 10 wei)..."
+	run_ethvalctl "${OWNER_0_KEY}" --yes --max-request-fee-wait-blocks 3 switch -v "${TMP_DIR}/default-cap-above-pubkeys.txt"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "exceeds --max-request-fee" "Default cap: cap-exceeded warning logged once fee exceeds 10 wei"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "Waiting for request fee to drop" "Default cap: --yes selects wait action automatically"
 }
 
 phase_h_safe_edge_cases() {
@@ -658,7 +678,8 @@ Phases:
   d    Full exit (Safe + Direct)
   e    Error scenarios (non-owner, invalid pubkey, wrong network)
   f    Threshold change (propose at 2, change to 3, verify revert)
-  g    Fee validation (fee tip resilience, stale fee detection, rejection)
+  g    Fee validation (fee tip resilience, stale fee detection, rejection,
+       default request-fee cap boundary)
   h    Safe edge cases (duplicate, already signed, no pending/executable,
        not deployed, unreachable, nonce gap, filtering, single validator)
   i    Rate limiting & partial failure (unauth retries, exhausted, partial fail)

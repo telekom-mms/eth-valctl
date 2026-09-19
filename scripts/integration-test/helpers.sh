@@ -187,6 +187,12 @@ EOF
 	write_validator_rows "${TMP_DIR}/fee-queue-pubkeys.txt" \
 		"${FEE_QUEUE_DIRECT_START}" "G — Fee Validation" "queue filler (direct switch)" "credentials 0x02"
 
+	write_validator_rows "${TMP_DIR}/default-cap-below-pubkeys.txt" \
+		"${DEFAULT_CAP_BELOW_DIRECT_START}" "G — Default Cap" "below-boundary filler (direct switch)" "credentials 0x02"
+
+	write_validator_rows "${TMP_DIR}/default-cap-above-pubkeys.txt" \
+		"${DEFAULT_CAP_ABOVE_DIRECT_START}" "G — Default Cap" "above-boundary filler (direct switch)" "credentials 0x02"
+
 	log_info "Validator state report written to ${VALIDATOR_REPORT_FILE}"
 }
 
