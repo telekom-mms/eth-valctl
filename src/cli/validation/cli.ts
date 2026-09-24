@@ -1,6 +1,6 @@
 import { PublicKey } from '@chainsafe/blst';
 import chalk from 'chalk';
-import { getAddress, JsonRpcProvider } from 'ethers';
+import { getAddress, JsonRpcProvider, parseUnits } from 'ethers';
 import { existsSync, readFileSync, statSync } from 'fs';
 
 import * as application from '../../constants/application';
@@ -126,14 +126,109 @@ export async function validateNetwork(jsonRpcUrl: string, network: string): Prom
  * @returns The validated maximal number of requests allowed in a single block
  */
 export function parseAndValidateMaxNumberOfRequestsPerBlock(maxNumberOfRequests: string): number {
-  const parsedNumber = parseInt(maxNumberOfRequests);
-  if (isNaN(parsedNumber)) {
+  if (!application.DIGITS_PATTERN.test(maxNumberOfRequests)) {
     exitWithValidationError(logging.INVALID_REQUESTS_PER_BLOCK_ERROR);
   }
+
+  const parsedNumber = Number(maxNumberOfRequests);
+  if (parsedNumber < 1) {
+    exitWithValidationError(logging.INVALID_REQUESTS_PER_BLOCK_ERROR);
+  }
+
   if (parsedNumber > application.MAX_NUMBER_OF_REQUESTS_PER_BLOCK) {
     exitWithValidationError(logging.TOO_MANY_REQUESTS_PER_BLOCK_ERROR);
   }
   return parsedNumber;
+}
+
+/**
+ * Parse and validate a request fee amount with an explicit unit.
+ *
+ * @param value - Request fee with unit suffix (`wei`, `gwei`, or `eth`)
+ * @returns Fee amount as wei
+ */
+export function parseAndValidateMaxRequestFee(value: string): bigint {
+  let wei: bigint;
+  try {
+    wei = parseRequestFeeAmount(value);
+  } catch (error) {
+    exitWithValidationError(
+      error instanceof Error ? error.message : logging.INVALID_MAX_REQUEST_FEE_FORMAT_ERROR
+    );
+  }
+
+  if (wei < 1n) {
+    exitWithValidationError(logging.MAX_REQUEST_FEE_TOO_LOW_ERROR);
+  }
+
+  return wei;
+}
+
+/**
+ * Parse a request fee amount with an explicit unit into wei.
+ *
+ * @param value - Request fee amount using wei, gwei, or eth suffix
+ * @returns Request fee amount in wei
+ */
+function parseRequestFeeAmount(value: string): bigint {
+  const match = application.REQUEST_FEE_AMOUNT_PATTERN.exec(value);
+  if (!match) {
+    throw new Error(logging.INVALID_MAX_REQUEST_FEE_FORMAT_ERROR);
+  }
+
+  const amount = match[1]!;
+  const inputUnit = match[2]!.toLowerCase() as application.RequestFeeInputUnit;
+  const ethersUnit: application.RequestFeeEthersUnit =
+    inputUnit === application.ETH_UNIT ? application.ETHER_UNIT : inputUnit;
+
+  try {
+    return parseUnits(amount, ethersUnit);
+  } catch {
+    throw new Error(logging.REQUEST_FEE_PRECISION_ERROR(amount, inputUnit));
+  }
+}
+
+/**
+ * Parse and validate max request fee wait blocks.
+ *
+ * @param value - User-provided block count
+ * @returns Block count as bigint
+ */
+export function parseAndValidateMaxRequestFeeWaitBlocks(value: string): bigint {
+  if (!application.DIGITS_PATTERN.test(value)) {
+    exitWithValidationError(logging.INVALID_MAX_REQUEST_FEE_WAIT_BLOCKS_ERROR);
+  }
+
+  return BigInt(value);
+}
+
+/**
+ * Parse and validate a total request count for fee projections.
+ *
+ * @param value - User-provided total request count
+ * @returns Request count
+ */
+export function parseAndValidateTotalRequestCount(value: string): number {
+  if (!application.DIGITS_PATTERN.test(value)) {
+    exitWithValidationError(logging.INVALID_TOTAL_REQUEST_COUNT_ERROR);
+  }
+
+  const count = Number(value);
+  if (count < 1) {
+    exitWithValidationError(logging.INVALID_TOTAL_REQUEST_COUNT_ERROR);
+  }
+
+  return count;
+}
+
+/**
+ * Resolve max request fee wait blocks from Commander options.
+ *
+ * @param value - Parsed bigint
+ * @returns Wait block count
+ */
+export function resolveMaxRequestFeeWaitBlocks(value: bigint | undefined): bigint {
+  return value ?? application.DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS;
 }
 
 /**
