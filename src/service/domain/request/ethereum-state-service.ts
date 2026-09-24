@@ -8,6 +8,7 @@ import {
 } from '../../../constants/logging';
 import type { ContractFeeState, MaxNetworkFees } from '../../../model/ethereum';
 import { BlockchainStateError } from '../../../model/ethereum';
+import { calculateRequestFee } from './request-fee-estimation-service';
 
 /**
  * Service for querying Ethereum state including block numbers, network fees, and contract fees.
@@ -75,7 +76,7 @@ export class EthereumStateService {
         );
       }
 
-      const fee = EthereumStateService.calculateContractFee(excess);
+      const fee = calculateRequestFee(excess);
       return { fee, excess };
     } catch (error) {
       if (error instanceof BlockchainStateError) {
@@ -87,29 +88,6 @@ export class EthereumStateService {
       );
       throw new BlockchainStateError('Unable to fetch contract fee from system contract', error);
     }
-  }
-
-  /**
-   * Calculates the contract fee for sending an execution layer request to a specific system contract
-   *
-   * @param numerator - The excess value (queue length) of a specific system contract
-   * @returns The contract fee for sending an execution layer request
-   */
-  static calculateContractFee(numerator: bigint): bigint {
-    // https://eips.ethereum.org/EIPS/eip-7251#fee-calculation
-    let i = 1n;
-    let output = 0n;
-    let numeratorAccum =
-      serviceConstants.MIN_CONSOLIDATION_REQUEST_FEE *
-      serviceConstants.CONSOLIDATION_REQUEST_FEE_UPDATE_FRACTION;
-    while (numeratorAccum > 0n) {
-      output += numeratorAccum;
-      numeratorAccum =
-        (numeratorAccum * numerator) /
-        (serviceConstants.CONSOLIDATION_REQUEST_FEE_UPDATE_FRACTION * i);
-      i += 1n;
-    }
-    return output / serviceConstants.CONSOLIDATION_REQUEST_FEE_UPDATE_FRACTION;
   }
 
   /**

@@ -1,3 +1,5 @@
+import type { RequestFeeEstimate } from './ethereum';
+
 /**
  * CLI options for commands targeting specific validators
  */
@@ -32,4 +34,26 @@ export interface GlobalCliOptions {
   ledger: boolean;
   safe?: string;
   safeFeeTip?: string;
+  maxRequestFee?: bigint;
+  maxRequestFeeWaitBlocks?: bigint;
+  yes?: boolean;
+}
+
+/**
+ * CLI options for the read-only fees command.
+ */
+export interface FeesOptions {
+  totalRequestCount: number;
+}
+
+/**
+ * Fee estimate and display metadata for rendering `fees` command output.
+ */
+export interface FeeEstimateRenderConfig {
+  operation: string;
+  network: string;
+  estimate: RequestFeeEstimate;
+  totalRequestCount: number;
+  maxRequestsPerBlock: number;
+  contractAddress: string;
 }
