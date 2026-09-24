@@ -2,10 +2,7 @@ import type { SafeMultisigTransactionResponse } from '@safe-global/types-kit';
 import chalk from 'chalk';
 import type { JsonRpcProvider } from 'ethers';
 
-import {
-  FEE_WAIT_POLL_INTERVAL_MS,
-  TARGET_PER_BLOCK_BY_CONTRACT
-} from '../../../constants/application';
+import { FEE_WAIT_POLL_INTERVAL_MS } from '../../../constants/application';
 import * as logging from '../../../constants/logging';
 import type { ContractFeeState } from '../../../model/ethereum';
 import type {
@@ -18,6 +15,7 @@ import type {
 } from '../../../model/safe';
 import { FeeStatus } from '../../../model/safe';
 import { EthereumStateService } from '../request/ethereum-state-service';
+import { estimateBlocksUntilRequestFeeDrops } from '../request/request-fee-estimation-service';
 import { extractFeeInfo } from './safe-fee-extractor';
 import { sleep } from './safe-utils';
 
@@ -124,11 +122,11 @@ export function classifySingleTransaction(
   const { fee: currentFee, excess: currentExcess } = state;
 
   if (feeInfo.proposedFee < currentFee) {
-    const estimatedBlocks = estimateBlocksUntilFeeDrops(
+    const estimatedBlocks = estimateBlocksUntilRequestFeeDrops({
       currentExcess,
-      feeInfo.proposedFee,
-      feeInfo.contractAddress
-    );
+      targetFee: feeInfo.proposedFee,
+      systemContractAddress: feeInfo.contractAddress
+    });
 
     return {
       transaction: tx,
@@ -173,64 +171,6 @@ function createUnvalidatedResult(
     proposedFee: feeInfo?.proposedFee ?? 0n,
     contractAddress: feeInfo?.contractAddress ?? tx.to
   };
-}
-
-/**
- * Estimate blocks until the contract fee drops to a target level
- *
- * Uses binary search to find the excess value where `calculateContractFee(excess) <= targetFee`,
- * then calculates blocks as `ceil((currentExcess - targetExcess) / targetPerBlock)`.
- *
- * @param params - Current excess, target fee, and contract address for rate lookup
- * @returns Estimated number of blocks, or 0n if fee is already at or below target
- */
-function estimateBlocksUntilFeeDrops(
-  currentExcess: bigint,
-  targetFee: bigint,
-  systemContractAddress: string
-): bigint {
-  const targetPerBlock = TARGET_PER_BLOCK_BY_CONTRACT[systemContractAddress.toLowerCase()] ?? 1n;
-
-  if (targetFee <= 0n) {
-    return currentExcess / targetPerBlock + 1n;
-  }
-
-  const targetExcess = binarySearchMaxExcess(targetFee);
-
-  if (currentExcess <= targetExcess) {
-    return 0n;
-  }
-
-  const excessDelta = currentExcess - targetExcess;
-  return (excessDelta + targetPerBlock - 1n) / targetPerBlock;
-}
-
-/**
- * Binary search for the largest excess where calculateContractFee(excess) does not exceed targetFee
- *
- * The fee function is monotonically increasing with excess, making binary search valid.
- *
- * @param targetFee - The fee threshold to search for
- * @returns Largest excess value that produces a fee at or below targetFee
- */
-function binarySearchMaxExcess(targetFee: bigint): bigint {
-  let low = 0n;
-  let high = 1n;
-
-  while (EthereumStateService.calculateContractFee(high) <= targetFee) {
-    high *= 2n;
-  }
-
-  while (low < high - 1n) {
-    const mid = (low + high) / 2n;
-    if (EthereumStateService.calculateContractFee(mid) <= targetFee) {
-      low = mid;
-    } else {
-      high = mid;
-    }
-  }
-
-  return low;
 }
 
 /**

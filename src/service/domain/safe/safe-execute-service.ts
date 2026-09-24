@@ -42,7 +42,8 @@ import {
 export async function executeReadyTransactions(config: SafeExecuteConfig): Promise<void> {
   const overpaymentThreshold =
     config.overpaymentThreshold ?? application.DEFAULT_FEE_OVERPAYMENT_THRESHOLD;
-  const maxFeeWaitBlocks = config.maxFeeWaitBlocks ?? application.DEFAULT_MAX_FEE_WAIT_BLOCKS;
+  const maxFeeWaitBlocks =
+    config.maxFeeWaitBlocks ?? application.DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS;
 
   const sorted = await loadExecutableTransactions(
     config.apiKit,
