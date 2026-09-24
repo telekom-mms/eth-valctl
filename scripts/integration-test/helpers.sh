@@ -187,6 +187,15 @@ EOF
 	write_validator_rows "${TMP_DIR}/fee-queue-pubkeys.txt" \
 		"${FEE_QUEUE_DIRECT_START}" "G — Fee Validation" "queue filler (direct switch)" "credentials 0x02"
 
+	write_validator_rows "${TMP_DIR}/default-cap-below-pubkeys.txt" \
+		"${DEFAULT_CAP_BELOW_DIRECT_START}" "G — Default Cap" "below-boundary filler (direct switch)" "credentials 0x02"
+
+	write_validator_rows "${TMP_DIR}/default-cap-above-pubkeys.txt" \
+		"${DEFAULT_CAP_ABOVE_DIRECT_START}" "G — Default Cap" "above-boundary filler (direct switch)" "credentials 0x02"
+
+	write_validator_rows "${TMP_DIR}/cap-abort-pubkeys.txt" \
+		"${CAP_ABORT_DIRECT_START}" "G — Cap Abort" "multi-batch abort (first batches 0x02, last batch 0x01)" "mixed"
+
 	log_info "Validator state report written to ${VALIDATOR_REPORT_FILE}"
 }
 
@@ -407,14 +416,19 @@ run_ethvalctl() {
 	local private_key=$1
 	shift
 	# shellcheck disable=SC2086
-	capture_cmd bash -c "echo '${private_key}' | ${DIRECT_BASE_CMD} $*"
+	capture_cmd bash -c "echo '${private_key}' | ${DIRECT_BASE_CMD} ${INTEGRATION_MAX_REQUEST_FEE:+--max-request-fee ${INTEGRATION_MAX_REQUEST_FEE}} $*"
 }
 
 run_ethvalctl_safe() {
 	local private_key=$1
 	shift
 	# shellcheck disable=SC2086
-	capture_cmd bash -c "echo '${private_key}' | ${SAFE_BASE_CMD} $*"
+	capture_cmd bash -c "echo '${private_key}' | ${SAFE_BASE_CMD} ${INTEGRATION_MAX_REQUEST_FEE:+--max-request-fee ${INTEGRATION_MAX_REQUEST_FEE}} $*"
+}
+
+run_ethvalctl_default_request_fee() {
+	local INTEGRATION_MAX_REQUEST_FEE=""
+	run_ethvalctl "$@"
 }
 
 safe_propose() {
@@ -426,14 +440,30 @@ safe_propose() {
 safe_sign() {
 	local private_key=$1
 	# shellcheck disable=SC2086
-	capture_cmd bash -c "echo '${private_key}' | ${SAFE_BASE_CMD} safe sign --yes"
+	capture_cmd bash -c "echo '${private_key}' | ${SAFE_BASE_CMD} --yes safe sign"
 }
 
 safe_execute() {
 	local private_key=$1
 	shift
+	local global_args=("--yes")
+	local execute_args=()
+
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+		--max-request-fee-wait-blocks)
+			global_args+=("$1" "$2")
+			shift 2
+			;;
+		*)
+			execute_args+=("$1")
+			shift
+			;;
+		esac
+	done
+
 	# shellcheck disable=SC2086
-	capture_cmd bash -c "echo '${private_key}' | ${SAFE_BASE_CMD} safe execute --yes $*"
+	capture_cmd bash -c "echo '${private_key}' | ${SAFE_BASE_CMD} ${global_args[*]} safe execute ${execute_args[*]}"
 }
 
 safe_full_cycle() {
@@ -625,7 +655,7 @@ mock_admin_clear_pending() {
 
 wait_for_fee_decay() {
 	local contract_address=$1
-	local max_excess=12
+	local max_excess=${2:-12}
 	local waited=false
 
 	while true; do
