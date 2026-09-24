@@ -4,13 +4,16 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-import { MAX_NUMBER_OF_REQUESTS_PER_BLOCK } from '../../constants/application';
-import { SAFE_OPTION_REQUIRED_ERROR } from '../../constants/logging';
+import { GWEI_UNIT, MAX_NUMBER_OF_REQUESTS_PER_BLOCK } from '../../constants/application';
+import * as logging from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
 import {
   parseAndValidateMaxNumberOfRequestsPerBlock,
+  parseAndValidateMaxRequestFee,
+  parseAndValidateMaxRequestFeeWaitBlocks,
   parseAndValidateNodeUrl,
   parseAndValidateSafeAddress,
+  parseAndValidateTotalRequestCount,
   parseAndValidateValidatorPubKey,
   parseAndValidateValidatorPubKeys,
   parseAndValidateWithdrawAmount,
@@ -368,7 +371,7 @@ describe('CLI Validation', () => {
       const options = {} as GlobalCliOptions;
 
       expect(() => validateSafeAddress(options)).toThrow('process.exit');
-      expect(stderrSpy).toHaveBeenCalledWith(chalk.red(SAFE_OPTION_REQUIRED_ERROR));
+      expect(stderrSpy).toHaveBeenCalledWith(chalk.red(logging.SAFE_OPTION_REQUIRED_ERROR));
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });
@@ -392,6 +395,174 @@ describe('CLI Validation', () => {
       const result = parseAndValidateMaxNumberOfRequestsPerBlock('1');
 
       expect(result).toBe(1);
+    });
+
+    it('rejects zero requests per block', () => {
+      const stderrSpy = spyOn(console, 'error').mockImplementation(() => {});
+      const exitSpy = spyOn(process, 'exit').mockImplementation(() => {
+        throw new Error('process.exit');
+      });
+
+      expect(() => parseAndValidateMaxNumberOfRequestsPerBlock('0')).toThrow('process.exit');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+
+      stderrSpy.mockRestore();
+      exitSpy.mockRestore();
+    });
+  });
+
+  describe('parseAndValidateMaxRequestFee', () => {
+    let stderrSpy: ReturnType<typeof spyOn>;
+    let exitSpy: ReturnType<typeof spyOn>;
+
+    beforeEach(() => {
+      stderrSpy = spyOn(console, 'error').mockImplementation(() => {});
+      exitSpy = spyOn(process, 'exit').mockImplementation(() => {
+        throw new Error('process.exit');
+      });
+    });
+
+    afterEach(() => {
+      stderrSpy.mockRestore();
+      exitSpy.mockRestore();
+    });
+
+    it('returns wei for an explicit wei amount', () => {
+      const result = parseAndValidateMaxRequestFee('42wei');
+
+      expect(result).toBe(42n);
+    });
+
+    it('returns wei for an explicit gwei amount', () => {
+      const result = parseAndValidateMaxRequestFee('1.5gwei');
+
+      expect(result).toBe(1_500_000_000n);
+    });
+
+    it('returns wei for an explicit eth amount', () => {
+      const result = parseAndValidateMaxRequestFee('0.000000001eth');
+
+      expect(result).toBe(1_000_000_000n);
+    });
+
+    it('returns wei for an amount with whitespace and mixed-case unit', () => {
+      const result = parseAndValidateMaxRequestFee('2 GWEI');
+
+      expect(result).toBe(2_000_000_000n);
+    });
+
+    it('exits when the amount has no explicit unit', () => {
+      expect(() => parseAndValidateMaxRequestFee('1000')).toThrow('process.exit');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(
+        logging.INVALID_MAX_REQUEST_FEE_FORMAT_ERROR
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('exits when the amount is malformed', () => {
+      expect(() => parseAndValidateMaxRequestFee('-1wei')).toThrow('process.exit');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(
+        logging.INVALID_MAX_REQUEST_FEE_FORMAT_ERROR
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('exits when the amount is zero', () => {
+      expect(() => parseAndValidateMaxRequestFee('0wei')).toThrow('process.exit');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(
+        logging.MAX_REQUEST_FEE_TOO_LOW_ERROR
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('exits when the amount resolves below one wei', () => {
+      expect(() => parseAndValidateMaxRequestFee('0.0000000001gwei')).toThrow('process.exit');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(
+        logging.REQUEST_FEE_PRECISION_ERROR('0.0000000001', GWEI_UNIT)
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe('parseAndValidateMaxRequestFeeWaitBlocks', () => {
+    let stderrSpy: ReturnType<typeof spyOn>;
+    let exitSpy: ReturnType<typeof spyOn>;
+
+    beforeEach(() => {
+      stderrSpy = spyOn(console, 'error').mockImplementation(() => {});
+      exitSpy = spyOn(process, 'exit').mockImplementation(() => {
+        throw new Error('process.exit');
+      });
+    });
+
+    afterEach(() => {
+      stderrSpy.mockRestore();
+      exitSpy.mockRestore();
+    });
+
+    it('returns a bigint for a valid block count', () => {
+      const result = parseAndValidateMaxRequestFeeWaitBlocks('50');
+
+      expect(result).toBe(50n);
+    });
+
+    it('allows zero blocks for immediate timeout behavior', () => {
+      const result = parseAndValidateMaxRequestFeeWaitBlocks('0');
+
+      expect(result).toBe(0n);
+    });
+
+    it('exits when the block count is negative', () => {
+      expect(() => parseAndValidateMaxRequestFeeWaitBlocks('-1')).toThrow('process.exit');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(
+        logging.INVALID_MAX_REQUEST_FEE_WAIT_BLOCKS_ERROR
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe('parseAndValidateTotalRequestCount', () => {
+    let stderrSpy: ReturnType<typeof spyOn>;
+    let exitSpy: ReturnType<typeof spyOn>;
+
+    beforeEach(() => {
+      stderrSpy = spyOn(console, 'error').mockImplementation(() => {});
+      exitSpy = spyOn(process, 'exit').mockImplementation(() => {
+        throw new Error('process.exit');
+      });
+    });
+
+    afterEach(() => {
+      stderrSpy.mockRestore();
+      exitSpy.mockRestore();
+    });
+
+    it('returns a number for a valid count', () => {
+      const result = parseAndValidateTotalRequestCount('40');
+
+      expect(result).toBe(40);
+    });
+
+    it('returns a number for the minimum valid count', () => {
+      const result = parseAndValidateTotalRequestCount('1');
+
+      expect(result).toBe(1);
+    });
+
+    it('exits when the count is not a digit string', () => {
+      expect(() => parseAndValidateTotalRequestCount('abc')).toThrow('process.exit');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(
+        logging.INVALID_TOTAL_REQUEST_COUNT_ERROR
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('exits when the count is zero', () => {
+      expect(() => parseAndValidateTotalRequestCount('0')).toThrow('process.exit');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(
+        logging.INVALID_TOTAL_REQUEST_COUNT_ERROR
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });
 });
