@@ -1,6 +1,6 @@
 import type { JsonRpcProvider } from 'ethers';
 
-import type { Disposable } from '../../../model/ethereum';
+import type { Disposable, RequestFeeCapRuntime } from '../../../model/ethereum';
 import type { IBroadcastStrategy } from '../../../ports/broadcast-strategy.interface';
 import type { ISigner } from '../../../ports/signer.interface';
 import { BeaconService } from '../../infrastructure/beacon-service';
@@ -25,13 +25,15 @@ import { TransactionReplacer } from './transaction-replacer';
  * @param jsonRpcProvider - JSON-RPC provider for blockchain interaction
  * @param signer - Signer for transaction signing (wallet or Ledger)
  * @param beaconApiUrl - Beacon API URL for slot-aware broadcasting (required for Ledger)
+ * @param requestFeeCapRuntime - Optional request-fee cap runtime dependencies
  * @returns Pipeline ready to send execution layer requests and dispose resources
  */
 export async function createTransactionPipeline(
   systemContractAddress: string,
   jsonRpcProvider: JsonRpcProvider,
   signer: ISigner,
-  beaconApiUrl: string
+  beaconApiUrl: string,
+  requestFeeCapRuntime?: RequestFeeCapRuntime
 ): Promise<TransactionPipeline> {
   const ethereumStateService = new EthereumStateService(jsonRpcProvider, systemContractAddress);
   const logger = new TransactionProgressLogger();
@@ -42,7 +44,8 @@ export async function createTransactionPipeline(
     ethereumStateService,
     systemContractAddress,
     beaconApiUrl,
-    logger
+    logger,
+    requestFeeCapRuntime
   );
   disposables.push(broadcastStrategy);
 
@@ -61,7 +64,8 @@ export async function createTransactionPipeline(
     ethereumStateService,
     systemContractAddress,
     transactionMonitor,
-    logger
+    logger,
+    requestFeeCapRuntime
   );
 
   const orchestrator = new TransactionBatchOrchestrator(
@@ -69,7 +73,8 @@ export async function createTransactionPipeline(
     transactionBroadcaster,
     transactionMonitor,
     transactionReplacer,
-    logger
+    logger,
+    requestFeeCapRuntime
   );
 
   return new TransactionPipeline(orchestrator, disposables);
@@ -83,6 +88,7 @@ export async function createTransactionPipeline(
  * @param systemContractAddress - Target contract address (sequential only)
  * @param beaconApiUrl - Beacon API URL for slot timing (sequential only)
  * @param logger - Logger for transaction progress
+ * @param requestFeeCapRuntime - Optional request-fee cap runtime dependencies
  * @returns Configured broadcast strategy
  */
 async function createBroadcastStrategy(
@@ -90,7 +96,8 @@ async function createBroadcastStrategy(
   ethereumStateService: EthereumStateService,
   systemContractAddress: string,
   beaconApiUrl: string,
-  logger: TransactionProgressLogger
+  logger: TransactionProgressLogger,
+  requestFeeCapRuntime?: RequestFeeCapRuntime
 ): Promise<IBroadcastStrategy> {
   if (signer.capabilities.supportsParallelSigning) {
     return new ParallelBroadcastStrategy(logger);
@@ -101,6 +108,7 @@ async function createBroadcastStrategy(
     ethereumStateService,
     systemContractAddress,
     beaconService,
-    logger
+    logger,
+    requestFeeCapRuntime
   );
 }

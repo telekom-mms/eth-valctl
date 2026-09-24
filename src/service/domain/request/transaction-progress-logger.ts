@@ -131,6 +131,25 @@ export class TransactionProgressLogger {
   }
 
   /**
+   * Log requests left unconfirmed or unsent after a request-fee cap stop
+   *
+   * @param unknownStatusPubkeys - Pubkeys whose request may already have been broadcast
+   * @param notSentPubkeys - Pubkeys whose request was never broadcast
+   */
+  logAbortedRequests(unknownStatusPubkeys: string[], notSentPubkeys: string[]): void {
+    if (unknownStatusPubkeys.length > 0) {
+      console.log('');
+      console.log(chalk.yellow(logging.ABORTED_UNKNOWN_STATUS_VALIDATORS_HEADER));
+      console.log(chalk.white(unknownStatusPubkeys.join(' ')));
+    }
+    if (notSentPubkeys.length > 0) {
+      console.log('');
+      console.log(chalk.blue(logging.ABORTED_NOT_SENT_VALIDATORS_HEADER));
+      console.log(chalk.white(notSentPubkeys.join(' ')));
+    }
+  }
+
+  /**
    * Log warning when batches are skipped due to insufficient funds
    *
    * @param skippedCount - Number of batches being skipped

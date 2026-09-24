@@ -10,9 +10,11 @@ import {
 import type {
   MaxNetworkFees,
   PendingTransactionInfo,
+  RequestFeeCapCheckContext,
+  RequestFeeCapPolicy,
   TransactionStatus
 } from '../../../model/ethereum';
-import { TransactionStatusType } from '../../../model/ethereum';
+import { RequestFeeCapExceededError, TransactionStatusType } from '../../../model/ethereum';
 import type { ISigner } from '../signer';
 import type { EthereumStateService } from './ethereum-state-service';
 import type { TransactionMonitor } from './transaction-monitor';
@@ -49,10 +51,12 @@ const createMockSigner = (overrides?: {
 };
 
 const createMockBlockchainStateService = (
-  maxNetworkFees: MaxNetworkFees = { maxFeePerGas: 1000n, maxPriorityFeePerGas: 100n }
+  maxNetworkFees: MaxNetworkFees = { maxFeePerGas: 1000n, maxPriorityFeePerGas: 100n },
+  contractFee = 1n
 ): EthereumStateService => {
   return {
-    getMaxNetworkFees: mock(() => Promise.resolve(maxNetworkFees))
+    getMaxNetworkFees: mock(() => Promise.resolve(maxNetworkFees)),
+    fetchContractFee: mock(() => Promise.resolve(contractFee))
   } as unknown as EthereumStateService;
 };
 
@@ -135,7 +139,7 @@ describe('TransactionReplacer', () => {
         const tx1 = createMockPendingTransaction(1, '0xhash1');
         const tx2 = createMockPendingTransaction(2, '0xhash2');
 
-        await replacer.replaceTransactions([tx1, tx2], 1n, 101);
+        await replacer.replaceTransactions([tx1, tx2], 101);
 
         expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
           expect.objectContaining({ successful: 2 })
@@ -162,7 +166,7 @@ describe('TransactionReplacer', () => {
 
         const tx1 = createMockPendingTransaction(1, '0xhash1');
 
-        await replacer.replaceTransactions([tx1], 1n, 101);
+        await replacer.replaceTransactions([tx1], 101);
 
         expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
           expect.objectContaining({ underpriced: 1 })
@@ -187,7 +191,7 @@ describe('TransactionReplacer', () => {
 
         const tx1 = createMockPendingTransaction(1, '0xhash1');
 
-        await replacer.replaceTransactions([tx1], 1n, 101);
+        await replacer.replaceTransactions([tx1], 101);
 
         expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
           expect.objectContaining({ failed: 1 })
@@ -212,7 +216,7 @@ describe('TransactionReplacer', () => {
 
         const tx1 = createMockPendingTransaction(1, '0xhash1');
 
-        await replacer.replaceTransactions([tx1], 1n, 101);
+        await replacer.replaceTransactions([tx1], 101);
 
         expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
           expect.objectContaining({ alreadyMined: 1 })
@@ -241,7 +245,7 @@ describe('TransactionReplacer', () => {
 
         const tx = createMockPendingTransaction(1, '0xhash1', 1000n, 100n);
 
-        await replacer.replaceTransactions([tx], 1n, 101);
+        await replacer.replaceTransactions([tx], 101);
 
         expect(mockSendTransactionWithNonce).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -273,7 +277,7 @@ describe('TransactionReplacer', () => {
 
         const tx = createMockPendingTransaction(1, '0xhash1', 0n, 0n);
 
-        await replacer.replaceTransactions([tx], 1n, 101);
+        await replacer.replaceTransactions([tx], 101);
 
         expect(mockSendTransactionWithNonce).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -305,7 +309,7 @@ describe('TransactionReplacer', () => {
 
         const tx = createMockPendingTransaction(1, '0xhash1', 1000n, 100n);
 
-        await replacer.replaceTransactions([tx], 1n, 101);
+        await replacer.replaceTransactions([tx], 101);
 
         expect(mockSendTransactionWithNonce).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -339,7 +343,7 @@ describe('TransactionReplacer', () => {
 
         const tx = createMockPendingTransaction(1, '0xhash1');
 
-        await replacer.replaceTransactions([tx], 1n, 101);
+        await replacer.replaceTransactions([tx], 101);
 
         expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
           expect.objectContaining({ failed: 1 })
@@ -365,7 +369,7 @@ describe('TransactionReplacer', () => {
 
         const tx = createMockPendingTransaction(1, '0xhash1');
 
-        const result = await replacer.replaceTransactions([tx], 1n, 101);
+        const result = await replacer.replaceTransactions([tx], 101);
 
         expect(mockLogger.logNonceConsumed).toHaveBeenCalledWith(1);
         expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
@@ -394,7 +398,7 @@ describe('TransactionReplacer', () => {
 
         const tx = createMockPendingTransaction(1, '0xhash1');
 
-        const result = await replacer.replaceTransactions([tx], 1n, 101);
+        const result = await replacer.replaceTransactions([tx], 101);
 
         expect(result.pendingTransactions).toHaveLength(0);
         expect(mockLogger.logProgress).not.toHaveBeenCalled();
@@ -427,7 +431,7 @@ describe('TransactionReplacer', () => {
         const tx2 = createMockPendingTransaction(2, '0xhash2');
         const tx3 = createMockPendingTransaction(3, '0xhash3');
 
-        const result = await replacer.replaceTransactions([tx1, tx2, tx3], 1n, 101);
+        const result = await replacer.replaceTransactions([tx1, tx2, tx3], 101);
 
         expect(result.pendingTransactions).toHaveLength(0);
         expect(mockLogger.logProgress).not.toHaveBeenCalled();
@@ -451,7 +455,7 @@ describe('TransactionReplacer', () => {
 
         const tx = createMockPendingTransaction(1, '0xhash1');
 
-        const result = await replacer.replaceTransactions([tx], 1n, 101);
+        const result = await replacer.replaceTransactions([tx], 101);
 
         expect(result.pendingTransactions).toHaveLength(0);
         expect(mockLogger.logNonceConsumed).toHaveBeenCalledWith(1);
@@ -484,7 +488,7 @@ describe('TransactionReplacer', () => {
 
         const tx = createMockPendingTransaction(1, '0xhash1');
 
-        await replacer.replaceTransactions([tx], 1n, 101);
+        await replacer.replaceTransactions([tx], 101);
 
         expect(mockSendTransaction).toHaveBeenCalled();
       });
@@ -510,7 +514,7 @@ describe('TransactionReplacer', () => {
 
         const tx = createMockPendingTransaction(1, '0xhash1');
 
-        await replacer.replaceTransactions([tx], 1n, 101);
+        await replacer.replaceTransactions([tx], 101);
 
         expect(mockSendTransactionWithNonce).toHaveBeenCalledWith(expect.anything(), 1, undefined);
       });
@@ -539,7 +543,7 @@ describe('TransactionReplacer', () => {
 
         const tx = createMockPendingTransaction(1, '0xhash1');
 
-        const result = await replacer.replaceTransactions([tx], 1n, 101);
+        const result = await replacer.replaceTransactions([tx], 101);
 
         expect(result.pendingTransactions).toHaveLength(1);
         expect(mockSendTransactionWithNonce).toHaveBeenCalled();
@@ -566,7 +570,7 @@ describe('TransactionReplacer', () => {
         const tx1 = createMockPendingTransaction(1, '0xhash1');
         const tx2 = createMockPendingTransaction(2, '0xhash2');
 
-        const result = await replacer.replaceTransactions([tx1, tx2], 1n, 101);
+        const result = await replacer.replaceTransactions([tx1, tx2], 101);
 
         expect(result.pendingTransactions).toHaveLength(1);
         expect(result.pendingTransactions[0]!.nonce).toBe(1);
@@ -589,13 +593,174 @@ describe('TransactionReplacer', () => {
 
         const tx = createMockPendingTransaction(1, '0xhash1');
 
-        const result = await replacer.replaceTransactions([tx], 1n, 101);
+        const result = await replacer.replaceTransactions([tx], 101);
 
         expect(result.pendingTransactions).toHaveLength(0);
       });
     });
 
     describe('sequential Ledger pre-check', () => {
+      it('fetches a fresh request fee before each Ledger replacement signing', async () => {
+        const tx1 = createMockPendingTransaction(1, '0xhash1');
+        const tx2 = createMockPendingTransaction(2, '0xhash2');
+        const statusMap = new Map<string, TransactionStatus>([
+          ['0xhash1', { type: TransactionStatusType.PENDING }],
+          ['0xhash2', { type: TransactionStatusType.PENDING }]
+        ]);
+        const mockSendTransactionWithNonce = mock((transaction: { value: bigint }) =>
+          Promise.resolve({
+            hash: `0xnewhash${transaction.value}`,
+            nonce: Number(transaction.value)
+          } as TransactionResponse)
+        );
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mockSendTransactionWithNonce
+        });
+        (mockSigner as { capabilities: { supportsParallelSigning: boolean } }).capabilities = {
+          supportsParallelSigning: false
+        };
+
+        const requestFees = [11n, 22n];
+        const fetchContractFee = mock(() => Promise.resolve(requestFees.shift()!));
+        const mockBlockchainStateService = {
+          getMaxNetworkFees: mock(() =>
+            Promise.resolve({ maxFeePerGas: 1000n, maxPriorityFeePerGas: 100n })
+          ),
+          fetchContractFee
+        } as unknown as EthereumStateService;
+
+        const replacer = new TransactionReplacer(
+          mockSigner,
+          mockBlockchainStateService,
+          '0xcontract',
+          createMockTransactionMonitor(statusMap),
+          createMockLogger()
+        );
+
+        await replacer.replaceTransactions([tx1, tx2], 101);
+
+        expect(fetchContractFee).toHaveBeenCalledTimes(2);
+        expect(mockSendTransactionWithNonce.mock.calls[0]![0]).toEqual(
+          expect.objectContaining({ value: 11n })
+        );
+        expect(mockSendTransactionWithNonce.mock.calls[1]![0]).toEqual(
+          expect.objectContaining({ value: 22n })
+        );
+      });
+
+      it('resolves a cap-checked request fee before each Ledger replacement signing', async () => {
+        const tx1 = createMockPendingTransaction(1, '0xhash1');
+        const tx2 = createMockPendingTransaction(2, '0xhash2');
+        const statusMap = new Map<string, TransactionStatus>([
+          ['0xhash1', { type: TransactionStatusType.PENDING }],
+          ['0xhash2', { type: TransactionStatusType.PENDING }]
+        ]);
+        const mockSendTransactionWithNonce = mock((transaction: { value: bigint }) =>
+          Promise.resolve({
+            hash: `0xnewhash${transaction.value}`,
+            nonce: Number(transaction.value)
+          } as TransactionResponse)
+        );
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mockSendTransactionWithNonce
+        });
+        (mockSigner as { capabilities: { supportsParallelSigning: boolean } }).capabilities = {
+          supportsParallelSigning: false
+        };
+        const fetchContractFee = mock(() => Promise.reject(new Error('unexpected raw fee read')));
+        const mockBlockchainStateService = {
+          getMaxNetworkFees: mock(() =>
+            Promise.resolve({ maxFeePerGas: 1000n, maxPriorityFeePerGas: 100n })
+          ),
+          fetchContractFee
+        } as unknown as EthereumStateService;
+        const approvedFees = [11n, 22n];
+        const policy: RequestFeeCapPolicy = {
+          maxRequestFee: 10n,
+          maxWaitBlocks: 50n,
+          skipConfirmation: true
+        };
+        const resolveRequestFee = mock(
+          (_policy: RequestFeeCapPolicy, _context: RequestFeeCapCheckContext) =>
+            Promise.resolve(approvedFees.shift()!)
+        );
+
+        const replacer = new TransactionReplacer(
+          mockSigner,
+          mockBlockchainStateService,
+          '0xcontract',
+          createMockTransactionMonitor(statusMap),
+          createMockLogger(),
+          {
+            policy,
+            resolver: { resolveRequestFee }
+          }
+        );
+
+        await replacer.replaceTransactions([tx1, tx2], 101);
+
+        expect(fetchContractFee).not.toHaveBeenCalled();
+        expect(resolveRequestFee).toHaveBeenCalledTimes(2);
+        expect(resolveRequestFee.mock.calls[0]?.[0]).toBe(policy);
+        expect(resolveRequestFee.mock.calls[0]?.[1]).toEqual({
+          operation: 'replacement',
+          requestCount: 1
+        });
+        expect(resolveRequestFee.mock.calls[1]?.[0]).toBe(policy);
+        expect(resolveRequestFee.mock.calls[1]?.[1]).toEqual({
+          operation: 'replacement',
+          requestCount: 1
+        });
+        expect(mockSendTransactionWithNonce.mock.calls[0]![0]).toEqual(
+          expect.objectContaining({ value: 11n })
+        );
+        expect(mockSendTransactionWithNonce.mock.calls[1]![0]).toEqual(
+          expect.objectContaining({ value: 22n })
+        );
+      });
+
+      it('aborts the whole Ledger replacement when the cap resolver rejects', async () => {
+        const tx = createMockPendingTransaction(1, '0xhash1');
+        const statusMap = new Map<string, TransactionStatus>([
+          ['0xhash1', { type: TransactionStatusType.PENDING }]
+        ]);
+        const mockSendTransactionWithNonce = mock(() =>
+          Promise.resolve({ hash: '0xnewhash', nonce: 1 } as TransactionResponse)
+        );
+        const mockSigner = createMockSigner({
+          sendTransactionWithNonce: mockSendTransactionWithNonce
+        });
+        (mockSigner as { capabilities: { supportsParallelSigning: boolean } }).capabilities = {
+          supportsParallelSigning: false
+        };
+        const policy: RequestFeeCapPolicy = {
+          maxRequestFee: 10n,
+          maxWaitBlocks: 50n,
+          skipConfirmation: true
+        };
+        const resolveRequestFee = mock(
+          (_policy: RequestFeeCapPolicy, _context: RequestFeeCapCheckContext) =>
+            Promise.reject(new RequestFeeCapExceededError('cap exceeded'))
+        );
+
+        const replacer = new TransactionReplacer(
+          mockSigner,
+          createMockBlockchainStateService(),
+          '0xcontract',
+          createMockTransactionMonitor(statusMap),
+          createMockLogger(),
+          {
+            policy,
+            resolver: { resolveRequestFee }
+          }
+        );
+
+        await expect(replacer.replaceTransactions([tx], 101)).rejects.toThrow(
+          RequestFeeCapExceededError
+        );
+        expect(mockSendTransactionWithNonce).not.toHaveBeenCalled();
+      });
+
       it('skips Ledger prompt when transaction mined before sequential replacement', async () => {
         const tx1 = createMockPendingTransaction(1, '0xhash1');
         const tx2 = createMockPendingTransaction(2, '0xhash2');
@@ -641,7 +806,7 @@ describe('TransactionReplacer', () => {
           mockLogger
         );
 
-        await replacer.replaceTransactions([tx1, tx2], 1n, 101);
+        await replacer.replaceTransactions([tx1, tx2], 101);
 
         expect(mockSendTransactionWithNonce).toHaveBeenCalledTimes(1);
         expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
@@ -693,7 +858,7 @@ describe('TransactionReplacer', () => {
           mockLogger
         );
 
-        await replacer.replaceTransactions([tx1, tx2], 1n, 101);
+        await replacer.replaceTransactions([tx1, tx2], 101);
 
         expect(mockSendTransactionWithNonce).toHaveBeenCalledTimes(1);
         expect(mockLogger.logNonceConsumed).toHaveBeenCalledWith(1);
@@ -733,7 +898,7 @@ describe('TransactionReplacer', () => {
           createMockLogger()
         );
 
-        await replacer.replaceTransactions([tx1], 1n, 101);
+        await replacer.replaceTransactions([tx1], 101);
 
         expect(mockSendTransactionWithNonce).toHaveBeenCalledTimes(1);
       });
@@ -758,7 +923,7 @@ describe('TransactionReplacer', () => {
 
         const tx = createMockPendingTransaction(1, '0xhash1');
 
-        await replacer.replaceTransactions([tx], 1n, 101);
+        await replacer.replaceTransactions([tx], 101);
 
         expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
           expect.objectContaining({ userRejected: 1 })
@@ -782,7 +947,7 @@ describe('TransactionReplacer', () => {
 
         const tx = createMockPendingTransaction(1, '0xhash1');
 
-        const result = await replacer.replaceTransactions([tx], 1n, 101);
+        const result = await replacer.replaceTransactions([tx], 101);
 
         expect(result.pendingTransactions).toHaveLength(0);
       });
@@ -804,7 +969,7 @@ describe('TransactionReplacer', () => {
 
         const tx = createMockPendingTransaction(1, '0xhash1');
 
-        const result = await replacer.replaceTransactions([tx], 1n, 101);
+        const result = await replacer.replaceTransactions([tx], 101);
 
         expect(result.rejectedValidatorPubkeys).toHaveLength(1);
       });
@@ -830,7 +995,7 @@ describe('TransactionReplacer', () => {
 
         const tx = createMockPendingTransaction(1, '0xhash1');
 
-        const result = await replacer.replaceTransactions([tx], 1n, 101);
+        const result = await replacer.replaceTransactions([tx], 101);
 
         expect(mockLogger.logReplacementSummary).toHaveBeenCalledWith(
           expect.objectContaining({ userRejected: 1 })

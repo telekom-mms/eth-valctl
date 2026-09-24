@@ -1,12 +1,20 @@
 import chalk from 'chalk';
+import type { JsonRpcProvider } from 'ethers';
 
-import { DEFAULT_SAFE_FEE_TIP, OWNER_LABEL_SAFE } from '../../constants/application';
+import * as application from '../../constants/application';
 import { SAFE_FEE_TIP_INFO } from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
-import type { NetworkConfig } from '../../model/ethereum';
+import type {
+  NetworkConfig,
+  RequestFeeCapCheckContext,
+  RequestFeeCapPolicy,
+  RequestFeeCapRuntime
+} from '../../model/ethereum';
 import { networkConfig } from '../../network-config';
 import { createEthereumConnection } from './ethereum';
 import { EthereumStateService } from './request/ethereum-state-service';
+import { RequestFeeCapService } from './request/request-fee-cap-service';
+import { createRequestFeeCapPolicy } from './request/request-fee-policy';
 import { sendExecutionLayerRequests } from './request/send-request';
 import { initializeSafe } from './safe/safe-init';
 import { proposeSafeTransactions } from './safe/safe-propose-service';
@@ -89,8 +97,27 @@ async function executeDirectPipeline(
   const signerType = globalOptions.ledger ? 'ledger' : 'wallet';
   const ethereumConnection = await createEthereumConnection(globalOptions.jsonRpcUrl, signerType);
 
-  if (validate) {
-    await validate(ethereumConnection.signer.address);
+  let requestFeeCapRuntime: RequestFeeCapRuntime | undefined;
+  try {
+    if (validate) {
+      await validate(ethereumConnection.signer.address);
+    }
+
+    const requestFeeCapPolicy = createRequestFeeCapPolicy(globalOptions);
+    requestFeeCapRuntime = requestFeeCapPolicy
+      ? await createRequestFeeCapRuntime(
+          ethereumConnection.provider,
+          contractAddress,
+          requestFeeCapPolicy,
+          {
+            operation: application.FEE_CAP_OPERATION_BATCH,
+            requestCount: Math.min(requestData.length, globalOptions.maxRequestsPerBlock)
+          }
+        )
+      : undefined;
+  } catch (error) {
+    await ethereumConnection.signer.dispose();
+    throw error;
   }
 
   await sendExecutionLayerRequests(
@@ -99,7 +126,8 @@ async function executeDirectPipeline(
     ethereumConnection.signer,
     requestData,
     globalOptions.maxRequestsPerBlock,
-    globalOptions.beaconApiUrl
+    globalOptions.beaconApiUrl,
+    requestFeeCapRuntime
   );
 }
 
@@ -130,12 +158,18 @@ async function executeSafePipeline(
 
   try {
     if (validate) {
-      await validate(safeAddress, OWNER_LABEL_SAFE);
+      await validate(safeAddress, application.OWNER_LABEL_SAFE);
     }
 
     const stateService = new EthereumStateService(safeInitResult.provider, contractAddress);
-    const contractFee = await stateService.fetchContractFee();
-    const safeFeeTip = BigInt(globalOptions.safeFeeTip ?? String(DEFAULT_SAFE_FEE_TIP));
+    const requestFeeCapPolicy = createRequestFeeCapPolicy(globalOptions);
+    const contractFee = requestFeeCapPolicy
+      ? await new RequestFeeCapService(stateService).resolveRequestFee(requestFeeCapPolicy, {
+          operation: application.FEE_CAP_OPERATION_SAFE_PROPOSAL,
+          requestCount: requestData.length
+        })
+      : await stateService.fetchContractFee();
+    const safeFeeTip = BigInt(globalOptions.safeFeeTip ?? String(application.DEFAULT_SAFE_FEE_TIP));
     const proposalFee = contractFee + safeFeeTip;
 
     if (safeFeeTip > 0n) {
@@ -157,4 +191,26 @@ async function executeSafePipeline(
   } finally {
     await safeInitResult.dispose();
   }
+}
+
+/**
+ * Create request-fee cap runtime and pre-approve the first operation boundary.
+ *
+ * @param provider - JSON-RPC provider for request fee reads
+ * @param contractAddress - System contract address
+ * @param policy - Request-fee cap policy
+ * @param context - Initial operation boundary to approve
+ * @returns Request-fee cap runtime shared by the direct request pipeline
+ */
+async function createRequestFeeCapRuntime(
+  provider: JsonRpcProvider,
+  contractAddress: string,
+  policy: RequestFeeCapPolicy,
+  context: RequestFeeCapCheckContext
+): Promise<RequestFeeCapRuntime> {
+  const stateService = new EthereumStateService(provider, contractAddress);
+  const resolver = new RequestFeeCapService(stateService);
+  const initialApprovedRequestFee = await resolver.resolveRequestFee(policy, context);
+
+  return { policy, resolver, initialApprovedRequestFee };
 }
