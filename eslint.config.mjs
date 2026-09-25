@@ -2,7 +2,7 @@ import { FlatCompat } from '@eslint/eslintrc';
 import js from '@eslint/js';
 import typescriptEslint from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
-import simpleImport from 'eslint-plugin-import';
+import importX from 'eslint-plugin-import-x';
 import prettier from 'eslint-plugin-prettier';
 import simpleImportSort from 'eslint-plugin-simple-import-sort';
 import tsdoc from 'eslint-plugin-tsdoc';
@@ -25,7 +25,7 @@ export default [
       '@typescript-eslint': typescriptEslint,
       prettier,
       'simple-import-sort': simpleImportSort,
-      import: simpleImport,
+      import: importX,
       'eslint-plugin-tsdoc': tsdoc
     },
 

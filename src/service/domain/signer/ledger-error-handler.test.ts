@@ -179,3 +179,34 @@ describe('isFatalLedgerError', () => {
     expect(isFatalLedgerError(error)).toBe(true);
   });
 });
+
+describe('Ledger errors from another package copy', () => {
+  it('recognizes a user rejection without relying on constructor identity', () => {
+    const error = Object.assign(new Error('refused'), { name: 'UserRefusedOnDevice' });
+
+    expect(classifyLedgerError(error).type).toBe('USER_REJECTED');
+    expect(isLedgerError(error)).toBe(true);
+    expect(isUserRejectedError(error)).toBe(true);
+  });
+
+  it('recognizes a transport status with a numeric code', () => {
+    const error = Object.assign(new Error('app closed'), {
+      name: 'TransportStatusError',
+      statusCode: 0x6d02
+    });
+
+    expect(classifyLedgerError(error).type).toBe('ETH_APP_NOT_OPEN');
+    expect(isLedgerError(error)).toBe(true);
+  });
+
+  it('does not accept a transport status without a numeric code', () => {
+    const error = Object.assign(new Error('malformed'), {
+      name: 'TransportStatusError',
+      statusCode: '0x6985'
+    });
+
+    expect(classifyLedgerError(error).type).toBe('UNKNOWN');
+    expect(isLedgerError(error)).toBe(false);
+    expect(isUserRejectedError(error)).toBe(false);
+  });
+});

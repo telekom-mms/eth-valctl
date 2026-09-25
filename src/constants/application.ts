@@ -106,6 +106,14 @@ export const LEDGER_CONNECTION_TIMEOUT_MS = 5000;
 export const LEDGER_ADDRESSES_PER_PAGE = 5;
 export const LEDGER_NAV_VALUE_NEXT = 'next';
 export const LEDGER_NAV_VALUE_PREV = 'prev';
+export const LEDGER_ERROR_NAMES = {
+  LOCKED_DEVICE: 'LockedDeviceError',
+  DISCONNECTED: 'DisconnectedDevice',
+  DISCONNECTED_DURING_OPERATION: 'DisconnectedDeviceDuringOperation',
+  USER_REFUSED: 'UserRefusedOnDevice',
+  TRANSPORT_STATUS: 'TransportStatusError',
+  BLIND_SIGNING: 'EthAppPleaseEnableContractData'
+} as const;
 
 /** Error codes */
 export const REPLACEMENT_UNDERPRICED_ERROR_CODE = 'REPLACEMENT_UNDERPRICED';
