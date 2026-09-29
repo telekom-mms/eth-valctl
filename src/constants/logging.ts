@@ -444,9 +444,8 @@ export const LEDGER_ETH_APP_NOT_OPEN_ERROR =
   'Ethereum app is not open on the Ledger device. Please open the Ethereum app and try again.';
 export const LEDGER_USER_REJECTED_ERROR = 'Transaction was rejected on the Ledger device.';
 export const LEDGER_BLIND_SIGNING_REQUIRED_ERROR =
-  'Transaction requires blind signing which is not enabled on your Ledger device. ' +
-  'Either enable "Blind signing" in the Ethereum app settings on your Ledger, ' +
-  'or upgrade to the latest firmware which natively displays transaction details without requiring blind signing.';
+  'Ledger device rejected the transaction data. The Ethereum app cannot clear-sign this request. ' +
+  'Enable both "Blind signing" and "Debug contracts" in the Ethereum app settings on your Ledger and try again.';
 export const LEDGER_UNKNOWN_ERROR = (code: number): string =>
   `Unknown Ledger error (0x${code.toString(16)}). Please ensure the Ethereum app is open and try again.`;
 export const LEDGER_CONNECTION_TIMEOUT_ERROR =
