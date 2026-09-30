@@ -47,7 +47,7 @@ interface ExecutionFeePromptConfig {
  * - All SUFFICIENT: prints success, returns 'proceed'
  * - Has STALE: prints warnings with block estimates, prompts Wait/Reject. Wait
  *   returns 'proceed' so the per-transaction fee check in the execution loop
- *   performs the actual polling bounded by `--max-fee-wait-blocks`.
+ *   performs the actual polling bounded by global `--max-request-fee-wait-blocks`.
  * - Has UNVALIDATED: prints warning, prompts Execute anyway/Abort
  * - OVERPAID info is printed in all scenarios but does not block execution
  *
@@ -122,7 +122,7 @@ function printValidationDetails(validations: TransactionFeeValidation[], total: 
  * Prints an informational summary of stale fees and either proposes rejection
  * transactions (when `--stale-fee-action reject` is set) or returns 'proceed'
  * so the per-transaction fee check during execution performs bounded polling
- * via `--max-fee-wait-blocks`. All interactive Wait/Abort decisions happen
+ * via `--max-request-fee-wait-blocks`. All interactive Wait/Abort decisions happen
  * per-transaction in `handleStaleFeeBeforeExecution`.
  *
  * @param config - Fee prompt configuration

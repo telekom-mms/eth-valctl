@@ -1,6 +1,8 @@
+import { FEE_CAP_OPERATION_BATCH } from '../../../../constants/application';
 import type {
   BroadcastResult,
   ExecutionLayerRequestTransaction,
+  RequestFeeCapRuntime,
   SigningContext
 } from '../../../../model/ethereum';
 import type { IBroadcastStrategy } from '../../../../ports/broadcast-strategy.interface';
@@ -8,6 +10,7 @@ import type { ISlotTimingService } from '../../../../ports/slot-timing.interface
 import { isInsufficientFundsError } from '../../error-utils';
 import { isFatalLedgerError, type ISigner, isUserRejectedError } from '../../signer';
 import type { EthereumStateService } from '../ethereum-state-service';
+import { isRequestFeePolicyStopError, resolveRequestFee } from '../request-fee-policy';
 import type { TransactionProgressLogger } from '../transaction-progress-logger';
 import {
   createElTransaction,
@@ -35,12 +38,14 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
    * @param systemContractAddress - Target system contract address
    * @param slotTimingService - Service for slot-aware timing
    * @param logger - Logger for transaction progress
+   * @param requestFeeCapRuntime - Optional request-fee cap runtime dependencies
    */
   constructor(
     private readonly blockchainStateService: EthereumStateService,
     private readonly systemContractAddress: string,
     private readonly slotTimingService: ISlotTimingService,
-    private readonly logger: TransactionProgressLogger
+    private readonly logger: TransactionProgressLogger,
+    private readonly requestFeeCapRuntime?: RequestFeeCapRuntime
   ) {}
 
   /**
@@ -84,7 +89,11 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
 
       try {
         await this.slotTimingService.waitForOptimalBroadcastWindow();
-        const freshContractFee = await this.blockchainStateService.fetchContractFee();
+        const freshContractFee = await resolveRequestFee(
+          this.requestFeeCapRuntime,
+          this.blockchainStateService,
+          { operation: FEE_CAP_OPERATION_BATCH, requestCount: 1 }
+        );
         const freshTransaction = createElTransaction(
           this.systemContractAddress,
           requestData,
@@ -101,6 +110,10 @@ export class SequentialBroadcastStrategy implements IBroadcastStrategy {
           )
         );
       } catch (error) {
+        if (isRequestFeePolicyStopError(error)) {
+          throw error;
+        }
+
         if (isUserRejectedError(error)) {
           results.push(createRejectedBroadcastResult(requestData));
           continue;

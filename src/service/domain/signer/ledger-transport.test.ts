@@ -1,15 +1,11 @@
 import type Transport from '@ledgerhq/hw-transport';
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import TransportNodeHid from '@ledgerhq/hw-transport-node-hid';
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 
 import { LEDGER_CONNECTION_TIMEOUT_MS } from '../../../constants/application';
+import { connectWithTimeout } from './ledger-transport';
 
 const mockCreate = mock(() => Promise.resolve({} as Transport));
-
-mock.module('@ledgerhq/hw-transport-node-hid', () => ({
-  default: { create: mockCreate }
-}));
-
-const { connectWithTimeout } = await import('./ledger-transport');
 
 /**
  * Build a minimal transport test double.
@@ -33,10 +29,12 @@ function waitMilliseconds(ms: number): Promise<void> {
 describe('connectWithTimeout', () => {
   beforeEach(() => {
     mockCreate.mockReset();
+    spyOn(TransportNodeHid, 'create').mockImplementation(mockCreate as never);
   });
 
   afterEach(() => {
     mockCreate.mockReset();
+    mock.restore();
   });
 
   describe('happy path', () => {

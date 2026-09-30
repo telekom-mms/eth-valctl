@@ -1,11 +1,4 @@
-import {
-  DisconnectedDevice,
-  DisconnectedDeviceDuringOperation,
-  LockedDeviceError,
-  TransportStatusError,
-  UserRefusedOnDevice
-} from '@ledgerhq/errors';
-
+import { LEDGER_ERROR_NAMES } from '../../../constants/application';
 import * as logging from '../../../constants/logging';
 
 const CONNECTION_TIMEOUT_MESSAGE = 'Connection timeout';
@@ -111,13 +104,38 @@ function isConnectionTimeout(error: unknown): boolean {
 }
 
 /**
+ * Match Ledger errors across different installed versions of the errors package.
+ *
+ * @param error - Error to check
+ * @param name - Ledger error name
+ * @returns True when the error has the requested name
+ */
+function hasErrorName(error: unknown, name: string): error is Error {
+  return error instanceof Error && error.name === name;
+}
+
+/**
  * Check if error is a Ledger blind signing requirement
  *
  * @param error - Error to check
  * @returns True if the error indicates blind signing is not enabled
  */
 function isBlindSigningError(error: unknown): boolean {
-  return error instanceof Error && error.name === 'EthAppPleaseEnableContractData';
+  return hasErrorName(error, LEDGER_ERROR_NAMES.BLIND_SIGNING);
+}
+
+/**
+ * Check that a transport status error has the numeric APDU code needed for classification.
+ *
+ * @param error - Error to check
+ * @returns True when the error has a transport status code
+ */
+function isTransportStatusError(error: unknown): error is Error & { statusCode: number } {
+  return (
+    hasErrorName(error, LEDGER_ERROR_NAMES.TRANSPORT_STATUS) &&
+    'statusCode' in error &&
+    typeof error.statusCode === 'number'
+  );
 }
 
 /**
@@ -135,22 +153,22 @@ export function classifyLedgerError(
     return CONNECTION_TIMEOUT_INFO;
   }
 
-  if (error instanceof LockedDeviceError) {
+  if (hasErrorName(error, LEDGER_ERROR_NAMES.LOCKED_DEVICE)) {
     return LOCKED_DEVICE_INFO;
   }
 
-  if (error instanceof DisconnectedDeviceDuringOperation) {
+  if (hasErrorName(error, LEDGER_ERROR_NAMES.DISCONNECTED_DURING_OPERATION)) {
     return DISCONNECTED_DURING_OPERATION_INFO;
   }
 
-  if (error instanceof DisconnectedDevice) {
+  if (hasErrorName(error, LEDGER_ERROR_NAMES.DISCONNECTED)) {
     if (options?.duringSigning) {
       return DISCONNECTED_DURING_OPERATION_INFO;
     }
     return DISCONNECTED_INFO;
   }
 
-  if (error instanceof UserRefusedOnDevice) {
+  if (hasErrorName(error, LEDGER_ERROR_NAMES.USER_REFUSED)) {
     return USER_REJECTED_INFO;
   }
 
@@ -158,8 +176,8 @@ export function classifyLedgerError(
     return BLIND_SIGNING_REQUIRED_INFO;
   }
 
-  if (error instanceof TransportStatusError) {
-    return classifyTransportStatusError(error);
+  if (isTransportStatusError(error)) {
+    return classifyTransportStatusError(error.statusCode);
   }
 
   return UNKNOWN_ERROR_INFO;
@@ -175,12 +193,10 @@ export function classifyLedgerError(
  * Note: 0x6a80 is remapped upstream by `@ledgerhq/hw-app-eth` to
  * `EthAppPleaseEnableContractData` and handled in `classifyLedgerError()` directly.
  *
- * @param error - TransportStatusError with status code
+ * @param code - APDU status code
  * @returns Classified error info with type and message
  */
-function classifyTransportStatusError(error: TransportStatusError): LedgerErrorInfo {
-  const code = error.statusCode;
-
+function classifyTransportStatusError(code: number): LedgerErrorInfo {
   if (code === APDU_USER_REJECTED) {
     return USER_REJECTED_INFO;
   }
@@ -209,15 +225,7 @@ function classifyTransportStatusError(error: TransportStatusError): LedgerErrorI
  * @returns True if the error is a known Ledger error (already logged at source)
  */
 export function isLedgerError(error: unknown): boolean {
-  return (
-    isConnectionTimeout(error) ||
-    isBlindSigningError(error) ||
-    error instanceof LockedDeviceError ||
-    error instanceof DisconnectedDevice ||
-    error instanceof DisconnectedDeviceDuringOperation ||
-    error instanceof UserRefusedOnDevice ||
-    error instanceof TransportStatusError
-  );
+  return classifyLedgerError(error).type !== 'UNKNOWN' || isTransportStatusError(error);
 }
 
 /**

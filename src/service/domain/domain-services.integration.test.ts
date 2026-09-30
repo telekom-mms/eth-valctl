@@ -6,7 +6,14 @@ import {
   WITHDRAWAL_CONTRACT_ADDRESS
 } from '../../constants/application';
 import type { GlobalCliOptions } from '../../model/commander';
+import { consolidate } from './consolidate';
+import * as ethereumModule from './ethereum';
+import { exit } from './exit';
+import * as preRequestValidationModule from './pre-request-validation';
+import * as sendRequestModule from './request/send-request';
 import type { ISigner } from './signer';
+import { switchWithdrawalCredentialType } from './switch';
+import { withdraw } from './withdraw';
 
 const mockProvider = {} as JsonRpcProvider;
 const mockSigner = {
@@ -29,27 +36,6 @@ const mockFilterSwitchableValidators = mock((_beaconApiUrl: string, validatorPub
   Promise.resolve(validatorPubkeys)
 );
 
-mock.module('./ethereum', () => ({
-  createEthereumConnection: mockCreateEthereumConnection,
-  createValidatedProvider: mock(() => Promise.resolve(mockProvider))
-}));
-
-mock.module('./request/send-request', () => ({
-  sendExecutionLayerRequests: mockSendExecutionLayerRequests
-}));
-
-mock.module('./pre-request-validation', () => ({
-  checkCompoundingCredentials: mockCheckCompoundingCredentials,
-  checkHasExecutionCredentials: mockCheckHasExecutionCredentials,
-  checkWithdrawalAddressOwnership: mockCheckWithdrawalAddressOwnership,
-  filterSwitchableValidators: mockFilterSwitchableValidators
-}));
-
-const { consolidate } = await import('./consolidate');
-const { withdraw } = await import('./withdraw');
-const { exit } = await import('./exit');
-const { switchWithdrawalCredentialType } = await import('./switch');
-
 const createGlobalOptions = (overrides?: Partial<GlobalCliOptions>): GlobalCliOptions => ({
   network: 'hoodi',
   jsonRpcUrl: 'http://localhost:8545',
@@ -63,12 +49,9 @@ const VALID_PUBKEY = '0x' + 'ab'.repeat(48);
 const VALID_TARGET_PUBKEY = '0x' + 'cd'.repeat(48);
 
 describe('Domain Services Integration Tests', () => {
-  let consoleSpy: ReturnType<typeof spyOn>;
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
-
   beforeEach(() => {
-    consoleSpy = spyOn(console, 'log').mockImplementation(() => {});
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+    spyOn(console, 'log').mockImplementation(() => {});
+    spyOn(console, 'error').mockImplementation(() => {});
     mockCreateEthereumConnection.mockClear();
     mockSendExecutionLayerRequests.mockClear();
     mockCheckCompoundingCredentials.mockClear();
@@ -78,11 +61,29 @@ describe('Domain Services Integration Tests', () => {
     mockFilterSwitchableValidators.mockImplementation(
       (_beaconApiUrl: string, validatorPubkeys: string[]) => Promise.resolve(validatorPubkeys)
     );
+    spyOn(ethereumModule, 'createEthereumConnection').mockImplementation(
+      mockCreateEthereumConnection as never
+    );
+    spyOn(ethereumModule, 'createValidatedProvider').mockResolvedValue(mockProvider);
+    spyOn(sendRequestModule, 'sendExecutionLayerRequests').mockImplementation(
+      mockSendExecutionLayerRequests as never
+    );
+    spyOn(preRequestValidationModule, 'checkCompoundingCredentials').mockImplementation(
+      mockCheckCompoundingCredentials as never
+    );
+    spyOn(preRequestValidationModule, 'checkHasExecutionCredentials').mockImplementation(
+      mockCheckHasExecutionCredentials as never
+    );
+    spyOn(preRequestValidationModule, 'checkWithdrawalAddressOwnership').mockImplementation(
+      mockCheckWithdrawalAddressOwnership as never
+    );
+    spyOn(preRequestValidationModule, 'filterSwitchableValidators').mockImplementation(
+      mockFilterSwitchableValidators as never
+    );
   });
 
   afterEach(() => {
-    consoleSpy.mockRestore();
-    consoleErrorSpy.mockRestore();
+    mock.restore();
   });
 
   describe('consolidate', () => {
@@ -127,7 +128,8 @@ describe('Domain Services Integration Tests', () => {
         mockSigner,
         expect.any(Array),
         options.maxRequestsPerBlock,
-        options.beaconApiUrl
+        options.beaconApiUrl,
+        undefined
       );
     });
 
@@ -143,7 +145,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         [expectedData],
         expect.any(Number),
-        expect.any(String)
+        expect.any(String),
+        undefined
       );
     });
 
@@ -161,7 +164,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         [expectedData1, expectedData2],
         expect.any(Number),
-        expect.any(String)
+        expect.any(String),
+        undefined
       );
     });
 
@@ -176,7 +180,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         expect.any(Array),
         5,
-        expect.any(String)
+        expect.any(String),
+        undefined
       );
     });
 
@@ -247,7 +252,8 @@ describe('Domain Services Integration Tests', () => {
         mockSigner,
         expect.any(Array),
         options.maxRequestsPerBlock,
-        options.beaconApiUrl
+        options.beaconApiUrl,
+        undefined
       );
     });
 
@@ -264,7 +270,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         [expectedData],
         expect.any(Number),
-        expect.any(String)
+        expect.any(String),
+        undefined
       );
     });
 
@@ -280,7 +287,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         [expectedData],
         expect.any(Number),
-        expect.any(String)
+        expect.any(String),
+        undefined
       );
     });
 
@@ -297,7 +305,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         [expectedData],
         expect.any(Number),
-        expect.any(String)
+        expect.any(String),
+        undefined
       );
     });
 
@@ -316,7 +325,8 @@ describe('Domain Services Integration Tests', () => {
           expect.stringContaining('ef'.repeat(48))
         ]),
         expect.any(Number),
-        expect.any(String)
+        expect.any(String),
+        undefined
       );
     });
 
@@ -348,7 +358,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         [expectedData],
         expect.any(Number),
-        expect.any(String)
+        expect.any(String),
+        undefined
       );
     });
 
@@ -380,7 +391,8 @@ describe('Domain Services Integration Tests', () => {
           expect.stringContaining('ef'.repeat(48))
         ]),
         expect.any(Number),
-        expect.any(String)
+        expect.any(String),
+        undefined
       );
     });
 
@@ -422,7 +434,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         [expectedData],
         expect.any(Number),
-        expect.any(String)
+        expect.any(String),
+        undefined
       );
     });
 
@@ -440,7 +453,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         [expectedData],
         expect.any(Number),
-        expect.any(String)
+        expect.any(String),
+        undefined
       );
     });
 
@@ -468,7 +482,8 @@ describe('Domain Services Integration Tests', () => {
         expect.anything(),
         [expectedData1, expectedData2],
         expect.any(Number),
-        expect.any(String)
+        expect.any(String),
+        undefined
       );
     });
 
@@ -502,7 +517,8 @@ describe('Domain Services Integration Tests', () => {
           expect.anything(),
           expect.any(Array),
           expect.any(Number),
-          expect.any(String)
+          expect.any(String),
+          undefined
         );
       });
     }

@@ -9,6 +9,7 @@ import type {
 import {
   BlockchainStateError,
   BroadcastStatusType,
+  RequestFeeCapExceededError,
   TransactionStatusType
 } from '../../../model/ethereum';
 import type { EthereumStateService } from './ethereum-state-service';
@@ -95,7 +96,8 @@ const createMockLogger = (): TransactionProgressLogger => {
     logRejectedValidators: mock(),
     logSkippedBatchesDueToInsufficientFunds: mock(),
     logExecutionSuccess: mock(),
-    logExecutionFailure: mock()
+    logExecutionFailure: mock(),
+    logAbortedRequests: mock()
   } as unknown as TransactionProgressLogger;
 };
 
@@ -794,6 +796,79 @@ describe('TransactionBatchOrchestrator', () => {
       await orchestrator.sendExecutionLayerRequests([pubkey], 10);
 
       expect(mockLogger.logRejectedValidators).toHaveBeenCalledWith([pubkey]);
+    });
+  });
+
+  describe('request-fee cap stop', () => {
+    const capStop = new RequestFeeCapExceededError('cap exceeded');
+
+    it('reports completed-batch failures and lists unsent batches when the fee check stops before broadcast', async () => {
+      let feeCallCount = 0;
+      const stateService = createMockBlockchainStateService({
+        fetchContractFee: mock(() =>
+          ++feeCallCount === 1 ? Promise.resolve(1n) : Promise.reject(capStop)
+        )
+      });
+      const logger = createMockLogger();
+      const orchestrator = new TransactionBatchOrchestrator(
+        stateService,
+        createMockTransactionBroadcaster([createFailedBroadcastResult('0xaa')]),
+        createMockTransactionMonitor(),
+        createMockTransactionReplacer(),
+        logger
+      );
+
+      await expect(
+        orchestrator.sendExecutionLayerRequests(['0xaa', '0xbb', '0xcc', '0xdd'], 2)
+      ).rejects.toBe(capStop);
+
+      expect(logger.logFailedValidators).toHaveBeenCalledWith(['0xaa']);
+      expect(logger.logAbortedRequests).toHaveBeenCalledWith([], ['0xcc', '0xdd']);
+    });
+
+    it('marks the current batch as unknown status when the stop happens during broadcast', async () => {
+      const logger = createMockLogger();
+      const broadcaster = {
+        broadcastExecutionLayerRequests: mock(() => Promise.reject(capStop))
+      } as unknown as TransactionBroadcaster;
+      const orchestrator = new TransactionBatchOrchestrator(
+        createMockBlockchainStateService(),
+        broadcaster,
+        createMockTransactionMonitor(),
+        createMockTransactionReplacer(),
+        logger
+      );
+
+      await expect(
+        orchestrator.sendExecutionLayerRequests(['0xaa', '0xbb', '0xcc'], 2)
+      ).rejects.toBe(capStop);
+
+      expect(logger.logAbortedRequests).toHaveBeenCalledWith(['0xaa', '0xbb'], ['0xcc']);
+      expect(logger.logFailedValidators).not.toHaveBeenCalled();
+    });
+
+    it('marks the current batch as unknown status when the replacer stops during retry', async () => {
+      const tx = createMockPendingTransaction(1, '0xhash', '0xaa');
+      let blockNumber = 100;
+      const logger = createMockLogger();
+      const replacer = {
+        replaceTransactions: mock(() => Promise.reject(capStop))
+      } as unknown as TransactionReplacer;
+      const orchestrator = new TransactionBatchOrchestrator(
+        createMockBlockchainStateService({
+          fetchBlockNumber: mock(() => Promise.resolve(blockNumber++))
+        }),
+        createMockTransactionBroadcaster([
+          { status: BroadcastStatusType.SUCCESS, transaction: tx }
+        ]),
+        createMockTransactionMonitor({ extractPendingTransactions: mock(() => [tx]) }),
+        replacer,
+        logger
+      );
+
+      await expect(orchestrator.sendExecutionLayerRequests(['0xaa'], 10)).rejects.toBe(capStop);
+
+      expect(logger.logAbortedRequests).toHaveBeenCalledWith(['0xaa'], []);
     });
   });
 });

@@ -3,21 +3,18 @@ import { JsonRpcProvider, NonceManager, Wallet } from 'ethers';
 
 import { INVALID_PRIVATE_KEY_ERROR } from '../../constants/logging';
 import * as promptModule from '../prompt';
+import { createEthereumConnection, createValidatedProvider } from './ethereum';
 import { LedgerSigner } from './signer/ledger-signer';
 import { WalletSigner } from './signer/wallet-signer';
 
 const TEST_RPC_URL = 'http://localhost:8545';
+
 const VALID_PRIVATE_KEY = '0x' + '11'.repeat(32);
 const INVALID_PRIVATE_KEY = 'not-a-valid-key';
 const TEST_SELECTED_PATH = "44'/60'/0'/0/3";
 const TEST_SELECTED_ADDRESS = '0x1234567890123456789012345678901234567890';
 
 const mockLedgerSignerInstance = { kind: 'ledger-signer' };
-
-const REAL_ETHEREUM_SPECIFIER = './ethereum?real';
-const { createEthereumConnection, createValidatedProvider } = (await import(
-  REAL_ETHEREUM_SPECIFIER
-)) as typeof import('./ethereum');
 
 const getNetworkSpy = spyOn(JsonRpcProvider.prototype, 'getNetwork');
 const ledgerCreateSpy = spyOn(LedgerSigner, 'create');

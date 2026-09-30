@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import * as undici from 'undici';
 
 import {
   OWNER_LABEL_SAFE,
@@ -19,6 +20,12 @@ import {
   WRONG_WITHDRAWAL_CREDENTIALS_0x00_ERROR,
   WRONG_WITHDRAWAL_CREDENTIALS_0X01_ERROR
 } from '../../constants/logging';
+import {
+  checkCompoundingCredentials,
+  checkHasExecutionCredentials,
+  checkWithdrawalAddressOwnership,
+  filterSwitchableValidators
+} from './pre-request-validation';
 
 const OWNER_ADDRESS = '0xaabbccddeeff00112233445566778899aabbccdd';
 const OWNER_ADDRESS_MIXED_CASE = '0xAabbCCddEEff00112233445566778899aabBccDd';
@@ -68,20 +75,6 @@ function buildFetchResponse(
 
 const mockFetch = mock(() => Promise.resolve(buildFetchResponse(buildCredentials('0x01'))));
 
-mock.module('undici', () => ({
-  fetch: mockFetch
-}));
-
-const REAL_PRE_REQUEST_VALIDATION_SPECIFIER = './pre-request-validation?real';
-const {
-  checkCompoundingCredentials,
-  checkHasExecutionCredentials,
-  checkWithdrawalAddressOwnership,
-  filterSwitchableValidators
-} = (await import(
-  REAL_PRE_REQUEST_VALIDATION_SPECIFIER
-)) as typeof import('./pre-request-validation');
-
 // eslint-disable-next-line no-control-regex -- Matches ANSI escape sequences emitted by chalk
 const ANSI_ESCAPE_PATTERN = /\u001B\[[0-9;]*m/g;
 
@@ -106,6 +99,7 @@ describe('pre-request-validation', () => {
 
   beforeEach(() => {
     mockFetch.mockReset();
+    spyOn(undici, 'fetch').mockImplementation(mockFetch as never);
     exitSpy = spyOn(process, 'exit').mockImplementation((() => undefined) as never);
     stderrSpy = spyOn(console, 'error').mockImplementation(() => {});
     stdoutSpy = spyOn(console, 'log').mockImplementation(() => {});
@@ -115,6 +109,7 @@ describe('pre-request-validation', () => {
     exitSpy.mockRestore();
     stderrSpy.mockRestore();
     stdoutSpy.mockRestore();
+    mock.restore();
   });
 
   describe('checkCompoundingCredentials', () => {
