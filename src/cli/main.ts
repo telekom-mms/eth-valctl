@@ -12,15 +12,19 @@ import chalk from 'chalk';
 import { Command, Option } from 'commander';
 
 import packageJson from '../../package.json';
-import { DEFAULT_SAFE_FEE_TIP } from '../constants/application';
-import { DISCLAIMER_INFO } from '../constants/logging';
+import * as application from '../constants/application';
+import { DISCLAIMER_INFO, UNHANDLED_PROMISE_REJECTION_PREFIX } from '../constants/logging';
 import type { GlobalCliOptions } from '../model/commander';
 import { consolidateCommand } from './consolidate';
+import { handleCliError } from './error-handler';
 import { exitCommand } from './exit';
+import { feesCommand } from './fees';
 import { safeCommand } from './safe';
 import { switchWithdrawalCredentialTypeCommand } from './switch';
 import {
   parseAndValidateMaxNumberOfRequestsPerBlock,
+  parseAndValidateMaxRequestFee,
+  parseAndValidateMaxRequestFeeWaitBlocks,
   parseAndValidateNodeUrl,
   parseAndValidateSafeAddress,
   validateNetwork,
@@ -29,7 +33,7 @@ import {
 import { withdrawCommand } from './withdraw';
 
 process.on('unhandledRejection', (reason) => {
-  console.error(chalk.red('Unhandled promise rejection:'), reason);
+  console.error(chalk.red(UNHANDLED_PROMISE_REJECTION_PREFIX), reason);
 });
 
 const program = new Command();
@@ -62,7 +66,7 @@ program
   )
   .requiredOption(
     `-m, --max-requests-per-block <number>`,
-    'Max. number of execution layer requests per block (direct mode) or operations per MultiSend batch (Safe mode)',
+    'Max. number of execution layer requests per block (or per MultiSend batch with --safe)',
     parseAndValidateMaxNumberOfRequestsPerBlock,
     10
   )
@@ -79,8 +83,28 @@ program
   .option(
     `-f, --safe-fee-tip <wei>`,
     'Absolute tip in wei added to system contract fee per operation in Safe proposals',
-    String(DEFAULT_SAFE_FEE_TIP)
+    String(application.DEFAULT_SAFE_FEE_TIP)
   )
+  .addOption(
+    new Option(
+      '-x, --max-request-fee <amount>',
+      'Maximum request fee per execution layer request before eth-valctl waits or asks what to do, for example 1wei, 0.5gwei, or 0.01eth'
+    )
+      .argParser(parseAndValidateMaxRequestFee)
+      .default(application.DEFAULT_MAX_REQUEST_FEE, application.DEFAULT_MAX_REQUEST_FEE_INPUT)
+  )
+  .addOption(
+    new Option(
+      '-w, --max-request-fee-wait-blocks <blocks>',
+      'Maximum blocks to wait when request fee exceeds --max-request-fee (0 aborts immediately)'
+    )
+      .argParser(parseAndValidateMaxRequestFeeWaitBlocks)
+      .default(
+        application.DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS,
+        String(application.DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS)
+      )
+  )
+  .option('-y, --yes', 'Skip confirmation prompts using default actions', false)
   .hook('preAction', (thisCommand) => {
     console.log(chalk.yellow(DISCLAIMER_INFO));
     const globalOptions: GlobalCliOptions = thisCommand.opts();
@@ -91,9 +115,7 @@ program
   .addCommand(switchWithdrawalCredentialTypeCommand)
   .addCommand(withdrawCommand)
   .addCommand(exitCommand)
+  .addCommand(feesCommand)
   .addCommand(safeCommand);
 
-program.parseAsync(process.argv).catch((error: unknown) => {
-  console.error(chalk.red('Fatal error:'), error);
-  process.exit(1);
-});
+program.parseAsync(process.argv).catch(handleCliError);

@@ -6,6 +6,8 @@ import type {
   BatchProcessingResult,
   BroadcastResult,
   PendingTransactionInfo,
+  RequestFeeCapCheckContext,
+  RequestFeeCapRuntime,
   TransactionRetryResult
 } from '../../../model/ethereum';
 import {
@@ -17,6 +19,7 @@ import { splitToBatches } from '../batch-utils';
 import { isInsufficientFundsError } from '../error-utils';
 import { extractValidatorPubkey } from './broadcast-strategy/broadcast-utils';
 import { EthereumStateService } from './ethereum-state-service';
+import { isRequestFeePolicyStopError, resolveRequestFee } from './request-fee-policy';
 import { TransactionBroadcaster } from './transaction-broadcaster';
 import { TransactionMonitor } from './transaction-monitor';
 import { TransactionProgressLogger } from './transaction-progress-logger';
@@ -26,6 +29,9 @@ import { TransactionReplacer } from './transaction-replacer';
  * Orchestrates batch processing of execution layer requests with retry logic and fee recalculation.
  */
 export class TransactionBatchOrchestrator {
+  private initialFeeConsumed = false;
+  private currentBatchBroadcastStarted = false;
+
   /**
    * Creates a transaction batch orchestrator
    *
@@ -34,13 +40,15 @@ export class TransactionBatchOrchestrator {
    * @param transactionMonitor - Service for monitoring transactions
    * @param transactionReplacer - Service for replacing transactions
    * @param logger - Service for logging progress
+   * @param requestFeeCapRuntime - Optional request-fee cap runtime dependencies
    */
   constructor(
     private readonly blockchainStateService: EthereumStateService,
     private readonly transactionBroadcaster: TransactionBroadcaster,
     private readonly transactionMonitor: TransactionMonitor,
     private readonly transactionReplacer: TransactionReplacer,
-    private readonly logger: TransactionProgressLogger
+    private readonly logger: TransactionProgressLogger,
+    private readonly requestFeeCapRuntime?: RequestFeeCapRuntime
   ) {}
 
   /**
@@ -83,6 +91,14 @@ export class TransactionBatchOrchestrator {
           );
           break;
         }
+        if (isRequestFeePolicyStopError(error)) {
+          this.logAbortedRun(
+            allFailedValidators,
+            allRejectedValidators,
+            executionLayerRequestBatches.slice(batchIndex)
+          );
+          throw error;
+        }
         if (!(error instanceof BlockchainStateError)) {
           console.error(chalk.red('Unexpected error processing batch:'), error);
         }
@@ -109,6 +125,40 @@ export class TransactionBatchOrchestrator {
   }
 
   /**
+   * Log what is known about all requests when a request-fee cap stop aborts the run
+   *
+   * Completed batches report their failed and rejected validators as usual. Requests of the
+   * aborted batch have an unknown status once broadcasting started, otherwise they were not
+   * sent. Requests of all later batches were not sent.
+   *
+   * @param failedValidators - Failed validator pubkeys from completed batches
+   * @param rejectedValidators - Rejected validator pubkeys from completed batches
+   * @param unfinishedBatches - The aborted batch followed by all batches not yet processed
+   */
+  private logAbortedRun(
+    failedValidators: string[],
+    rejectedValidators: string[],
+    unfinishedBatches: string[][]
+  ): void {
+    if (rejectedValidators.length > 0) {
+      this.logger.logRejectedValidators(rejectedValidators);
+    }
+    if (failedValidators.length > 0) {
+      this.logger.logFailedValidators(failedValidators);
+    }
+
+    const [abortedBatch = [], ...skippedBatches] = unfinishedBatches;
+    const abortedPubkeys = abortedBatch.map(extractValidatorPubkey);
+    const skippedPubkeys = skippedBatches.flat().map(extractValidatorPubkey);
+
+    if (this.currentBatchBroadcastStarted) {
+      this.logger.logAbortedRequests(abortedPubkeys, skippedPubkeys);
+    } else {
+      this.logger.logAbortedRequests([], [...abortedPubkeys, ...skippedPubkeys]);
+    }
+  }
+
+  /**
    * Process a single batch of transactions with retry logic on block changes
    *
    * Monitors transactions and replaces them with updated fees when blocks change.
@@ -120,8 +170,13 @@ export class TransactionBatchOrchestrator {
    * @returns Array of validator pubkeys that failed
    */
   private async processBatch(batch: string[]): Promise<BatchProcessingResult> {
+    this.currentBatchBroadcastStarted = false;
     const currentBlockNumber = await this.blockchainStateService.fetchBlockNumber();
-    const contractFee = await this.blockchainStateService.fetchContractFee();
+    const contractFee = await this.resolveContractFee({
+      operation: serviceConstants.FEE_CAP_OPERATION_BATCH,
+      requestCount: batch.length
+    });
+    this.currentBatchBroadcastStarted = true;
     const broadcastResults = await this.transactionBroadcaster.broadcastExecutionLayerRequests(
       batch,
       contractFee,
@@ -280,10 +335,8 @@ export class TransactionBatchOrchestrator {
     };
 
     try {
-      const newContractFee = await this.blockchainStateService.fetchContractFee();
       const replacerResult = await this.transactionReplacer.replaceTransactions(
         unresolvedTransactions,
-        newContractFee,
         newBlockNumber
       );
       return {
@@ -292,6 +345,10 @@ export class TransactionBatchOrchestrator {
         rejectedValidatorPubkeys: replacerResult.rejectedValidatorPubkeys
       };
     } catch (error) {
+      if (isRequestFeePolicyStopError(error)) {
+        throw error;
+      }
+
       console.error(
         chalk.red(FAILED_TO_FETCH_NETWORK_FEES_ERROR(unresolvedTransactions.length)),
         error
@@ -375,5 +432,17 @@ export class TransactionBatchOrchestrator {
     await new Promise((resolve) =>
       setTimeout(resolve, serviceConstants.TRANSACTION_RETRY_DELAY_MS)
     );
+  }
+
+  private async resolveContractFee(context: RequestFeeCapCheckContext): Promise<bigint> {
+    if (
+      !this.initialFeeConsumed &&
+      this.requestFeeCapRuntime?.initialApprovedRequestFee !== undefined
+    ) {
+      this.initialFeeConsumed = true;
+      return this.requestFeeCapRuntime.initialApprovedRequestFee;
+    }
+
+    return resolveRequestFee(this.requestFeeCapRuntime, this.blockchainStateService, context);
   }
 }

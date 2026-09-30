@@ -1,5 +1,6 @@
 import { formatUnits } from 'ethers';
 
+import * as application from '../../../constants/application';
 import type { BroadcastResult } from '../../../model/ethereum';
 import type { ISigner } from '../signer';
 import type { IBroadcastStrategy } from './broadcast-strategy';
@@ -80,7 +81,7 @@ export class TransactionBroadcaster {
   private async getFeeForLogging(): Promise<string> {
     try {
       const fees = await this.blockchainStateService.getMaxNetworkFees();
-      return formatUnits(fees.maxFeePerGas, 'gwei');
+      return formatUnits(fees.maxFeePerGas, application.GWEI_UNIT);
     } catch {
       this.logger.logBroadcastFeesFetchError();
       return '0';
