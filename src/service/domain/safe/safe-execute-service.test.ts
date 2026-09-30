@@ -3,9 +3,15 @@ import type { OperationType } from '@safe-global/types-kit';
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 
 import { CONSOLIDATION_CONTRACT_ADDRESS, FEE_ACTION_ABORT } from '../../../constants/application';
-import type { FeeValidationResult, TransactionFeeValidation } from '../../../model/safe';
+import type {
+  ExecutionFeeAction,
+  FeeValidationResult,
+  TransactionFeeValidation
+} from '../../../model/safe';
 import { FeeStatus } from '../../../model/safe';
 import { executeReadyTransactions } from './safe-execute-service';
+import * as feePromptModule from './safe-fee-prompt';
+import * as feeValidatorModule from './safe-fee-validator';
 
 const ALL_SUFFICIENT_RESULT: FeeValidationResult = {
   validations: [],
@@ -30,18 +36,9 @@ const mockWaitForSufficientFee = mock(
 
 const mockValidateTransactionFees = mock(() => Promise.resolve(ALL_SUFFICIENT_RESULT));
 
-mock.module('./safe-fee-validator', () => ({
-  validateTransactionFees: mockValidateTransactionFees,
-  validateSingleTransactionFee: mockValidateSingleTransactionFee,
-  waitForSufficientFee: mockWaitForSufficientFee
-}));
-
-const mockHandleStaleFeeBeforeExecution = mock(() => Promise.resolve('wait'));
-
-mock.module('./safe-fee-prompt', () => ({
-  handleFeeValidationResult: mock(() => Promise.resolve('proceed')),
-  handleStaleFeeBeforeExecution: mockHandleStaleFeeBeforeExecution
-}));
+const mockHandleStaleFeeBeforeExecution = mock(
+  () => Promise.resolve('wait') as Promise<ExecutionFeeAction>
+);
 
 const SAFE_ADDRESS = '0x1234567890abcdef1234567890abcdef12345678';
 const SIGNER_ADDRESS = '0xaabbccddee1234567890aabbccddee1234567890';
@@ -167,6 +164,17 @@ describe('executeReadyTransactions', () => {
     mockValidateTransactionFees.mockResolvedValue(ALL_SUFFICIENT_RESULT);
     mockHandleStaleFeeBeforeExecution.mockReset();
     mockHandleStaleFeeBeforeExecution.mockResolvedValue('wait');
+    spyOn(feeValidatorModule, 'validateTransactionFees').mockImplementation(
+      mockValidateTransactionFees
+    );
+    spyOn(feeValidatorModule, 'validateSingleTransactionFee').mockImplementation(
+      mockValidateSingleTransactionFee
+    );
+    spyOn(feeValidatorModule, 'waitForSufficientFee').mockImplementation(mockWaitForSufficientFee);
+    spyOn(feePromptModule, 'handleFeeValidationResult').mockResolvedValue('proceed');
+    spyOn(feePromptModule, 'handleStaleFeeBeforeExecution').mockImplementation(
+      mockHandleStaleFeeBeforeExecution
+    );
   });
 
   afterEach(() => {
