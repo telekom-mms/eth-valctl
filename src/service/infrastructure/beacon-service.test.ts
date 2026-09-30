@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import * as undici from 'undici';
 
 import {
   SECONDS_PER_SLOT,
@@ -6,6 +7,7 @@ import {
   SLOT_BOUNDARY_THRESHOLD
 } from '../../constants/application';
 import { BlockchainStateError } from '../../model/ethereum';
+import { BeaconService } from './beacon-service';
 
 const MOCK_GENESIS_TIME = 1606824023;
 
@@ -28,22 +30,18 @@ const createMockFetchResponse = (
 
 const mockFetch = mock(() => Promise.resolve(createMockFetchResponse()));
 
-mock.module('undici', () => ({
-  fetch: mockFetch
-}));
-
-const { BeaconService } = await import('./beacon-service');
-
 describe('BeaconService', () => {
   let consoleSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
     consoleSpy = spyOn(console, 'log').mockImplementation(() => {});
     mockFetch.mockClear();
+    spyOn(undici, 'fetch').mockImplementation(mockFetch as never);
   });
 
   afterEach(() => {
     consoleSpy.mockRestore();
+    mock.restore();
   });
 
   describe('create', () => {

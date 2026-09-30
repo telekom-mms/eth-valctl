@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import type { JsonRpcProvider } from 'ethers';
+import * as undici from 'undici';
 
+import { BeaconService } from '../../infrastructure/beacon-service';
 import type { ISigner, SignerCapabilities } from '../signer';
 import { ParallelBroadcastStrategy } from './broadcast-strategy/parallel-broadcast-strategy';
 import { SequentialBroadcastStrategy } from './broadcast-strategy/sequential-broadcast-strategy';
@@ -16,12 +18,6 @@ const createMockFetchResponse = () => ({
 });
 
 const mockFetch = mock(() => Promise.resolve(createMockFetchResponse()));
-
-mock.module('undici', () => ({
-  fetch: mockFetch
-}));
-
-const { BeaconService } = await import('../../infrastructure/beacon-service');
 
 const createMockProvider = (): JsonRpcProvider => {
   return {
@@ -54,11 +50,13 @@ describe('Strategy Selection Logic', () => {
     consoleSpy = spyOn(console, 'log').mockImplementation(() => {});
     consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
     mockFetch.mockClear();
+    spyOn(undici, 'fetch').mockImplementation(mockFetch as never);
   });
 
   afterEach(() => {
     consoleSpy.mockRestore();
     consoleErrorSpy.mockRestore();
+    mock.restore();
   });
 
   describe('ParallelBroadcastStrategy', () => {

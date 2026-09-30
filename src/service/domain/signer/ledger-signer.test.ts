@@ -1,7 +1,8 @@
-import * as ethereumjsTxReal from '@ethereumjs/tx';
+import * as ethereumjsTxModule from '@ethereumjs/tx';
 import { DisconnectedDeviceDuringOperation, UserRefusedOnDevice } from '@ledgerhq/errors';
-import * as hwAppEthReal from '@ledgerhq/hw-app-eth';
+import * as hwAppEthModule from '@ledgerhq/hw-app-eth';
 import type Transport from '@ledgerhq/hw-transport';
+import TransportNodeHid from '@ledgerhq/hw-transport-node-hid';
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import type { JsonRpcProvider, TransactionResponse } from 'ethers';
 
@@ -18,6 +19,7 @@ import {
 } from '../../../constants/logging';
 import type { ExecutionLayerRequestTransaction, SigningContext } from '../../../model/ethereum';
 import { TransactionProgressLogger } from '../request/transaction-progress-logger';
+import { LedgerSigner } from './ledger-signer';
 
 const TEST_DERIVATION_PATH = "44'/60'/0'/0/0";
 const TEST_ADDRESS = '0x1234567890123456789012345678901234567890';
@@ -32,10 +34,6 @@ const MOCK_ETH_SIGNATURE = {
 
 const mockTransportCreate = mock(() => Promise.resolve({} as Transport));
 
-mock.module('@ledgerhq/hw-transport-node-hid', () => ({
-  default: { create: mockTransportCreate }
-}));
-
 const mockEthGetAddress = mock(() => Promise.resolve({ address: TEST_ADDRESS, publicKey: '0x00' }));
 const mockEthSignTransaction = mock(() => Promise.resolve(MOCK_ETH_SIGNATURE));
 const mockResolveTransaction = mock(() => Promise.resolve({}));
@@ -46,12 +44,6 @@ class MockEth {
   signTransaction = mockEthSignTransaction;
 }
 
-mock.module('@ledgerhq/hw-app-eth', () => ({
-  ...hwAppEthReal,
-  default: MockEth,
-  ledgerService: { resolveTransaction: mockResolveTransaction }
-}));
-
 const mockGetMessageToSign = mock(() => new Uint8Array([0xde, 0xad, 0xbe, 0xef]));
 const mockSerialize = mock(() => new Uint8Array([0x01, 0x02, 0x03]));
 
@@ -59,13 +51,6 @@ const mockCreateFeeMarket1559Tx = mock((_txData: unknown, _opts: unknown) => ({
   getMessageToSign: mockGetMessageToSign,
   serialize: mockSerialize
 }));
-
-mock.module('@ethereumjs/tx', () => ({
-  ...ethereumjsTxReal,
-  createFeeMarket1559Tx: mockCreateFeeMarket1559Tx
-}));
-
-const { LedgerSigner } = await import('./ledger-signer');
 
 /**
  * Flatten a console spy's recorded calls into a single string per call so
@@ -177,14 +162,23 @@ describe('LedgerSigner', () => {
     mockSerialize.mockReset();
     mockSerialize.mockImplementation(() => new Uint8Array([0x01, 0x02, 0x03]));
     mockCreateFeeMarket1559Tx.mockClear();
+    spyOn(TransportNodeHid, 'create').mockImplementation(mockTransportCreate as never);
+    spyOn(hwAppEthModule, 'default').mockImplementation(function (transport: Transport) {
+      return new MockEth(transport);
+    } as never);
+    spyOn(hwAppEthModule.ledgerService, 'resolveTransaction').mockImplementation(
+      mockResolveTransaction as never
+    );
+    spyOn(ethereumjsTxModule, 'createFeeMarket1559Tx').mockImplementation(
+      mockCreateFeeMarket1559Tx as never
+    );
 
     consoleLogSpy = spyOn(console, 'log').mockImplementation(() => {});
     consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
-    consoleLogSpy.mockRestore();
-    consoleErrorSpy.mockRestore();
+    mock.restore();
   });
 
   describe('create', () => {
