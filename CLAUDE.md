@@ -70,7 +70,7 @@ src/
       withdraw.ts                    Partial withdrawal business logic
       exit.ts                        Full exit business logic
       ethereum.ts                    Ethereum connection factory
-      pre-request-validation.ts      Beacon API credential type + ownership checks
+      pre-request-validation.ts      Beacon API sanity checks (existence, credentials, ownership, status, age, pending withdrawals, balance, queues, chain id)
       execution-layer-request-pipeline.ts  Orchestrates validation -> signing -> broadcast
       batch-utils.ts                 Splits arrays into sized batches (shared utility)
       error-utils.ts                 Error classification (INSUFFICIENT_FUNDS, etc.)
@@ -116,7 +116,7 @@ src/
           sequential-broadcast-strategy.ts One-at-a-time with slot timing (Ledger signer)
           broadcast-utils.ts         Shared broadcast helpers
     infrastructure/
-      beacon-service.ts              Beacon API client (validator state, slot timing)
+      beacon-service.ts              Beacon API client (genesis, chain spec, slot/epoch timing)
 ```
 
 ## Key Design Patterns
@@ -194,7 +194,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/) as defined i
 
 ## Key Constraints
 
-1. **Pre-validation required** before any blockchain transaction (Beacon API credential type + ownership checks)
+1. **Pre-validation required** before any blockchain transaction: spec-aligned sanity checks against the beacon head state; all failures are collected and reported together, then the run exits 1 before any transaction is sent
 2. **Private keys are prompt-only**, never passed as CLI arguments
 3. **Batch processing** splits requests by `--max-requests-per-block`, retries up to 3 times with 12% fee bump
 4. **Signer-aware broadcasting:** parallel (wallet) vs sequential (Ledger) with slot-boundary avoidance

@@ -15,7 +15,13 @@ import type { ISigner } from './signer';
 import { switchWithdrawalCredentialType } from './switch';
 import { withdraw } from './withdraw';
 
-const mockProvider = {} as JsonRpcProvider;
+const mockProvider = {
+  getBalance: mock(() => Promise.resolve(10n ** 30n)),
+  estimateGas: mock(() => Promise.resolve(100_000n)),
+  getFeeData: mock(() => Promise.resolve({ maxFeePerGas: 1n, maxPriorityFeePerGas: 1n })),
+  getStorage: mock(() => Promise.resolve('0x0')),
+  getBlockNumber: mock(() => Promise.resolve(1))
+} as unknown as JsonRpcProvider;
 const mockSigner = {
   capabilities: { supportsParallelSigning: true },
   address: '0xMockAddress',
@@ -29,9 +35,9 @@ const mockCreateEthereumConnection = mock(() =>
 );
 
 const mockSendExecutionLayerRequests = mock(() => Promise.resolve());
-const mockCheckCompoundingCredentials = mock(() => Promise.resolve());
-const mockCheckHasExecutionCredentials = mock(() => Promise.resolve());
-const mockCheckWithdrawalAddressOwnership = mock(() => Promise.resolve());
+const mockValidateConsolidationRequests = mock(() => Promise.resolve());
+const mockValidateSwitchRequests = mock(() => Promise.resolve());
+const mockValidateWithdrawalRequests = mock(() => Promise.resolve());
 const mockFilterSwitchableValidators = mock((_beaconApiUrl: string, validatorPubkeys: string[]) =>
   Promise.resolve(validatorPubkeys)
 );
@@ -54,9 +60,9 @@ describe('Domain Services Integration Tests', () => {
     spyOn(console, 'error').mockImplementation(() => {});
     mockCreateEthereumConnection.mockClear();
     mockSendExecutionLayerRequests.mockClear();
-    mockCheckCompoundingCredentials.mockClear();
-    mockCheckHasExecutionCredentials.mockClear();
-    mockCheckWithdrawalAddressOwnership.mockClear();
+    mockValidateConsolidationRequests.mockClear();
+    mockValidateSwitchRequests.mockClear();
+    mockValidateWithdrawalRequests.mockClear();
     mockFilterSwitchableValidators.mockClear();
     mockFilterSwitchableValidators.mockImplementation(
       (_beaconApiUrl: string, validatorPubkeys: string[]) => Promise.resolve(validatorPubkeys)
@@ -68,14 +74,14 @@ describe('Domain Services Integration Tests', () => {
     spyOn(sendRequestModule, 'sendExecutionLayerRequests').mockImplementation(
       mockSendExecutionLayerRequests as never
     );
-    spyOn(preRequestValidationModule, 'checkCompoundingCredentials').mockImplementation(
-      mockCheckCompoundingCredentials as never
+    spyOn(preRequestValidationModule, 'validateConsolidationRequests').mockImplementation(
+      mockValidateConsolidationRequests as never
     );
-    spyOn(preRequestValidationModule, 'checkHasExecutionCredentials').mockImplementation(
-      mockCheckHasExecutionCredentials as never
+    spyOn(preRequestValidationModule, 'validateSwitchRequests').mockImplementation(
+      mockValidateSwitchRequests as never
     );
-    spyOn(preRequestValidationModule, 'checkWithdrawalAddressOwnership').mockImplementation(
-      mockCheckWithdrawalAddressOwnership as never
+    spyOn(preRequestValidationModule, 'validateWithdrawalRequests').mockImplementation(
+      mockValidateWithdrawalRequests as never
     );
     spyOn(preRequestValidationModule, 'filterSwitchableValidators').mockImplementation(
       mockFilterSwitchableValidators as never
@@ -95,25 +101,21 @@ describe('Domain Services Integration Tests', () => {
       expect(mockCreateEthereumConnection).toHaveBeenCalledWith('http://custom:8545', 'wallet');
     });
 
-    it('checks compounding credentials for target validator', async () => {
+    it('validates consolidation requests for source validators against the target', async () => {
       const options = createGlobalOptions();
 
       await consolidate(options, [VALID_PUBKEY], VALID_TARGET_PUBKEY);
 
-      expect(mockCheckCompoundingCredentials).toHaveBeenCalledWith(options.beaconApiUrl, [
-        VALID_TARGET_PUBKEY
-      ]);
-    });
-
-    it('checks execution credentials for source validators', async () => {
-      const options = createGlobalOptions();
-
-      await consolidate(options, [VALID_PUBKEY], VALID_TARGET_PUBKEY);
-
-      expect(mockCheckHasExecutionCredentials).toHaveBeenCalledWith(
-        options.beaconApiUrl,
-        [VALID_PUBKEY],
-        expect.any(Function)
+      expect(mockValidateConsolidationRequests).toHaveBeenCalledWith(
+        {
+          beaconApiUrl: options.beaconApiUrl,
+          network: options.network,
+          ownerAddress: '0xMockAddress',
+          ownerLabel: undefined,
+          validatorPubkeys: [VALID_PUBKEY]
+        },
+        VALID_TARGET_PUBKEY,
+        false
       );
     });
 
@@ -185,31 +187,15 @@ describe('Domain Services Integration Tests', () => {
       );
     });
 
-    it('checks withdrawal address ownership for source and target validators with target pubkeys', async () => {
-      const options = createGlobalOptions();
-
-      await consolidate(options, [VALID_PUBKEY], VALID_TARGET_PUBKEY);
-
-      expect(mockCheckWithdrawalAddressOwnership).toHaveBeenCalledWith(
-        options.beaconApiUrl,
-        '0xMockAddress',
-        [VALID_TARGET_PUBKEY, VALID_PUBKEY],
-        [VALID_TARGET_PUBKEY],
-        undefined
-      );
-    });
-
-    it('validates only source validators when skipTargetOwnershipCheck is true', async () => {
+    it('passes skipTargetOwnershipCheck to consolidation validation', async () => {
       const options = createGlobalOptions();
 
       await consolidate(options, [VALID_PUBKEY], VALID_TARGET_PUBKEY, true);
 
-      expect(mockCheckWithdrawalAddressOwnership).toHaveBeenCalledWith(
-        options.beaconApiUrl,
-        '0xMockAddress',
-        [VALID_PUBKEY],
-        [VALID_TARGET_PUBKEY],
-        undefined
+      expect(mockValidateConsolidationRequests).toHaveBeenCalledWith(
+        expect.objectContaining({ validatorPubkeys: [VALID_PUBKEY] }),
+        VALID_TARGET_PUBKEY,
+        true
       );
     });
   });
@@ -223,22 +209,32 @@ describe('Domain Services Integration Tests', () => {
       expect(mockCreateEthereumConnection).toHaveBeenCalledWith('http://custom:8545', 'wallet');
     });
 
-    it('checks compounding credentials when amount is positive', async () => {
+    it('validates withdrawal requests with the requested amount', async () => {
       const options = createGlobalOptions();
 
       await withdraw(options, [VALID_PUBKEY], 1);
 
-      expect(mockCheckCompoundingCredentials).toHaveBeenCalledWith(options.beaconApiUrl, [
-        VALID_PUBKEY
-      ]);
+      expect(mockValidateWithdrawalRequests).toHaveBeenCalledWith(
+        {
+          beaconApiUrl: options.beaconApiUrl,
+          network: options.network,
+          ownerAddress: '0xMockAddress',
+          ownerLabel: undefined,
+          validatorPubkeys: [VALID_PUBKEY]
+        },
+        1
+      );
     });
 
-    it('does not check withdrawal credentials when amount is 0 (exit)', async () => {
+    it('validates withdrawal requests with amount 0 for exit', async () => {
       const options = createGlobalOptions();
 
       await withdraw(options, [VALID_PUBKEY], 0);
 
-      expect(mockCheckCompoundingCredentials).not.toHaveBeenCalled();
+      expect(mockValidateWithdrawalRequests).toHaveBeenCalledWith(
+        expect.objectContaining({ validatorPubkeys: [VALID_PUBKEY] }),
+        0
+      );
     });
 
     it('sends requests to withdrawal contract address', async () => {
@@ -329,20 +325,6 @@ describe('Domain Services Integration Tests', () => {
         undefined
       );
     });
-
-    it('checks withdrawal address ownership for validators', async () => {
-      const options = createGlobalOptions();
-
-      await withdraw(options, [VALID_PUBKEY], 1);
-
-      expect(mockCheckWithdrawalAddressOwnership).toHaveBeenCalledWith(
-        options.beaconApiUrl,
-        '0xMockAddress',
-        [VALID_PUBKEY],
-        undefined,
-        undefined
-      );
-    });
   });
 
   describe('exit', () => {
@@ -363,17 +345,22 @@ describe('Domain Services Integration Tests', () => {
       );
     });
 
-    it('checks exit credentials before delegating to withdraw', async () => {
+    it('validates exit requests as withdrawal requests with amount 0', async () => {
       const options = createGlobalOptions();
 
       await exit(options, [VALID_PUBKEY]);
 
-      expect(mockCheckHasExecutionCredentials).toHaveBeenCalledWith(
-        options.beaconApiUrl,
-        [VALID_PUBKEY],
-        expect.any(Function)
+      expect(mockValidateWithdrawalRequests).toHaveBeenCalledWith(
+        {
+          beaconApiUrl: options.beaconApiUrl,
+          network: options.network,
+          ownerAddress: '0xMockAddress',
+          ownerLabel: undefined,
+          validatorPubkeys: [VALID_PUBKEY]
+        },
+        0
       );
-      expect(mockCheckCompoundingCredentials).not.toHaveBeenCalled();
+      expect(mockValidateConsolidationRequests).not.toHaveBeenCalled();
     });
 
     it('processes multiple validators', async () => {
@@ -392,20 +379,6 @@ describe('Domain Services Integration Tests', () => {
         ]),
         expect.any(Number),
         expect.any(String),
-        undefined
-      );
-    });
-
-    it('checks withdrawal address ownership for validators', async () => {
-      const options = createGlobalOptions();
-
-      await exit(options, [VALID_PUBKEY]);
-
-      expect(mockCheckWithdrawalAddressOwnership).toHaveBeenCalledWith(
-        options.beaconApiUrl,
-        '0xMockAddress',
-        [VALID_PUBKEY],
-        undefined,
         undefined
       );
     });
@@ -487,18 +460,18 @@ describe('Domain Services Integration Tests', () => {
       );
     });
 
-    it('checks withdrawal address ownership for switchable validators', async () => {
+    it('validates switch requests for switchable validators', async () => {
       const options = createGlobalOptions();
 
       await switchWithdrawalCredentialType(options, [VALID_PUBKEY]);
 
-      expect(mockCheckWithdrawalAddressOwnership).toHaveBeenCalledWith(
-        options.beaconApiUrl,
-        '0xMockAddress',
-        [VALID_PUBKEY],
-        undefined,
-        undefined
-      );
+      expect(mockValidateSwitchRequests).toHaveBeenCalledWith({
+        beaconApiUrl: options.beaconApiUrl,
+        network: options.network,
+        ownerAddress: '0xMockAddress',
+        ownerLabel: undefined,
+        validatorPubkeys: [VALID_PUBKEY]
+      });
     });
   });
 

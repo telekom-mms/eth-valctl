@@ -1,59 +1,419 @@
 import chalk from 'chalk';
-import { fetch, Response } from 'undici';
+import { formatUnits, parseUnits } from 'ethers';
+import ora from 'ora';
+import { fetch } from 'undici';
 
-import {
-  OWNER_LABEL_SIGNER,
-  VALIDATOR_STATE_BEACON_API_ENDPOINT,
-  WITHDRAWAL_CREDENTIALS_0x00,
-  WITHDRAWAL_CREDENTIALS_0x01,
-  WITHDRAWAL_CREDENTIALS_0x02
-} from '../../constants/application';
+import * as application from '../../constants/application';
 import * as logging from '../../constants/logging';
-import type { ValidatorResponse } from '../../model/ethereum';
+import type {
+  BeaconListResponse,
+  BeaconValidator,
+  DepositContractResponse,
+  PendingPartialWithdrawal,
+  RequestCheck,
+  ValidationContext,
+  ValidatorCheck,
+  ValidatorCheckGroup,
+  ValidatorCheckRequest
+} from '../../model/ethereum';
+import { networkConfig } from '../../network-config';
+import { BeaconService } from '../infrastructure/beacon-service';
+import { splitToBatches } from './batch-utils';
 
 const ROLE_SOURCE = 'source';
 const ROLE_TARGET = 'target';
 
-interface WithdrawalAddressMismatch {
-  pubkey: string;
-  withdrawalAddress: string;
-}
-
 /**
- * Fetch the full withdrawal credentials string for a validator from the Beacon API
+ * Run the sanity checks for consolidation requests
  *
- * @param beaconApiUrl - The beacon api url
- * @param validatorPubkey - The validator public key
- * @returns The full withdrawal credentials hex string
+ * Mirrors `process_consolidation_request` of the consensus specs so that requests which would be
+ * silently dropped by the beacon chain are rejected before any fee is paid.
+ *
+ * @param request - Common check input; `validatorPubkeys` are the source validators
+ * @param targetValidatorPubkey - The target validator pubkey
+ * @param skipTargetOwnershipCheck - Skip ownership validation for the target validator
  */
-async function fetchValidatorCredentials(
-  beaconApiUrl: string,
-  validatorPubkey: string
-): Promise<string> {
-  const url = `${beaconApiUrl}${VALIDATOR_STATE_BEACON_API_ENDPOINT}${validatorPubkey}`;
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    await exitWithApiError(response);
+export async function validateConsolidationRequests(
+  request: ValidatorCheckRequest,
+  targetValidatorPubkey: string,
+  skipTargetOwnershipCheck: boolean = false
+): Promise<void> {
+  const targetChecks = [hasCompoundingCredentials(ROLE_TARGET), isActiveOngoing(ROLE_TARGET)];
+  if (!skipTargetOwnershipCheck) {
+    targetChecks.push(isOwnedBy(request, ROLE_TARGET));
   }
 
-  const data = (await response.json()) as ValidatorResponse;
-  return data.data.validator.withdrawal_credentials;
+  await runSanityChecks(
+    request,
+    [
+      {
+        validatorPubkeys: request.validatorPubkeys,
+        role: ROLE_SOURCE,
+        checks: [
+          isNotEqualTo(targetValidatorPubkey),
+          hasExecutionCredentials(logging.SOURCE_VALIDATOR_0x00_CREDENTIALS_ERROR),
+          isOwnedBy(request, ROLE_SOURCE),
+          isActiveOngoing(ROLE_SOURCE),
+          isOldEnough(ROLE_SOURCE),
+          hasNoPendingWithdrawal(ROLE_SOURCE)
+        ]
+      },
+      { validatorPubkeys: [targetValidatorPubkey], role: ROLE_TARGET, checks: targetChecks }
+    ],
+    [hasPendingConsolidationsCapacity(request.validatorPubkeys.length)]
+  );
 }
 
 /**
- * Fetch the withdrawal credentials type for a validator from the Beacon API
+ * Run the sanity checks for switch (0x01 to 0x02) requests
+ *
+ * @param request - Common check input
+ */
+export async function validateSwitchRequests(request: ValidatorCheckRequest): Promise<void> {
+  await runSanityChecks(request, [
+    { validatorPubkeys: request.validatorPubkeys, checks: [isOwnedBy(request), isActiveOngoing()] }
+  ]);
+}
+
+/**
+ * Run the sanity checks for partial withdrawal requests (amount above 0) or exit requests (amount 0)
+ *
+ * Mirrors `process_withdrawal_request` of the consensus specs. For partial withdrawals a warning is
+ * printed when the requested amount exceeds the withdrawable balance, because the beacon chain caps
+ * the amount instead of dropping the request.
+ *
+ * @param request - Common check input
+ * @param amount - The amount in ETH to withdraw (0 for exit)
+ */
+export async function validateWithdrawalRequests(
+  request: ValidatorCheckRequest,
+  amount: number
+): Promise<void> {
+  const isExit = amount === 0;
+  const commonChecks = [isOwnedBy(request), isActiveOngoing(), isOldEnough()];
+  const checks = isExit
+    ? [
+        hasExecutionCredentials(logging.EXIT_VALIDATOR_0x00_CREDENTIALS_ERROR),
+        ...commonChecks,
+        hasNoPendingWithdrawal()
+      ]
+    : [hasCompoundingCredentials(), ...commonChecks, hasExcessBalance];
+  const requestChecks = isExit
+    ? []
+    : [hasPendingPartialWithdrawalsCapacity(request.validatorPubkeys.length)];
+
+  const context = await runSanityChecks(
+    request,
+    [{ validatorPubkeys: request.validatorPubkeys, checks }],
+    requestChecks
+  );
+
+  if (!isExit) {
+    warnAboutCappedWithdrawals(
+      request.validatorPubkeys,
+      parseUnits(amount.toString(), 'gwei'),
+      context
+    );
+  }
+}
+
+/**
+ * Filter validators that can be switched from 0x01 to 0x02
+ *
+ * - not found / 0x00: hard error (cannot switch)
+ * - 0x01: included in returned list (valid for switch)
+ * - 0x02: excluded with yellow warning (already compounding)
  *
  * @param beaconApiUrl - The beacon api url
- * @param validatorPubkey - The validator public key
- * @returns The withdrawal credentials type prefix (e.g. '0x00', '0x01', '0x02')
+ * @param validatorPubkeys - The validator public keys to check
+ * @returns Filtered list of pubkeys that need switching
  */
-async function fetchWithdrawalCredentialsType(
+export async function filterSwitchableValidators(
   beaconApiUrl: string,
-  validatorPubkey: string
-): Promise<string> {
-  const credentials = await fetchValidatorCredentials(beaconApiUrl, validatorPubkey);
-  return credentials.substring(0, 4);
+  validatorPubkeys: string[]
+): Promise<string[]> {
+  const validators = await withBeaconErrorHandling(beaconApiUrl, () =>
+    fetchValidators(beaconApiUrl, validatorPubkeys)
+  );
+  const switchable: string[] = [];
+  const failures: string[] = [];
+
+  for (const validatorPubkey of validatorPubkeys) {
+    const validator = validators.get(validatorPubkey.toLowerCase());
+    const credentialsType = validator && getCredentialsType(validator);
+
+    if (!validator) {
+      failures.push(logging.VALIDATOR_NOT_FOUND_ERROR(logging.VALIDATOR_SUBJECT(validatorPubkey)));
+    } else if (credentialsType === application.WITHDRAWAL_CREDENTIALS_0x00) {
+      failures.push(logging.SWITCH_SOURCE_VALIDATOR_0x00_CREDENTIALS_ERROR(validatorPubkey));
+    } else if (credentialsType === application.WITHDRAWAL_CREDENTIALS_0x02) {
+      console.log(
+        chalk.yellow(logging.SWITCH_SOURCE_VALIDATOR_ALREADY_0x02_WARNING(validatorPubkey))
+      );
+    } else {
+      switchable.push(validatorPubkey);
+    }
+  }
+
+  if (failures.length > 0) {
+    reportFailures(failures);
+  }
+
+  return switchable;
+}
+
+/**
+ * Load the beacon chain state, run all checks and terminate the process if any check fails
+ *
+ * All failures are collected and reported together so that the user can fix every issue at once.
+ *
+ * @param request - Common check input
+ * @param groups - Validators with their per-validator checks
+ * @param requestChecks - Checks on the whole request set
+ * @returns The loaded validation context
+ */
+async function runSanityChecks(
+  request: ValidatorCheckRequest,
+  groups: ValidatorCheckGroup[],
+  requestChecks: RequestCheck[] = []
+): Promise<ValidationContext> {
+  const pubkeys = [...new Set(groups.flatMap((group) => group.validatorPubkeys))];
+  const fetchSpinner = ora(logging.SANITY_CHECK_FETCH_INFO).start();
+  let context: ValidationContext;
+  try {
+    context = await loadValidationContext(request.beaconApiUrl, pubkeys);
+    fetchSpinner.succeed();
+  } catch (error) {
+    fetchSpinner.fail();
+    return exitWithBeaconError(request.beaconApiUrl, error);
+  }
+
+  const checkSpinner = ora(logging.SANITY_CHECK_RUN_INFO).start();
+  const failures = [
+    ...[isSameNetwork(request.network), ...requestChecks].map((check) => check(context)),
+    ...groups.flatMap((group) => runValidatorChecks(group, context))
+  ].filter((failure): failure is string => failure !== undefined);
+
+  if (failures.length > 0) {
+    checkSpinner.fail();
+    reportFailures(failures);
+  }
+
+  checkSpinner.succeed(logging.SANITY_CHECK_PASSED_INFO);
+  return context;
+}
+
+/**
+ * Run the checks of one group against every validator of the group
+ *
+ * Validators which are not found on the beacon chain only report the missing validator.
+ *
+ * @param group - Validators with their checks
+ * @param context - The loaded validation context
+ * @returns Error messages of all failed checks
+ */
+function runValidatorChecks(
+  group: ValidatorCheckGroup,
+  context: ValidationContext
+): (string | undefined)[] {
+  return group.validatorPubkeys.flatMap((validatorPubkey) => {
+    const validator = context.validators.get(validatorPubkey.toLowerCase());
+    if (!validator) {
+      return [
+        logging.VALIDATOR_NOT_FOUND_ERROR(logging.VALIDATOR_SUBJECT(validatorPubkey, group.role))
+      ];
+    }
+    return group.checks.map((check) => check(validatorPubkey, validator, context));
+  });
+}
+
+/**
+ * Fetch all beacon chain data required by the sanity checks
+ *
+ * @param beaconApiUrl - The beacon api url
+ * @param validatorPubkeys - The validator pubkeys to fetch
+ * @returns The validation context
+ */
+async function loadValidationContext(
+  beaconApiUrl: string,
+  validatorPubkeys: string[]
+): Promise<ValidationContext> {
+  const [beaconService, validators, pendingWithdrawals, pendingConsolidations, depositContract] =
+    await Promise.all([
+      BeaconService.create(beaconApiUrl),
+      fetchValidators(beaconApiUrl, validatorPubkeys),
+      fetchBeaconJson<BeaconListResponse<PendingPartialWithdrawal>>(
+        `${beaconApiUrl}${application.PENDING_PARTIAL_WITHDRAWALS_BEACON_API_ENDPOINT}`
+      ),
+      fetchBeaconJson<BeaconListResponse<unknown>>(
+        `${beaconApiUrl}${application.PENDING_CONSOLIDATIONS_BEACON_API_ENDPOINT}`
+      ),
+      fetchBeaconJson<DepositContractResponse>(
+        `${beaconApiUrl}${application.DEPOSIT_CONTRACT_BEACON_API_ENDPOINT}`
+      )
+    ]);
+
+  const pendingWithdrawalAmounts = new Map<string, bigint>();
+  for (const { validator_index, amount } of pendingWithdrawals.data) {
+    pendingWithdrawalAmounts.set(
+      validator_index,
+      (pendingWithdrawalAmounts.get(validator_index) ?? 0n) + BigInt(amount)
+    );
+  }
+
+  return {
+    spec: beaconService.spec,
+    currentEpoch: beaconService.calculateCurrentEpoch(),
+    beaconChainId: depositContract.data.chain_id,
+    validators,
+    pendingWithdrawalAmounts,
+    pendingPartialWithdrawalCount: pendingWithdrawals.data.length,
+    pendingConsolidationCount: pendingConsolidations.data.length
+  };
+}
+
+/**
+ * Fetch validators in bulk from the head state
+ *
+ * Unknown pubkeys are omitted by the beacon API and are therefore missing from the result.
+ *
+ * @param beaconApiUrl - The beacon api url
+ * @param validatorPubkeys - The validator pubkeys to fetch
+ * @returns Validators keyed by lower-case pubkey
+ */
+async function fetchValidators(
+  beaconApiUrl: string,
+  validatorPubkeys: string[]
+): Promise<Map<string, BeaconValidator>> {
+  const url = `${beaconApiUrl}${application.VALIDATORS_BEACON_API_ENDPOINT}`;
+  const responses = await Promise.all(
+    splitToBatches(validatorPubkeys, application.VALIDATORS_REQUEST_CHUNK_SIZE).map((ids) =>
+      fetchBeaconJson<BeaconListResponse<BeaconValidator>>(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ids })
+      })
+    )
+  );
+  return new Map(
+    responses
+      .flatMap((response) => response.data)
+      .map((validator) => [validator.validator.pubkey.toLowerCase(), validator])
+  );
+}
+
+/**
+ * Fetch and parse a JSON response from the beacon API
+ *
+ * @param url - The full endpoint url
+ * @param init - Optional request options
+ * @returns The parsed response body
+ * @throws Error if the response status is not ok
+ */
+async function fetchBeaconJson<T>(url: string, init?: Parameters<typeof fetch>[1]): Promise<T> {
+  const response = await fetch(url, init);
+  if (!response.ok) {
+    throw new Error(logging.BEACON_API_REQUEST_ERROR(url, response.status, await response.text()));
+  }
+  return (await response.json()) as T;
+}
+
+/**
+ * Run a beacon API call and terminate the process on failure
+ *
+ * @param beaconApiUrl - The beacon api url
+ * @param call - The beacon API call
+ * @returns The result of the call
+ */
+async function withBeaconErrorHandling<T>(
+  beaconApiUrl: string,
+  call: () => Promise<T>
+): Promise<T> {
+  try {
+    return await call();
+  } catch (error) {
+    return exitWithBeaconError(beaconApiUrl, error);
+  }
+}
+
+/**
+ * Print a beacon API error and terminate the process
+ *
+ * @param beaconApiUrl - The beacon api url
+ * @param error - The caught error
+ */
+function exitWithBeaconError(beaconApiUrl: string, error: unknown): never {
+  if (error instanceof TypeError) {
+    console.error(chalk.red(logging.BEACON_API_ERROR, error.cause));
+  } else {
+    console.error(chalk.red(logging.UNEXPECTED_BEACON_API_ERROR(beaconApiUrl), error));
+  }
+  process.exit(1);
+}
+
+/**
+ * Print all sanity check failures and terminate the process
+ *
+ * @param failures - Error messages of all failed checks
+ */
+function reportFailures(failures: string[]): never {
+  console.error(chalk.red(logging.SANITY_CHECK_FAILED_HEADER(failures.length)));
+  for (const failure of failures) {
+    console.error(chalk.red(`  - ${failure}`));
+  }
+  process.exit(1);
+}
+
+/**
+ * Print a warning for every validator whose withdrawable balance is below the requested amount
+ *
+ * @param validatorPubkeys - The validator pubkeys
+ * @param amountGwei - The requested amount in gwei
+ * @param context - The loaded validation context
+ */
+function warnAboutCappedWithdrawals(
+  validatorPubkeys: string[],
+  amountGwei: bigint,
+  context: ValidationContext
+): void {
+  for (const validatorPubkey of validatorPubkeys) {
+    const withdrawable = getWithdrawableBalance(
+      context.validators.get(validatorPubkey.toLowerCase())!,
+      context
+    );
+    if (amountGwei > withdrawable) {
+      console.log(
+        chalk.yellow(
+          logging.WITHDRAWAL_AMOUNT_CAPPED_WARNING(
+            validatorPubkey,
+            formatUnits(withdrawable, 'gwei')
+          )
+        )
+      );
+    }
+  }
+}
+
+/**
+ * Calculate the balance above the minimum activation balance which is not yet pending for withdrawal
+ *
+ * @param validator - The validator
+ * @param context - The loaded validation context
+ * @returns Withdrawable balance in gwei
+ */
+function getWithdrawableBalance(validator: BeaconValidator, context: ValidationContext): bigint {
+  const pending = context.pendingWithdrawalAmounts.get(validator.index) ?? 0n;
+  return BigInt(validator.balance) - context.spec.minActivationBalance - pending;
+}
+
+/**
+ * Get the withdrawal credentials type prefix of a validator
+ *
+ * @param validator - The validator
+ * @returns The credentials type prefix (e.g. '0x00', '0x01', '0x02')
+ */
+function getCredentialsType(validator: BeaconValidator): string {
+  return validator.validator.withdrawal_credentials.substring(0, 4);
 }
 
 /**
@@ -67,246 +427,204 @@ function extractAddressFromCredentials(credentials: string): string {
 }
 
 /**
- * Iterate over validator pubkeys, fetch credentials, and apply a check callback
+ * Check that the beacon node is connected to the chosen network
  *
- * @param beaconApiUrl - The beacon api url
- * @param validatorPubkeys - The validator public keys to check
- * @param check - Callback invoked with each validator's credentials type and pubkey
+ * @param network - The user provided network
+ * @returns The request check
  */
-async function validateWithdrawalCredentials(
-  beaconApiUrl: string,
-  validatorPubkeys: string[],
-  check: (credentialsType: string, validatorPubkey: string) => void
-): Promise<void> {
-  for (const validatorPubkey of validatorPubkeys) {
-    try {
-      const credentialsType = await fetchWithdrawalCredentialsType(beaconApiUrl, validatorPubkey);
-      check(credentialsType, validatorPubkey);
-    } catch (error) {
-      if (error instanceof TypeError) {
-        console.error(chalk.red(logging.BEACON_API_ERROR, error.cause));
-      } else {
-        console.error(chalk.red(logging.UNEXPECTED_BEACON_API_ERROR(beaconApiUrl), error));
-      }
-      process.exit(1);
-    }
-  }
+function isSameNetwork(network: string): RequestCheck {
+  return (context) => {
+    const expectedChainId = networkConfig[network]!.chainId;
+    return BigInt(context.beaconChainId) === expectedChainId
+      ? undefined
+      : logging.BEACON_NETWORK_MISMATCH_ERROR(network, expectedChainId, context.beaconChainId);
+  };
 }
 
 /**
- * Check if the provided validators have compounding (0x02) withdrawal credentials
+ * Check that the pending consolidations queue can take all requests
  *
- * @param beaconApiUrl - The beacon api url
- * @param validatorPubkeys - The validator public keys to check
+ * @param requestCount - Number of requests to send
+ * @returns The request check
  */
-export async function checkCompoundingCredentials(
-  beaconApiUrl: string,
-  validatorPubkeys: string[]
-): Promise<void> {
-  await validateWithdrawalCredentials(beaconApiUrl, validatorPubkeys, (credentialsType) => {
-    if (credentialsType !== WITHDRAWAL_CREDENTIALS_0x02) {
-      exitWithInvalidWithdrawalCredentials(credentialsType);
-    }
-  });
-}
-
-/**
- * Check if the provided validators have at least execution credentials (0x01 or 0x02)
- *
- * @param beaconApiUrl - The beacon api url
- * @param validatorPubkeys - The validator public keys to check
- * @param formatError - Formats the error message for a validator with invalid credentials
- */
-export async function checkHasExecutionCredentials(
-  beaconApiUrl: string,
-  validatorPubkeys: string[],
-  formatError: (pubkey: string) => string
-): Promise<void> {
-  const invalidPubkeys: string[] = [];
-
-  await validateWithdrawalCredentials(
-    beaconApiUrl,
-    validatorPubkeys,
-    (credentialsType, validatorPubkey) => {
-      if (credentialsType === WITHDRAWAL_CREDENTIALS_0x00) {
-        invalidPubkeys.push(validatorPubkey);
-      }
-    }
-  );
-
-  if (invalidPubkeys.length > 0) {
-    for (const pubkey of invalidPubkeys) {
-      console.error(chalk.red(formatError(pubkey)));
-    }
-    process.exit(1);
-  }
-}
-
-/**
- * Filter validators that can be switched from 0x01 to 0x02
- *
- * - 0x00: hard error (cannot switch directly to 0x02)
- * - 0x01: included in returned list (valid for switch)
- * - 0x02: excluded with yellow warning (already compounding)
- *
- * @param beaconApiUrl - The beacon api url
- * @param validatorPubkeys - The validator public keys to check
- * @returns Filtered list of pubkeys that need switching
- */
-export async function filterSwitchableValidators(
-  beaconApiUrl: string,
-  validatorPubkeys: string[]
-): Promise<string[]> {
-  const switchable: string[] = [];
-  const unswitchable: string[] = [];
-
-  for (const validatorPubkey of validatorPubkeys) {
-    try {
-      const credentialsType = await fetchWithdrawalCredentialsType(beaconApiUrl, validatorPubkey);
-
-      if (credentialsType === WITHDRAWAL_CREDENTIALS_0x00) {
-        unswitchable.push(validatorPubkey);
-        continue;
-      }
-
-      if (credentialsType === WITHDRAWAL_CREDENTIALS_0x02) {
-        console.log(
-          chalk.yellow(logging.SWITCH_SOURCE_VALIDATOR_ALREADY_0x02_WARNING(validatorPubkey))
+function hasPendingConsolidationsCapacity(requestCount: number): RequestCheck {
+  return (context) =>
+    context.pendingConsolidationCount + requestCount <= context.spec.pendingConsolidationsLimit
+      ? undefined
+      : logging.PENDING_CONSOLIDATIONS_QUEUE_FULL_ERROR(
+          context.pendingConsolidationCount,
+          context.spec.pendingConsolidationsLimit
         );
-        continue;
-      }
-
-      if (credentialsType === WITHDRAWAL_CREDENTIALS_0x01) {
-        switchable.push(validatorPubkey);
-      }
-    } catch (error) {
-      if (error instanceof TypeError) {
-        console.error(chalk.red(logging.BEACON_API_ERROR, error.cause));
-      } else {
-        console.error(chalk.red(logging.UNEXPECTED_BEACON_API_ERROR(beaconApiUrl), error));
-      }
-      process.exit(1);
-    }
-  }
-
-  if (unswitchable.length > 0) {
-    for (const pubkey of unswitchable) {
-      console.error(chalk.red(logging.SWITCH_SOURCE_VALIDATOR_0x00_CREDENTIALS_ERROR(pubkey)));
-    }
-    process.exit(1);
-  }
-
-  return switchable;
 }
 
 /**
- * Check that the owner address matches the withdrawal address embedded in each validator's credentials
+ * Check that the pending partial withdrawals queue can take all requests
  *
- * @param beaconApiUrl - The beacon api url
- * @param ownerAddress - The address that should own the validators (signer address or Safe address)
- * @param validatorPubkeys - The validator public keys to check
- * @param targetPubkeys - When provided, labels mismatches as (source) or (target) and hints at --skip-target-ownership-check
- * @param ownerLabel - Label for error messages (e.g. 'signer' or 'Safe')
+ * @param requestCount - Number of requests to send
+ * @returns The request check
  */
-export async function checkWithdrawalAddressOwnership(
-  beaconApiUrl: string,
-  ownerAddress: string,
-  validatorPubkeys: string[],
-  targetPubkeys?: string[],
-  ownerLabel: string = OWNER_LABEL_SIGNER
-): Promise<void> {
-  const targetSet = targetPubkeys ? new Set(targetPubkeys) : undefined;
-  const mismatches: WithdrawalAddressMismatch[] = [];
-
-  for (const validatorPubkey of validatorPubkeys) {
-    try {
-      const credentials = await fetchValidatorCredentials(beaconApiUrl, validatorPubkey);
-      const withdrawalAddress = extractAddressFromCredentials(credentials);
-
-      if (withdrawalAddress.toLowerCase() !== ownerAddress.toLowerCase()) {
-        mismatches.push({ pubkey: validatorPubkey, withdrawalAddress });
-      }
-    } catch (error) {
-      if (error instanceof TypeError) {
-        console.error(chalk.red(logging.BEACON_API_ERROR, error.cause));
-      } else {
-        console.error(chalk.red(logging.UNEXPECTED_BEACON_API_ERROR(beaconApiUrl), error));
-      }
-      process.exit(1);
-    }
-  }
-
-  if (mismatches.length > 0) {
-    reportOwnershipMismatches(mismatches, ownerAddress, ownerLabel, targetSet);
-  }
+function hasPendingPartialWithdrawalsCapacity(requestCount: number): RequestCheck {
+  return (context) =>
+    context.pendingPartialWithdrawalCount + requestCount <=
+    context.spec.pendingPartialWithdrawalsLimit
+      ? undefined
+      : logging.PENDING_PARTIAL_WITHDRAWALS_QUEUE_FULL_ERROR(
+          context.pendingPartialWithdrawalCount,
+          context.spec.pendingPartialWithdrawalsLimit
+        );
 }
 
 /**
- * Report withdrawal address ownership mismatches and terminate the process
+ * Check that a source validator is not the consolidation target
  *
- * @param mismatches - The validators whose withdrawal address does not match the owner
- * @param ownerAddress - The address that should own the validators
- * @param ownerLabel - Label for error messages (e.g. 'signer' or 'Safe')
- * @param targetSet - When provided, used to label mismatches as (Source) or (Target) role
+ * @param targetValidatorPubkey - The target validator pubkey
+ * @returns The validator check
  */
-function reportOwnershipMismatches(
-  mismatches: WithdrawalAddressMismatch[],
-  ownerAddress: string,
-  ownerLabel: string,
-  targetSet?: Set<string>
-): never {
-  console.error(chalk.red(logging.WITHDRAWAL_ADDRESS_OWNERSHIP_HEADER(ownerLabel)));
-  let hasTargetMismatch = false;
-  for (const { pubkey, withdrawalAddress } of mismatches) {
-    let role: string | undefined;
-    if (targetSet) {
-      role = targetSet.has(pubkey) ? ROLE_TARGET : ROLE_SOURCE;
-      if (role === ROLE_TARGET) {
-        hasTargetMismatch = true;
-      }
+function isNotEqualTo(targetValidatorPubkey: string): ValidatorCheck {
+  return (validatorPubkey) =>
+    validatorPubkey.toLowerCase() === targetValidatorPubkey.toLowerCase()
+      ? logging.CONSOLIDATION_SOURCE_EQUALS_TARGET_ERROR(validatorPubkey)
+      : undefined;
+}
+
+/**
+ * Check that a validator has at least execution credentials (0x01 or 0x02)
+ *
+ * @param formatError - Formats the error message for a validator with 0x00 credentials
+ * @returns The validator check
+ */
+function hasExecutionCredentials(formatError: (validatorPubkey: string) => string): ValidatorCheck {
+  return (validatorPubkey, validator) =>
+    getCredentialsType(validator) === application.WITHDRAWAL_CREDENTIALS_0x00
+      ? formatError(validatorPubkey)
+      : undefined;
+}
+
+/**
+ * Check that a validator has compounding (0x02) credentials
+ *
+ * @param role - Optional role ('source' / 'target') used in the error message
+ * @returns The validator check
+ */
+function hasCompoundingCredentials(role?: string): ValidatorCheck {
+  return (validatorPubkey, validator) => {
+    const credentialsType = getCredentialsType(validator);
+    if (credentialsType === application.WITHDRAWAL_CREDENTIALS_0x02) {
+      return undefined;
     }
-    console.error(
-      chalk.red(
-        logging.WITHDRAWAL_ADDRESS_MISMATCH_ERROR(
-          pubkey,
-          withdrawalAddress,
-          ownerAddress,
-          ownerLabel,
-          role
-        )
-      )
+    const hint =
+      credentialsType === application.WITHDRAWAL_CREDENTIALS_0x00
+        ? logging.WRONG_WITHDRAWAL_CREDENTIALS_0x00_ERROR
+        : logging.WRONG_WITHDRAWAL_CREDENTIALS_0X01_ERROR;
+    const error = logging.VALIDATOR_NOT_COMPOUNDING_ERROR(
+      logging.VALIDATOR_SUBJECT(validatorPubkey, role),
+      credentialsType
     );
-  }
-  if (hasTargetMismatch) {
-    console.error(chalk.yellow(logging.WITHDRAWAL_ADDRESS_TARGET_MISMATCH_HINT));
-  }
-  process.exit(1);
+    return `${error} ${hint}`;
+  };
 }
 
 /**
- * Handle error response from Beacon API
+ * Check that the owner address matches the withdrawal address of a validator
  *
- * @param response - The response object
+ * Skipped for 0x00 credentials which embed no address; those are reported by the credentials checks.
+ *
+ * @param request - Common check input with owner address and label
+ * @param role - Optional role ('source' / 'target') used in the error message
+ * @returns The validator check
  */
-async function exitWithApiError(response: Response) {
-  console.error(chalk.red(logging.BEACON_API_ERROR, response.statusText));
-  console.error(chalk.red(logging.RESPONSE_ERROR, response.status, '-', await response.text()));
-  process.exit(1);
+function isOwnedBy(request: ValidatorCheckRequest, role?: string): ValidatorCheck {
+  const ownerLabel = request.ownerLabel ?? application.OWNER_LABEL_SIGNER;
+  return (validatorPubkey, validator) => {
+    if (getCredentialsType(validator) === application.WITHDRAWAL_CREDENTIALS_0x00) {
+      return undefined;
+    }
+    const withdrawalAddress = extractAddressFromCredentials(
+      validator.validator.withdrawal_credentials
+    );
+    if (withdrawalAddress.toLowerCase() === request.ownerAddress.toLowerCase()) {
+      return undefined;
+    }
+    const mismatch = logging.WITHDRAWAL_ADDRESS_MISMATCH_ERROR(
+      validatorPubkey,
+      withdrawalAddress,
+      request.ownerAddress,
+      ownerLabel,
+      role
+    );
+    return role === ROLE_TARGET
+      ? `${mismatch}. ${logging.WITHDRAWAL_ADDRESS_TARGET_MISMATCH_HINT}`
+      : mismatch;
+  };
 }
 
 /**
- * Handle wrong withdrawal credentials type for compounding check
+ * Check that a validator is active and not exiting or slashed
  *
- * @param withdrawalCredentialsType - The withdrawal credentials type
+ * @param role - Optional role ('source' / 'target') used in the error message
+ * @returns The validator check
  */
-function exitWithInvalidWithdrawalCredentials(withdrawalCredentialsType: string): never {
-  console.error(
-    chalk.red(logging.GENERAL_WRONG_WITHDRAWAL_CREDENTIALS_ERROR(withdrawalCredentialsType))
-  );
-  if (withdrawalCredentialsType === WITHDRAWAL_CREDENTIALS_0x00) {
-    console.error(chalk.red(logging.WRONG_WITHDRAWAL_CREDENTIALS_0x00_ERROR));
-  } else {
-    console.error(chalk.red(logging.WRONG_WITHDRAWAL_CREDENTIALS_0X01_ERROR));
-  }
-  process.exit(1);
+function isActiveOngoing(role?: string): ValidatorCheck {
+  return (validatorPubkey, validator) =>
+    validator.status === application.VALIDATOR_STATUS_ACTIVE_ONGOING
+      ? undefined
+      : logging.VALIDATOR_NOT_ACTIVE_ERROR(
+          logging.VALIDATOR_SUBJECT(validatorPubkey, role),
+          validator.status
+        );
+}
+
+/**
+ * Check that a validator has been active for at least SHARD_COMMITTEE_PERIOD epochs
+ *
+ * @param role - Optional role ('source' / 'target') used in the error message
+ * @returns The validator check
+ */
+function isOldEnough(role?: string): ValidatorCheck {
+  return (validatorPubkey, validator, context) => {
+    const eligibleEpoch =
+      Number(validator.validator.activation_epoch) + context.spec.shardCommitteePeriod;
+    return context.currentEpoch >= eligibleEpoch
+      ? undefined
+      : logging.VALIDATOR_NOT_OLD_ENOUGH_ERROR(
+          logging.VALIDATOR_SUBJECT(validatorPubkey, role),
+          eligibleEpoch,
+          context.currentEpoch
+        );
+  };
+}
+
+/**
+ * Check that a validator has no pending partial withdrawal
+ *
+ * @param role - Optional role ('source' / 'target') used in the error message
+ * @returns The validator check
+ */
+function hasNoPendingWithdrawal(role?: string): ValidatorCheck {
+  return (validatorPubkey, validator, context) =>
+    context.pendingWithdrawalAmounts.has(validator.index)
+      ? logging.VALIDATOR_HAS_PENDING_WITHDRAWAL_ERROR(
+          logging.VALIDATOR_SUBJECT(validatorPubkey, role)
+        )
+      : undefined;
+}
+
+/**
+ * Check that a validator has balance above the minimum activation balance which is not yet pending
+ *
+ * @param validatorPubkey - The validator pubkey
+ * @param validator - The validator
+ * @param context - The loaded validation context
+ * @returns Error message on failure
+ */
+function hasExcessBalance(
+  validatorPubkey: string,
+  validator: BeaconValidator,
+  context: ValidationContext
+): string | undefined {
+  const hasMinEffectiveBalance =
+    BigInt(validator.validator.effective_balance) >= context.spec.minActivationBalance;
+  return hasMinEffectiveBalance && getWithdrawableBalance(validator, context) > 0n
+    ? undefined
+    : logging.VALIDATOR_BALANCE_TOO_LOW_ERROR(validatorPubkey);
 }

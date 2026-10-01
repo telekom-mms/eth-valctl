@@ -112,12 +112,63 @@ export interface BatchProcessingResult {
   rejectedValidatorPubkeys: string[];
 }
 
-export interface ValidatorResponse {
-  data: {
-    validator: {
-      withdrawal_credentials: string;
-    };
+/**
+ * Validator entry returned by the beacon API validators endpoint
+ */
+export interface BeaconValidator {
+  index: string;
+  balance: string;
+  status: string;
+  validator: {
+    pubkey: string;
+    withdrawal_credentials: string;
+    effective_balance: string;
+    activation_epoch: string;
+    exit_epoch: string;
   };
+}
+
+/**
+ * Beacon API response wrapping a list of entries
+ */
+export interface BeaconListResponse<T> {
+  data: T[];
+}
+
+/**
+ * Pending partial withdrawal entry of the beacon state
+ */
+export interface PendingPartialWithdrawal {
+  validator_index: string;
+  amount: string;
+}
+
+/**
+ * Beacon API response of the chain spec endpoint
+ */
+export interface BeaconSpecResponse {
+  data: Record<string, string>;
+}
+
+/**
+ * Beacon API response of the deposit contract endpoint
+ */
+export interface DepositContractResponse {
+  data: {
+    chain_id: string;
+  };
+}
+
+/**
+ * Chain spec values required for slot timing and pre-request sanity checks
+ */
+export interface BeaconSpec {
+  slotDurationMs: number;
+  slotsPerEpoch: number;
+  shardCommitteePeriod: number;
+  minActivationBalance: bigint;
+  pendingPartialWithdrawalsLimit: number;
+  pendingConsolidationsLimit: number;
 }
 
 /**
@@ -374,3 +425,56 @@ export class InsufficientFundsAbortError extends Error {
     this.name = 'InsufficientFundsAbortError';
   }
 }
+
+/**
+ * Common input of the pre-request sanity checks of one operation
+ */
+export interface ValidatorCheckRequest {
+  beaconApiUrl: string;
+  network: string;
+  /** Address which must own the validators (signer address or Safe address) */
+  ownerAddress: string;
+  /** Label for error messages (e.g. 'signer' or 'Safe') */
+  ownerLabel?: string;
+  /** Validator pubkeys the requests are sent for */
+  validatorPubkeys: string[];
+}
+
+/**
+ * Beacon chain state snapshot used by the pre-request sanity checks
+ */
+export interface ValidationContext {
+  spec: BeaconSpec;
+  currentEpoch: number;
+  beaconChainId: string;
+  /** Validators keyed by lower-case pubkey */
+  validators: Map<string, BeaconValidator>;
+  /** Summed pending partial withdrawal amounts in gwei keyed by validator index */
+  pendingWithdrawalAmounts: Map<string, bigint>;
+  pendingPartialWithdrawalCount: number;
+  pendingConsolidationCount: number;
+}
+
+/**
+ * A single validator sanity check returning an error message on failure
+ */
+export type ValidatorCheck = (
+  validatorPubkey: string,
+  validator: BeaconValidator,
+  context: ValidationContext
+) => string | undefined;
+
+/**
+ * Validators which are checked with the same set of sanity checks
+ */
+export interface ValidatorCheckGroup {
+  validatorPubkeys: string[];
+  /** Optional role ('source' / 'target') used in error messages */
+  role?: string;
+  checks: ValidatorCheck[];
+}
+
+/**
+ * A sanity check on the whole request set returning an error message on failure
+ */
+export type RequestCheck = (context: ValidationContext) => string | undefined;

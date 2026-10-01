@@ -108,7 +108,7 @@ export const SLOT_BOUNDARY_WAIT_INFO = (secondsUntilNextSlot: number): string =>
   `⏳ Near slot boundary, waiting ${secondsUntilNextSlot}s for next slot...`;
 export const PROMPT_PRIVATE_KEY_INFO = 'Private key for 0x01 or 0x02 withdrawal credentials:';
 export const DISCLAIMER_INFO =
-  'The eth-valctl is in active development and still missing some pre-transaction checks (see here: https://github.com/telekom-mms/eth-valctl/issues/14). Please double-check your inputs before executing a command.';
+  'The eth-valctl is in active development. Please double-check your inputs before executing a command.';
 export const EL_REQUEST_REVERTED_INFO = (transactionHash: string): string =>
   `Execution layer request ${transactionHash} was mined but REVERTED (likely due to incorrect fee)`;
 export const EL_REQUEST_REVERTED_SENDING_NEW_INFO = (transactionHash: string): string =>
@@ -470,3 +470,72 @@ export const EXECUTION_COMPLETED_WITH_FAILURES_ERROR = (
   totalCount: number
 ): string =>
   `❌ Execution finished with ${failedCount} of ${totalCount} execution layer requests failed`;
+
+/** Beacon chain spec */
+export const BEACON_SPEC_FETCH_ERROR = (reason: string): string =>
+  `Failed to fetch beacon chain spec: ${reason}`;
+export const BEACON_SPEC_INVALID_VALUE_ERROR = (key: string, value: string | undefined): string =>
+  `Invalid or missing beacon chain spec value for ${key}: ${value}`;
+
+/** Pre-request sanity checks */
+export const SANITY_CHECK_FETCH_INFO =
+  'Fetching validator and beacon chain state for sanity checks';
+export const SANITY_CHECK_RUN_INFO = 'Running pre-request sanity checks';
+export const SANITY_CHECK_PASSED_INFO = 'All pre-request sanity checks passed';
+export const SANITY_CHECK_FAILED_HEADER = (failureCount: number): string =>
+  `${failureCount} pre-request sanity check(s) failed. No transaction was sent:`;
+export const BEACON_API_REQUEST_ERROR = (url: string, status: number, body: string): string =>
+  `Beacon API request ${url} failed with status ${status}: ${body}`;
+export const BEACON_NETWORK_MISMATCH_ERROR = (
+  network: string,
+  expectedChainId: bigint,
+  beaconChainId: string
+): string =>
+  `Beacon node is connected to chain id ${beaconChainId} but network ${network} expects chain id ${expectedChainId}. Please check --beacon-api-url.`;
+export const VALIDATOR_SUBJECT = (validatorPubkey: string, role?: string): string =>
+  role
+    ? `${role.charAt(0).toUpperCase()}${role.slice(1)} validator ${validatorPubkey}`
+    : `Validator ${validatorPubkey}`;
+export const VALIDATOR_NOT_FOUND_ERROR = (validator: string): string =>
+  `${validator} was not found on the beacon chain.`;
+export const VALIDATOR_NOT_COMPOUNDING_ERROR = (
+  validator: string,
+  credentialsType: string
+): string =>
+  `${validator} has withdrawal credentials of type ${credentialsType} but 0x02 is required.`;
+export const VALIDATOR_NOT_ACTIVE_ERROR = (validator: string, status: string): string =>
+  `${validator} has status ${status} but must be active and not exiting (active_ongoing).`;
+export const VALIDATOR_NOT_OLD_ENOUGH_ERROR = (
+  validator: string,
+  eligibleEpoch: number,
+  currentEpoch: number
+): string =>
+  `${validator} has not been active long enough. Requests are possible from epoch ${eligibleEpoch} (current epoch: ${currentEpoch}).`;
+export const VALIDATOR_HAS_PENDING_WITHDRAWAL_ERROR = (validator: string): string =>
+  `${validator} has a pending partial withdrawal. Please wait until it is processed.`;
+export const VALIDATOR_BALANCE_TOO_LOW_ERROR = (validatorPubkey: string): string =>
+  `Validator ${validatorPubkey} has no withdrawable balance above the minimum activation balance (incl. pending partial withdrawals).`;
+export const WITHDRAWAL_AMOUNT_CAPPED_WARNING = (
+  validatorPubkey: string,
+  withdrawableEth: string
+): string =>
+  `Validator ${validatorPubkey}: requested amount exceeds the withdrawable balance. Only ${withdrawableEth} ETH will be withdrawn.`;
+export const CONSOLIDATION_SOURCE_EQUALS_TARGET_ERROR = (validatorPubkey: string): string =>
+  `Source validator ${validatorPubkey} equals the target validator. Use the 'switch' subcommand to switch withdrawal credentials to 0x02.`;
+export const PENDING_PARTIAL_WITHDRAWALS_QUEUE_FULL_ERROR = (
+  pendingCount: number,
+  limit: number
+): string =>
+  `Pending partial withdrawals queue cannot take all requests (${pendingCount} pending, limit ${limit}).`;
+export const PENDING_CONSOLIDATIONS_QUEUE_FULL_ERROR = (
+  pendingCount: number,
+  limit: number
+): string =>
+  `Pending consolidations queue cannot take all requests (${pendingCount} pending, limit ${limit}).`;
+export const INSUFFICIENT_BALANCE_ERROR = (
+  ownerLabel: string,
+  address: string,
+  balanceEth: string,
+  requiredEth: string
+): string =>
+  `The ${ownerLabel} ${address} has a balance of ${balanceEth} ETH but at least ${requiredEth} ETH is required to send all requests.`;
