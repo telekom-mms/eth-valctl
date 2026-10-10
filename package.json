@@ -53,7 +53,7 @@
     "axios": "1.20.0",
     "node-hid": "3.4.0"
   },
-  "packageManager": "bun@1.4.2",
+  "packageManager": "bun@1.4.3",
   "scripts": {
     "clean": "rm -rf bin dist",
     "format": "bunx prettier --write .",
