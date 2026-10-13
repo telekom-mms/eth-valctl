@@ -105,10 +105,10 @@ program
       )
   )
   .option('-y, --yes', 'Skip confirmation prompts using default actions', false)
-  .hook('preAction', (thisCommand) => {
+  .hook('preAction', async (thisCommand) => {
     console.log(chalk.yellow(DISCLAIMER_INFO));
     const globalOptions: GlobalCliOptions = thisCommand.opts();
-    validateNetwork(globalOptions.jsonRpcUrl, globalOptions.network);
+    await validateNetwork(globalOptions.jsonRpcUrl, globalOptions.network);
     validateSafeNetworkSupport(globalOptions.network, globalOptions.safe);
   })
   .addCommand(consolidateCommand)
