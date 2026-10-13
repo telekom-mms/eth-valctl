@@ -44,10 +44,21 @@ export const WITHDRAWAL_CREDENTIALS_0x02 = '0x02';
 /** Beacon API endpoints */
 export const VALIDATOR_STATE_BEACON_API_ENDPOINT = '/eth/v1/beacon/states/head/validators/';
 export const GENESIS_BEACON_API_ENDPOINT = '/eth/v1/beacon/genesis';
+export const SPEC_BEACON_API_ENDPOINT = '/eth/v1/config/spec';
 
-/** Beacon chain timing constants */
-export const SECONDS_PER_SLOT = 12;
-export const SLOT_BOUNDARY_THRESHOLD = 10;
+/** Beacon chain spec keys */
+export const SPEC_KEY_SLOT_DURATION_MS = 'SLOT_DURATION_MS';
+export const SPEC_KEY_SECONDS_PER_SLOT = 'SECONDS_PER_SLOT';
+export const SPEC_KEY_SLOTS_PER_EPOCH = 'SLOTS_PER_EPOCH';
+export const SPEC_KEY_SHARD_COMMITTEE_PERIOD = 'SHARD_COMMITTEE_PERIOD';
+export const SPEC_KEY_MIN_ACTIVATION_BALANCE = 'MIN_ACTIVATION_BALANCE';
+export const SPEC_KEY_PENDING_PARTIAL_WITHDRAWALS_LIMIT = 'PENDING_PARTIAL_WITHDRAWALS_LIMIT';
+export const SPEC_KEY_PENDING_CONSOLIDATIONS_LIMIT = 'PENDING_CONSOLIDATIONS_LIMIT';
+
+/**
+ * Fraction of the slot after which broadcasting waits for the next slot (10s of a 12s slot)
+ */
+export const SLOT_BOUNDARY_THRESHOLD_RATIO = 10 / 12;
 
 /**
  * Buffer time in milliseconds after slot boundary to account for network propagation

@@ -121,6 +121,25 @@ export interface ValidatorResponse {
 }
 
 /**
+ * Beacon API response of the chain spec endpoint
+ */
+export interface BeaconSpecResponse {
+  data: Record<string, string>;
+}
+
+/**
+ * Chain spec values required for slot timing and pre-request sanity checks
+ */
+export interface BeaconSpec {
+  slotDurationMs: number;
+  slotsPerEpoch: number;
+  shardCommitteePeriod: number;
+  minActivationBalance: bigint;
+  pendingPartialWithdrawalsLimit: number;
+  pendingConsolidationsLimit: number;
+}
+
+/**
  * Transaction status with receipt data if confirmed
  */
 export type TransactionStatus =

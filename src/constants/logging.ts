@@ -470,3 +470,14 @@ export const EXECUTION_COMPLETED_WITH_FAILURES_ERROR = (
   totalCount: number
 ): string =>
   `❌ Execution finished with ${failedCount} of ${totalCount} execution layer requests failed`;
+
+/** Beacon chain spec */
+export const BEACON_SPEC_FETCH_ERROR = (status: number, statusText: string): string =>
+  `Failed to fetch beacon chain spec: ${status} ${statusText}`;
+export const BEACON_SPEC_INVALID_VALUE_ERROR = (key: string, value: string | undefined): string =>
+  `Invalid or missing beacon chain spec value for ${key}: ${value}`;
+export const BEACON_GENESIS_FETCH_ERROR = (status: number, statusText: string): string =>
+  `Failed to fetch beacon genesis: ${status} ${statusText}`;
+export const BEACON_GENESIS_INVALID_ERROR = (genesisTime: string): string =>
+  `Invalid genesis time received from beacon API: ${genesisTime}`;
+export const BEACON_SERVICE_INIT_ERROR = 'Unable to initialize beacon service';
