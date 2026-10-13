@@ -41,10 +41,31 @@ export const WITHDRAWAL_CREDENTIALS_0x00 = '0x00';
 export const WITHDRAWAL_CREDENTIALS_0x01 = '0x01';
 export const WITHDRAWAL_CREDENTIALS_0x02 = '0x02';
 
+/** Withdrawal credentials layout: type prefix ('0x' + 1 byte) and offset of the 20-byte address */
+export const WITHDRAWAL_CREDENTIALS_PREFIX_LENGTH = 4;
+export const WITHDRAWAL_CREDENTIALS_ADDRESS_OFFSET = 26;
+
+/** Validator roles of a consolidation request */
+export const VALIDATOR_ROLE_SOURCE = 'source';
+export const VALIDATOR_ROLE_TARGET = 'target';
+
 /** Beacon API endpoints */
-export const VALIDATOR_STATE_BEACON_API_ENDPOINT = '/eth/v1/beacon/states/head/validators/';
+export const VALIDATORS_BEACON_API_ENDPOINT = '/eth/v1/beacon/states/head/validators';
+export const PENDING_PARTIAL_WITHDRAWALS_BEACON_API_ENDPOINT =
+  '/eth/v1/beacon/states/head/pending_partial_withdrawals';
+export const PENDING_CONSOLIDATIONS_BEACON_API_ENDPOINT =
+  '/eth/v1/beacon/states/head/pending_consolidations';
 export const GENESIS_BEACON_API_ENDPOINT = '/eth/v1/beacon/genesis';
 export const SPEC_BEACON_API_ENDPOINT = '/eth/v1/config/spec';
+export const DEPOSIT_CONTRACT_BEACON_API_ENDPOINT = '/eth/v1/config/deposit_contract';
+
+/** Max. number of validator ids per bulk validators request */
+export const VALIDATORS_REQUEST_CHUNK_SIZE = 500;
+
+/** HTTP request values for beacon API POST requests */
+export const HTTP_METHOD_POST = 'POST';
+export const HTTP_HEADER_CONTENT_TYPE = 'content-type';
+export const CONTENT_TYPE_JSON = 'application/json';
 
 /** Beacon chain spec keys */
 export const SPEC_KEY_SLOT_DURATION_MS = 'SLOT_DURATION_MS';
@@ -54,6 +75,9 @@ export const SPEC_KEY_SHARD_COMMITTEE_PERIOD = 'SHARD_COMMITTEE_PERIOD';
 export const SPEC_KEY_MIN_ACTIVATION_BALANCE = 'MIN_ACTIVATION_BALANCE';
 export const SPEC_KEY_PENDING_PARTIAL_WITHDRAWALS_LIMIT = 'PENDING_PARTIAL_WITHDRAWALS_LIMIT';
 export const SPEC_KEY_PENDING_CONSOLIDATIONS_LIMIT = 'PENDING_CONSOLIDATIONS_LIMIT';
+
+/** Beacon API validator status of an active validator which is not exiting and not slashed */
+export const VALIDATOR_STATUS_ACTIVE_ONGOING = 'active_ongoing';
 
 /**
  * Fraction of the slot after which broadcasting waits for the next slot (10s of a 12s slot)
