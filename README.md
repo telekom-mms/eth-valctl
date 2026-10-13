@@ -4,8 +4,6 @@
 
 CLI tool for managing Ethereum validators via execution layer requests. This cli currently only supports validator related features included in the Pectra hardfork. This might change in the future. The tool scales to hundreds of validators and supports Safe multisig wallets and Ledger hardware signing for secure private key management.
 
-Supports private key signing (default), Ledger hardware wallet signing (`--ledger`), and Safe multisig proposals (`--safe`).
-
 **Please find the latest [release here](https://github.com/telekom-mms/eth-valctl/releases).**
 
 ## Table of contents
@@ -21,6 +19,7 @@ Supports private key signing (default), Ledger hardware wallet signing (`--ledge
   - [Fees](#fees)
   - [Safe sign](#safe-sign)
   - [Safe execute](#safe-execute)
+- [Pre-request sanity checks](#pre-request-sanity-checks)
 - [Transaction handling](#transaction-handling)
   - [Request fee cap](#request-fee-cap)
 - [Safe multisig workflow](#safe-multisig-workflow)
@@ -30,6 +29,7 @@ Supports private key signing (default), Ledger hardware wallet signing (`--ledge
   - [Phase 3: Execute](#phase-3-execute)
   - [Contract fee staleness](#contract-fee-staleness)
   - [Handling stale fees](#handling-stale-fees)
+  - [Rejecting stale transactions](#rejecting-stale-transactions)
   - [Limitations](#limitations)
   - [Safe Transaction Service API key](#safe-transaction-service-api-key)
 - [Build the application](#build-the-application)
@@ -146,34 +146,6 @@ The projection uses the global `--max-requests-per-block` as batch size and the 
 | `<operation>` | Positional argument: `consolidate`, `switch`, `withdraw`, or `exit` | required |
 | `-c, --total-request-count <count>` | Total execution layer requests to project fees for | `1` |
 
-Example output when the current fee is below the configured cap:
-
-```text
-Fee estimate for consolidate requests on hoodi:
-Current request fee: 1 wei
-Max transaction gas budget: 0.004 ETH at 20.0 Gwei max fee per gas
-
-Idealized batch projection for 20 requests (2 batches of up to 10):
-  Batch 1: 10 requests, request fee 1 wei
-  Batch 2: 10 requests, request fee 2 wei
-Fee-optimal rate for this request contract is 1 request per block; lower fee growth can mean longer wall-clock time.
-```
-
-When the current fee exceeds `--max-request-fee`, an extra line estimates how long it would take to
-drop back below the cap (assuming no new requests arrive), and above-cap batches are flagged:
-
-```text
-Fee estimate for consolidate requests on hoodi:
-Current request fee: 13 wei
-~3 blocks until the fee drops below --max-request-fee (assuming no new requests)
-Max transaction gas budget: 0.004 ETH at 20.0 Gwei max fee per gas
-
-Idealized batch projection for 20 requests (2 batches of up to 10):
-  Batch 1: 10 requests, request fee 13 wei (above cap)
-  Batch 2: 10 requests, request fee 23 wei (above cap)
-Fee-optimal rate for this request contract is 1 request per block; lower fee growth can mean longer wall-clock time.
-```
-
 ### Safe sign
 
 Sign pending eth-valctl Safe transactions. Requires `--safe`.
@@ -197,12 +169,32 @@ Execute fully-signed eth-valctl Safe transactions on-chain. Requires `--safe`.
 Use global options before `safe execute`, for example
 `eth-valctl --yes --max-request-fee-wait-blocks 0 --safe <address> safe execute --stale-fee-action wait`.
 
+## Pre-request sanity checks
+
+The beacon chain silently drops invalid execution layer requests, but the request fee and gas are still paid. Before anything is sent, eth-valctl therefore checks every request against the head state of the beacon node (`--beacon-api-url`), following `process_consolidation_request` and `process_withdrawal_request` of the consensus specs. All failures are reported together and the command aborts without sending any transaction.
+
+| Check | Consolidate | Switch | Withdraw | Exit |
+| --- | --- | --- | --- | --- |
+| Validator exists | source + target | ✓ | ✓ | ✓ |
+| Withdrawal address matches signer / Safe | source + target¹ | ✓ | ✓ | ✓ |
+| Credentials | source ≥ 0x01, target 0x02 | 0x01² | 0x02 | ≥ 0x01 |
+| Active and not exiting (`active_ongoing`) | source + target | ✓ | ✓ | ✓ |
+| Active for at least `SHARD_COMMITTEE_PERIOD` epochs | source | - | ✓ | ✓ |
+| No pending partial withdrawal | source | - | - | ✓ |
+| Balance above 32 ETH incl. pending partial withdrawals³ | - | - | ✓ | - |
+| Pending queue has capacity | consolidations | - | partial withdrawals | - |
+| Source differs from target | ✓ | - | - | - |
+
+¹ Skip the target with `--skip-target-ownership-check`. ² Validators which already have 0x02 are skipped with a warning. ³ If the requested amount exceeds the withdrawable balance, a warning is printed because the beacon chain only withdraws the available excess.
+
+Additionally, the JSON-RPC and beacon node must be connected to the chain of `--network`, and the signer (direct mode) or Safe must hold enough ETH to pay the request fees (plus gas in direct mode) of all requests. The estimate uses the higher of the current request fee and `--max-request-fee`; gas is priced at the fixed transaction gas limit and the current max fee per gas, plus 12% for one replacement transaction.
+
 ## Transaction handling
 
 **Note: This section describes direct mode (without `--safe`). For Safe multisig transaction handling, see [Safe multisig workflow](#safe-multisig-workflow).**
 
 - Transactions are processed in batches controlled by `--max-requests-per-block`
-- The tool waits for the next slot boundary if signing happens in the last 2 seconds of a 12-second slot. This avoids broadcasting transactions right at a slot change where contract fees may update, and may cause brief pauses during execution.
+- The tool waits for the next slot boundary if signing happens in the last sixth of a slot (the last 2 seconds of a 12-second slot; the slot duration is read from the beacon node). This avoids broadcasting transactions right at a slot change where contract fees may update, and may cause brief pauses during execution.
 - Failed transactions are automatically retried up to 3 times with updated contract fees
 - Replacement transactions pay 12% higher gas fees (required by execution clients for replacements to be accepted)
 - Transaction replacements are mostly necessary when the system contract fees increase between signing and mining. This is especially relevant when using Ledger signing, as the manual confirmation on the device adds latency, increasing the chance of fee changes. Consider using smaller batch sizes with `--ledger` to mitigate this.
@@ -371,7 +363,7 @@ A Kurtosis devnet specification is provided in `scripts/devnet/` to run a local 
 ### Requirements
 
 - [Docker & Kurtosis](https://docs.kurtosis.com/install)
-- [staking-deposit-cli](https://github.com/ethereum/staking-deposit-cli/releases) (`deposit` binary on PATH) for credential switching
+- [ethstaker-deposit-cli](https://github.com/ethstaker/ethstaker-deposit-cli/releases) (`deposit` binary on PATH) for credential switching
 
 ### Start and stop
 
@@ -463,7 +455,7 @@ The automated suite (`scripts/integration-test/run.sh`) covers:
 | B     | Consolidation (Safe + direct)                                                    |
 | C     | Partial withdrawal (Safe + direct)                                               |
 | D     | Validator exit (Safe + direct)                                                   |
-| E     | Error handling (invalid credentials, ownership)                                  |
+| E     | Error handling (invalid input, ownership, wrong network, sanity checks)          |
 | F     | Threshold change (modify Safe threshold mid-flow)                                |
 | G     | Fee validation (stale fee detection, overpayment, wait/reject)                   |
 | H     | Safe edge cases (duplicates, nonce gaps, foreign tx filtering, partial failures) |
