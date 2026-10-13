@@ -478,3 +478,24 @@ export interface ValidatorCheckGroup {
  * A sanity check on the whole request set returning an error message on failure
  */
 export type RequestCheck = (context: ValidationContext) => string | undefined;
+
+/**
+ * Account paying request fees (signer or Safe)
+ */
+export interface FeePayer {
+  address: string;
+  /** Label for error messages (e.g. 'signer' or 'Safe') */
+  label: string;
+}
+
+/**
+ * Input of the balance check before sending execution layer requests
+ */
+export interface RequestBalanceCheck {
+  /** Target system contract address */
+  contractAddress: string;
+  /** Number of requests to send */
+  requestCount: number;
+  /** Request fee cap in wei, if set */
+  maxRequestFee?: bigint;
+}

@@ -35,6 +35,7 @@ export const MAX_FETCH_NETWORK_FEES_RETRIES = 5;
  * Fee increase percentage for transaction replacement (112% = 12% increase minimum)
  */
 export const TRANSACTION_FEE_INCREASE_PERCENTAGE = 112n;
+export const PERCENTAGE_DENOMINATOR = 100n;
 
 /** Withdrawal credential types */
 export const WITHDRAWAL_CREDENTIALS_0x00 = '0x00';

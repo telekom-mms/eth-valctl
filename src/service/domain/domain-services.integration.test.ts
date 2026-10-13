@@ -15,7 +15,12 @@ import type { ISigner } from './signer';
 import { switchWithdrawalCredentialType } from './switch';
 import { withdraw } from './withdraw';
 
-const mockProvider = {} as JsonRpcProvider;
+const mockProvider = {
+  getBalance: mock(() => Promise.resolve(10n ** 30n)),
+  getFeeData: mock(() => Promise.resolve({ maxFeePerGas: 1n, maxPriorityFeePerGas: 1n })),
+  getStorage: mock(() => Promise.resolve('0x0')),
+  getBlockNumber: mock(() => Promise.resolve(1))
+} as unknown as JsonRpcProvider;
 const mockSigner = {
   capabilities: { supportsParallelSigning: true },
   address: '0xMockAddress',

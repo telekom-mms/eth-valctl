@@ -537,3 +537,10 @@ export const PENDING_CONSOLIDATIONS_QUEUE_FULL_ERROR = (
   limit: number
 ): string =>
   `Pending consolidations queue cannot take all requests (${pendingCount} pending, limit ${limit}).`;
+export const INSUFFICIENT_BALANCE_ERROR = (
+  ownerLabel: string,
+  address: string,
+  balanceEth: string,
+  requiredEth: string
+): string =>
+  `The ${ownerLabel} ${address} has a balance of ${balanceEth} ETH but at least ${requiredEth} ETH is required to send all requests.`;
