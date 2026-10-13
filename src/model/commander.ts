@@ -55,5 +55,4 @@ export interface FeeEstimateRenderConfig {
   estimate: RequestFeeEstimate;
   totalRequestCount: number;
   maxRequestsPerBlock: number;
-  contractAddress: string;
 }

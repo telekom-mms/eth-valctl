@@ -4,7 +4,7 @@ import chalk from 'chalk';
 import * as application from '../constants/application';
 import * as logging from '../constants/logging';
 import type { RequestFeeEstimate } from '../model/ethereum';
-import { renderFeeEstimate } from './fees';
+import { renderFeeCapWarning, renderFeeEstimate } from './fees';
 
 const ESTIMATE: RequestFeeEstimate = {
   currentExcess: 42n,
@@ -40,8 +40,7 @@ describe('renderFeeEstimate', () => {
       network: 'hoodi',
       estimate: ESTIMATE,
       totalRequestCount: 40,
-      maxRequestsPerBlock: 20,
-      contractAddress: application.CONSOLIDATION_CONTRACT_ADDRESS
+      maxRequestsPerBlock: 20
     });
     const output = lines.join('\n');
 
@@ -61,8 +60,7 @@ describe('renderFeeEstimate', () => {
       network: 'hoodi',
       estimate: { ...ESTIMATE, exceedsCap: true, estimatedBlocksUntilCap: 28n },
       totalRequestCount: 40,
-      maxRequestsPerBlock: 20,
-      contractAddress: application.CONSOLIDATION_CONTRACT_ADDRESS
+      maxRequestsPerBlock: 20
     });
     const output = lines.join('\n');
 
@@ -70,6 +68,20 @@ describe('renderFeeEstimate', () => {
       chalk.yellow(
         '~28 blocks until the fee drops below --max-request-fee (assuming no new requests)'
       )
+    );
+  });
+});
+
+describe('renderFeeCapWarning', () => {
+  it('names the consolidation contract and its 1 request per block target', () => {
+    expect(renderFeeCapWarning(application.CONSOLIDATION_CONTRACT_ADDRESS)).toContain(
+      'while sending 1 request per block to the consolidation contract'
+    );
+  });
+
+  it('names the withdrawal contract and its 2 requests per block target', () => {
+    expect(renderFeeCapWarning(application.WITHDRAWAL_CONTRACT_ADDRESS.toLowerCase())).toContain(
+      'while sending 2 requests per block to the withdrawal contract'
     );
   });
 });

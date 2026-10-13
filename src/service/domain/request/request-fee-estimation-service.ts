@@ -148,7 +148,13 @@ function findMaxExcessForRequestFee(targetFee: bigint): bigint {
   return low;
 }
 
-function getTargetPerBlock(systemContractAddress: string): bigint {
+/**
+ * Resolve the target requests per block for a request contract (EIP-7251 / EIP-7002).
+ *
+ * @param systemContractAddress - Request contract address
+ * @returns Requests per block the contract absorbs without raising the fee
+ */
+export function getTargetPerBlock(systemContractAddress: string): bigint {
   return (
     application.TARGET_PER_BLOCK_BY_CONTRACT[systemContractAddress.toLowerCase()] ??
     application.CONSOLIDATION_TARGET_PER_BLOCK

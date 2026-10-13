@@ -65,10 +65,10 @@ export const FEES_BATCH_LINE = (
   capExceeded: boolean
 ): string =>
   `  Batch ${batchNumber}: ${requestCount} request${requestCount === 1 ? '' : 's'}, request fee ${requestFee}${capExceeded ? ' (above cap)' : ''}`;
-export const FEES_CAP_WARNING =
-  'Warning: A projected batch exceeds --max-request-fee. Real execution will wait or prompt before that above-cap batch.';
-export const FEES_OPTIMAL_RATE_INFO = (target: bigint): string =>
-  `Fee-optimal rate for this request contract is ${target} request${target === 1n ? '' : 's'} per block; lower fee growth can mean longer wall-clock time.`;
+export const CONSOLIDATION_CONTRACT_NAME = 'consolidation contract';
+export const WITHDRAWAL_CONTRACT_NAME = 'withdrawal contract';
+export const FEES_CAP_WARNING = (targetPerBlock: bigint, contractName: string): string =>
+  `Warning: A projected batch exceeds --max-request-fee. Real execution will wait or prompt before that above-cap batch. The fee only stays flat while sending ${targetPerBlock} request${targetPerBlock === 1n ? '' : 's'} per block to the ${contractName}; a lower -m slows the fee increase but needs more batches.`;
 
 /** Fetching errors */
 export const BEACON_API_ERROR = 'Error while calling beacon API endpoint:';
