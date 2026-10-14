@@ -83,5 +83,6 @@ repos:
         stages: ["commit-msg"]
         additional_dependencies:
           - "@commitlint/config-conventional@19.8.1"
-        args: ["--config", ".pre-commit/.commitlintrc.json"]
+        entry: "commitlint --config .pre-commit/.commitlintrc.json --edit"
+        pass_filenames: true
 ...

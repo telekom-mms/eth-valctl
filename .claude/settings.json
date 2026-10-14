@@ -63,6 +63,7 @@
       "Bash(gh:*)",
       "Bash(pre-commit:*)",
       "Bash(shellcheck:*)",
+      "Bash(rtk:*)",
       "mcp__context7__resolve-library-id",
       "mcp__context7__query-docs",
       "Skill(update-config)",
@@ -77,18 +78,7 @@
       "Edit(**/*.py)",
       "Edit(**/*.json)",
       "Edit(**/*.txt)",
-      "Edit(**/*.yaml)",
-      "Write(**/*.js)",
-      "Write(**/*.ts)",
-      "Write(**/*.py)",
-      "Write(**/*.txt)",
-      "Write(**/*.yaml)",
-      "MultiEdit(**/*.js)",
-      "MultiEdit(**/*.ts)",
-      "MultiEdit(**/*.py)",
-      "MultiEdit(**/*.json)",
-      "MultiEdit(**/*.txt)",
-      "MultiEdit(**/*.yaml)"
+      "Edit(**/*.yaml)"
     ],
     "defaultMode": "acceptEdits"
   }

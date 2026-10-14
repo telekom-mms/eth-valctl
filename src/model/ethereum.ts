@@ -1,5 +1,6 @@
 import type { JsonRpcProvider, TransactionReceipt, TransactionResponse } from 'ethers';
 
+import type * as application from '../constants/application';
 import type { ISigner } from '../ports/signer.interface';
 
 /**
@@ -111,12 +112,63 @@ export interface BatchProcessingResult {
   rejectedValidatorPubkeys: string[];
 }
 
-export interface ValidatorResponse {
-  data: {
-    validator: {
-      withdrawal_credentials: string;
-    };
+/**
+ * Validator entry returned by the beacon API validators endpoint
+ */
+export interface BeaconValidator {
+  index: string;
+  balance: string;
+  status: string;
+  validator: {
+    pubkey: string;
+    withdrawal_credentials: string;
+    effective_balance: string;
+    activation_epoch: string;
+    exit_epoch: string;
   };
+}
+
+/**
+ * Beacon API response wrapping a list of entries
+ */
+export interface BeaconListResponse<T> {
+  data: T[];
+}
+
+/**
+ * Pending partial withdrawal entry of the beacon state
+ */
+export interface PendingPartialWithdrawal {
+  validator_index: string;
+  amount: string;
+}
+
+/**
+ * Beacon API response of the chain spec endpoint
+ */
+export interface BeaconSpecResponse {
+  data: Record<string, string>;
+}
+
+/**
+ * Beacon API response of the deposit contract endpoint
+ */
+export interface DepositContractResponse {
+  data: {
+    chain_id: string;
+  };
+}
+
+/**
+ * Chain spec values required for slot timing and pre-request sanity checks
+ */
+export interface BeaconSpec {
+  slotDurationMs: number;
+  slotsPerEpoch: number;
+  shardCommitteePeriod: number;
+  minActivationBalance: bigint;
+  pendingPartialWithdrawalsLimit: number;
+  pendingConsolidationsLimit: number;
 }
 
 /**
@@ -222,6 +274,138 @@ export interface ContractFeeState {
   excess: bigint;
 }
 
+/**
+ * Minimal state reader required for request-fee estimation.
+ */
+export interface RequestFeeStateReader {
+  fetchContractFeeWithExcess(): Promise<ContractFeeState>;
+  getMaxNetworkFees(): Promise<MaxNetworkFees>;
+}
+
+/**
+ * Minimal reader required for request-fee cap enforcement.
+ */
+export interface RequestFeeReader {
+  fetchContractFee(): Promise<bigint>;
+  fetchBlockNumber(): Promise<number>;
+}
+
+/**
+ * Service contract for resolving an approved request fee under a cap policy.
+ */
+export interface RequestFeeCapResolver {
+  resolveRequestFee(
+    policy: RequestFeeCapPolicy,
+    context: RequestFeeCapCheckContext
+  ): Promise<bigint>;
+}
+
+/**
+ * Runtime request-fee cap dependencies shared by request orchestration components.
+ */
+export interface RequestFeeCapRuntime {
+  policy: RequestFeeCapPolicy;
+  resolver: RequestFeeCapResolver;
+  initialApprovedRequestFee?: bigint;
+}
+
+/**
+ * Input for request-fee projection across idealized batches.
+ */
+export interface RequestFeeEstimateConfig {
+  totalRequestCount: number;
+  maxRequestsPerBlock: number;
+  maxRequestFee: bigint;
+}
+
+/**
+ * Parameters for estimating how long a request fee needs to drain to a target fee.
+ */
+export interface FeeDropEstimateConfig {
+  currentExcess: bigint;
+  targetFee: bigint;
+  systemContractAddress: string;
+}
+
+/**
+ * Input for projecting per-batch request fees, including the starting excess and contract address.
+ */
+export interface BatchProjectionConfig extends RequestFeeEstimateConfig {
+  currentExcess: bigint;
+  systemContractAddress: string;
+}
+
+/**
+ * Per-batch request-fee projection.
+ */
+export interface RequestFeeBatchProjection {
+  batchNumber: number;
+  requestCount: number;
+  requestFee: bigint;
+  capExceeded: boolean;
+}
+
+/**
+ * Current request-fee and network-fee estimate.
+ */
+export interface RequestFeeEstimate {
+  currentExcess: bigint;
+  currentRequestFee: bigint;
+  maxNetworkFees: MaxNetworkFees;
+  gasLimit: bigint;
+  gasCost: bigint;
+  exceedsCap: boolean;
+  estimatedBlocksUntilCap: bigint;
+  batches: RequestFeeBatchProjection[];
+}
+
+/**
+ * User-facing behavior when a request fee exceeds the configured cap.
+ */
+export type FeeCapDecision =
+  | typeof application.FEE_ACTION_WAIT
+  | typeof application.FEE_ACTION_CONTINUE
+  | typeof application.FEE_ACTION_ABORT;
+
+/**
+ * Request-fee cap policy used before broadcasting or proposing requests.
+ */
+export interface RequestFeeCapPolicy {
+  maxRequestFee: bigint;
+  maxWaitBlocks: bigint;
+  skipConfirmation: boolean;
+}
+
+/**
+ * Request-fee cap check boundary operation.
+ */
+export type RequestFeeCapOperation =
+  | typeof application.FEE_CAP_OPERATION_BATCH
+  | typeof application.FEE_CAP_OPERATION_REPLACEMENT
+  | typeof application.FEE_CAP_OPERATION_SAFE_PROPOSAL;
+
+/**
+ * Context for checking a request-fee cap at a broadcast/proposal boundary.
+ */
+export interface RequestFeeCapCheckContext {
+  operation: RequestFeeCapOperation;
+  requestCount: number;
+}
+
+export class RequestFeeCapExceededError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RequestFeeCapExceededError';
+  }
+}
+
+export class RequestFeeOperationCancelledError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RequestFeeOperationCancelledError';
+  }
+}
+
 export class BlockchainStateError extends Error {
   constructor(
     message: string,
@@ -240,4 +424,78 @@ export class InsufficientFundsAbortError extends Error {
     super('Insufficient funds detected - aborting remaining batches');
     this.name = 'InsufficientFundsAbortError';
   }
+}
+
+/**
+ * Common input of the pre-request sanity checks of one operation
+ */
+export interface ValidatorCheckRequest {
+  beaconApiUrl: string;
+  network: string;
+  /** Address which must own the validators (signer address or Safe address) */
+  ownerAddress: string;
+  /** Label for error messages (e.g. 'signer' or 'Safe') */
+  ownerLabel?: string;
+  /** Validator pubkeys the requests are sent for */
+  validatorPubkeys: string[];
+}
+
+/**
+ * Beacon chain state snapshot used by the pre-request sanity checks
+ */
+export interface ValidationContext {
+  spec: BeaconSpec;
+  currentEpoch: number;
+  beaconChainId: string;
+  /** Validators keyed by lower-case pubkey */
+  validators: Map<string, BeaconValidator>;
+  /** Summed pending partial withdrawal amounts in gwei keyed by validator index */
+  pendingWithdrawalAmounts: Map<string, bigint>;
+  pendingPartialWithdrawalCount: number;
+  pendingConsolidationCount: number;
+}
+
+/**
+ * A single validator sanity check returning an error message on failure
+ */
+export type ValidatorCheck = (
+  validatorPubkey: string,
+  validator: BeaconValidator,
+  context: ValidationContext
+) => string | undefined;
+
+/**
+ * Validators which are checked with the same set of sanity checks
+ */
+export interface ValidatorCheckGroup {
+  validatorPubkeys: string[];
+  /** Optional role ('source' / 'target') used in error messages */
+  role?: string;
+  checks: ValidatorCheck[];
+}
+
+/**
+ * A sanity check on the whole request set returning an error message on failure
+ */
+export type RequestCheck = (context: ValidationContext) => string | undefined;
+
+/**
+ * Account paying request fees (signer or Safe)
+ */
+export interface FeePayer {
+  address: string;
+  /** Label for error messages (e.g. 'signer' or 'Safe') */
+  label: string;
+}
+
+/**
+ * Input of the balance check before sending execution layer requests
+ */
+export interface RequestBalanceCheck {
+  /** Target system contract address */
+  contractAddress: string;
+  /** Number of requests to send */
+  requestCount: number;
+  /** Request fee cap in wei, if set */
+  maxRequestFee?: bigint;
 }

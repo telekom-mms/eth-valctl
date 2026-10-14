@@ -26,6 +26,7 @@ Always run below commands after an implementation task.
 | --- | --- |
 | `bun run start` | Run CLI |
 | `bun test` | Run tests |
+| `bun run test:coverage-diff` | Coverage delta vs. base branch (new/changed lines) |
 | `bun run typecheck` | Type check |
 | `bun run lint` | ESLint (TypeScript/JavaScript only) |
 | `bun run format` | Prettier (TypeScript/JavaScript only) |
@@ -44,6 +45,8 @@ src/
     withdraw.ts                      Partial withdrawal command
     exit.ts                          Full exit command
     safe.ts                          Safe multisig sign/execute commands
+    fees.ts                          Read-only request fee estimate/projection command
+    error-handler.ts                 Top-level CLI error handling and exit codes
     validation/
       cli.ts                         CLI argument parsing and validation
   constants/
@@ -67,7 +70,7 @@ src/
       withdraw.ts                    Partial withdrawal business logic
       exit.ts                        Full exit business logic
       ethereum.ts                    Ethereum connection factory
-      pre-request-validation.ts      Beacon API credential type + ownership checks
+      pre-request-validation.ts      Beacon API sanity checks (existence, credentials, ownership, status, age, pending withdrawals, balance, queues, chain id)
       execution-layer-request-pipeline.ts  Orchestrates validation -> signing -> broadcast
       batch-utils.ts                 Splits arrays into sized batches (shared utility)
       error-utils.ts                 Error classification (INSUFFICIENT_FUNDS, etc.)
@@ -101,7 +104,10 @@ src/
         transaction-monitor.ts       Waits for confirmations, detects failures
         transaction-replacer.ts      Fee-bump replacement (12% increase per retry)
         transaction-progress-logger.ts  Real-time batch progress output
-        ethereum-state-service.ts    Gas price and nonce queries
+        ethereum-state-service.ts    Block, gas price, nonce, and system contract fee queries
+        request-fee-policy.ts        Builds cap policy from CLI options; classifies cap stop errors
+        request-fee-cap-service.ts   Enforces the fee cap (wait / continue / abort) before sending
+        request-fee-estimation-service.ts  EIP fee curve math and per-batch fee projection
         transaction-pipeline.ts        Coordinates single-tx sign -> broadcast -> monitor flow
         execution-layer-request-factory.ts  Factory: wires TransactionPipeline dependency graph
         broadcast-strategy/
@@ -110,7 +116,7 @@ src/
           sequential-broadcast-strategy.ts One-at-a-time with slot timing (Ledger signer)
           broadcast-utils.ts         Shared broadcast helpers
     infrastructure/
-      beacon-service.ts              Beacon API client (validator state, slot timing)
+      beacon-service.ts              Beacon API client (genesis, chain spec, slot/epoch timing)
 ```
 
 ## Key Design Patterns
@@ -124,10 +130,11 @@ src/
 - **Resource Disposal:** `Disposable` interface + `TransactionPipeline` collects and disposes resources (BeaconService, broadcast strategies)
 - **Ports & Adapters:** `src/ports/` defines abstractions; `src/service/domain/` provides implementations
 - **Adapter:** `LedgerEip1193Provider` bridges Ledger hardware wallet to EIP-1193 for Safe Protocol Kit
+- **Optional Runtime Threading:** `RequestFeeCapRuntime` (policy + resolver) is passed as a trailing optional parameter through pipeline -> factory -> orchestrator/replacer/strategy. Omitting it restores the pre-cap behaviour exactly, so every fee read falls back to a plain `fetchContractFee()`
 
 ## CLI Commands and Global Options
 
-**Commands:** `consolidate`, `switch`, `withdraw`, `exit`, `safe sign`, `safe execute`
+**Commands:** `consolidate`, `switch`, `withdraw`, `exit`, `fees`, `safe sign`, `safe execute`
 
 **Global options:**
 
@@ -140,15 +147,27 @@ src/
 | `-l, --ledger` | Use Ledger hardware wallet for signing | `false` |
 | `-s, --safe <address>` | Safe multisig address for proposal/sign/execute | - |
 | `-f, --safe-fee-tip <wei>` | Tip in wei added to system contract fee per Safe proposal operation | `100` |
+| `-x, --max-request-fee <amount>` | Max request fee per EL request before waiting/prompting. Unit is mandatory (`wei`, `gwei`, `eth`) | `10wei` |
+| `-w, --max-request-fee-wait-blocks <blocks>` | Max blocks to wait for the request fee to drop (`0` aborts immediately) | `50` |
+| `-y, --yes` | Skip confirmation prompts using default actions | `false` |
+
+**Global options are positional.** `.enablePositionalOptions()` is active, so globals MUST precede
+the subcommand: `eth-valctl --yes --safe <address> safe execute`. Writing `safe execute --yes`
+fails with an unknown-option error.
+
+**`fees` options** (read-only; estimates and projects fees, sends nothing; batch size and cap come from global `-m`/`-x`):
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `<operation>` | Positional argument: `consolidate`, `switch`, `withdraw`, or `exit` | required |
+| `-c, --total-request-count <count>` | Total EL requests to project fees for | `1` |
 
 **`safe execute` options:**
 
 | Option | Description | Default |
 | --- | --- | --- |
 | `-o, --fee-overpayment-threshold <wei>` | Wei threshold above which fee overpayment is flagged | `100` |
-| `-y, --yes` | Skip confirmation prompts. On stale fees, poll until fees drop, bounded by `--max-fee-wait-blocks` (use `--stale-fee-action reject` to propose rejections instead) | `false` |
 | `-a, --stale-fee-action <action>` | Non-interactive stale fee action: `wait` (poll) or `reject` (propose rejection) | - |
-| `-w, --max-fee-wait-blocks <blocks>` | Max blocks to wait for fee to drop (default: 50, 0 aborts immediately on stale fees) | `50` |
 
 ## Commit Message Style
 
@@ -166,24 +185,47 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/) as defined i
 - **Types:** `feat`, `fix`, `perf`, `docs`, `ci`, `build`, `test`, `refactor`, `style`, `chore`
 - **Breaking changes:** add `!` after type/scope or `BREAKING CHANGE:` in footer
 - **Examples:** `feat(cli): Add file-based validator pubkey input`, `fix(request): Dispose BeaconService in sequential broadcast path`
+- **commitlint** (commit-msg hook, `.pre-commit/.commitlintrc.json`): header ≤ 72 chars, sentence-case subject, body/footer lines ≤ 100 chars. pre-commit hooks also run on every commit
+- **Sign every commit** with `git commit -S` (passphrase is cached)
+- **Co-author footer without e-mail address:** `Co-Authored-By: <model name>`. E-mail addresses get masked by the user's guardrail setup
 
-## Constants Convention
+## Tickets
+
+- Planned work lives in `tickets/<topic>/<PREFIX>-NN-<slug>.md` (gitignored, never committed)
+- Follow the section order in `tickets/ticket-structure-improvements.md`
+
+## Repo Conventions
+
+### Constants
 
 - **Application values** (error codes, contract addresses, regex patterns, config values) go to `src/constants/application.ts`
 - **User-facing messages** (error messages, log messages, warnings, info) go to `src/constants/logging.ts`
 - Never use inline string literals for error messages or magic values in source files
+- Import the whole module (`import * as application from '../constants/application'`) when importing more than 3 constants from it
+
+### Interfaces and Types
+
+- Domain interfaces and types go to `src/model`, even when only used inside one module. Keeping them together makes interacting types easy to compare and avoids duplicates
+- Port abstractions (interfaces with multiple implementations, e.g. `ISigner`) go to `src/ports`
+- Create a new module in `src/model` when a type fits none of the existing ones; check for a reusable or extendable type first
+- Test-only fixture types may stay in the `*.test.ts` file
+- Known exceptions, to be refactored later: local types in `execution-layer-request-pipeline.ts` and other pre-existing service modules
 
 ## Key Constraints
 
-1. **Pre-validation required** before any blockchain transaction (Beacon API credential type + ownership checks)
+1. **Pre-validation required** before any blockchain transaction: spec-aligned sanity checks against the beacon head state; all failures are collected and reported together, then the run exits 1 before any transaction is sent
 2. **Private keys are prompt-only**, never passed as CLI arguments
 3. **Batch processing** splits requests by `--max-requests-per-block`, retries up to 3 times with 12% fee bump
 4. **Signer-aware broadcasting:** parallel (wallet) vs sequential (Ledger) with slot-boundary avoidance
 5. **INSUFFICIENT_FUNDS aborts** remaining batches immediately
 6. **Supported networks:** mainnet, hoodi, sepolia, kurtosis_devnet
 7. **Safe proposals** use MultiSend batching with sequential nonces; each operation includes system contract fee + `--safe-fee-tip` (default 100 wei to absorb intra-batch fee growth)
-8. **Safe execution is strictly nonce-ordered** — fee is re-validated before every transaction (including the first); stale fees poll for fee drop (bounded by `--max-fee-wait-blocks`) or propose rejection, depending on `--stale-fee-action`
+8. **Safe execution is strictly nonce-ordered** — fee is re-validated before every transaction (including the first); stale fees poll for fee drop (bounded by `--max-request-fee-wait-blocks`) or propose rejection, depending on `--stale-fee-action`
 9. **Safe preflight** validates TX Service health, Safe existence, and signer ownership before any sign/execute operation
+10. **Request fee cap is active by default** (`--max-request-fee` defaults to `10wei`, tolerating a consolidation queue of ~40 excess before tripping — the curve is near-flat below that and steepens sharply after). On breach: prompt wait/continue/abort, or wait automatically with `--yes`. Choosing continue approves that fee *and anything lower* for the rest of the run; a further increase re-prompts
+11. **Cap check granularity depends on the path** — once per batch (wallet/parallel), once per transaction (Ledger/sequential), once per replacement group or transaction, once per Safe proposal. The Safe cap applies to the raw contract fee *before* `--safe-fee-tip` is added
+12. **Cap aborts throw, they do not fail a single request** — `RequestFeeCapExceededError` (exit 1) and `RequestFeeOperationCancelledError` (exit 0) propagate past per-transaction error handling via `isRequestFeePolicyStopError`, stopping the whole run. Before rethrowing, the orchestrator logs completed-batch failures plus the unfinished requests as *unknown status* (broadcast started) or *not sent*
+13. **Balance pre-check** (`checkSignerBalance`) requires per request `max(contractFee, cap)` + `TRANSACTION_GAS_LIMIT × maxFeePerGas × 1.12` (headroom for one replacement). Don't use `estimateGas`: it throws a raw RPC error exactly when the signer is underfunded. The Safe balance is only checked at proposal time; the execute-time check is deferred (`tickets/safe-fee-validation/SFV-01`)
 
 ## Testing
 

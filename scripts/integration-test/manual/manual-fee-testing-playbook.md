@@ -23,7 +23,7 @@ Manual test scenarios for Safe fee validation — all wait/abort/reject paths at
 
 ## Shell Helpers
 
-Safe commands prompt for the private key interactively. Do **not** pipe keys via `echo '...' |` — stdin is consumed by the PK prompt, causing follow-up interactive prompts (execute confirmation, per-tx stale fee Wait/Abort) to receive EOF and silently skip. Direct commands (`direct_switch`, `direct_exit`) still pipe PK since they have no follow-up prompts.
+Safe commands prompt for the private key interactively. Do **not** pipe keys via `echo '...' |` — stdin is consumed by the PK prompt, causing follow-up interactive prompts (execute confirmation, per-tx stale fee Wait/Abort) to receive EOF and silently skip. Direct commands (`direct_switch`, `direct_exit`) still pipe PK since they have no follow-up prompts — they pass `-x 1000wei` so the request-fee cap never prompts during queue fills.
 
 Paste into your terminal before running scenarios:
 
@@ -71,24 +71,44 @@ safe_propose_exit() {
 safe_sign() {
   SAFE_API_KEY=test-api-key bun run start \
     -n kurtosis_devnet -r ${RPC} -b ${BEACON} --safe ${SAFE} \
-    safe sign --yes
+    --yes safe sign
 }
 
 safe_exec() {
+  local global_args=()
+  local execute_args=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -y|--yes)
+        global_args+=("$1")
+        shift
+        ;;
+      --max-request-fee-wait-blocks|-w)
+        global_args+=("$1" "$2")
+        shift 2
+        ;;
+      *)
+        execute_args+=("$1")
+        shift
+        ;;
+    esac
+  done
+
   SAFE_API_KEY=test-api-key bun run start \
     -n kurtosis_devnet -r ${RPC} -b ${BEACON} --safe ${SAFE} \
-    safe execute "$@"
+    "${global_args[@]}" safe execute "${execute_args[@]}"
 }
 
 direct_switch() {
   echo "${KEY0}" | SAFE_API_KEY=test-api-key bun run start \
-    -n kurtosis_devnet -r ${RPC} -b ${BEACON} -m 30 \
+    -n kurtosis_devnet -r ${RPC} -b ${BEACON} -m 30 -x 1000wei \
     switch -v "${TMP}/$1"
 }
 
 direct_exit() {
   echo "${KEY0}" | SAFE_API_KEY=test-api-key bun run start \
-    -n kurtosis_devnet -r ${RPC} -b ${BEACON} -m 30 \
+    -n kurtosis_devnet -r ${RPC} -b ${BEACON} -m 30 -x 1000wei \
     exit -v "${TMP}/$1"
 }
 
@@ -162,6 +182,7 @@ All should show `0x01`. Wait and re-check if still `0x00`.
 
 - **Consolidation** (`0x...7251`): excess -1/block. **Withdrawal** (`0x...7002`): excess -2/block.
 - Fee frozen at proposal time in MultiSend `value`. **Stale** = proposed < current (would revert).
+- Proposals are cap-checked (`--max-request-fee`, default `10wei`) against the raw contract fee *before* `--safe-fee-tip` is added, so large tips (S10) never trip the cap.
 
 ## Validator Allocation
 
@@ -174,8 +195,8 @@ All should show `0x01`. Wait and re-check if still `0x00`.
 | S5 | Batch stale -> `-y` | 1030-1035 | 1200-1224 | Yes (polls) |
 | S6 | Per-tx stale -> interactive wait (success) | 1036-1044 | 1225-1249 | Yes |
 | S7 | Per-tx stale -> interactive abort | 1045-1053 | 1250-1274 | Partial |
-| S8 | Per-tx stale -> `--max-fee-wait-blocks 1` | 1054-1062 | 1275-1299 | Partial |
-| S9 | Per-tx stale -> `--max-fee-wait-blocks 0` | 1063-1071 | 1300-1324 | Partial |
+| S8 | Per-tx stale -> `--max-request-fee-wait-blocks 1` | 1054-1062 | 1275-1299 | Partial |
+| S9 | Per-tx stale -> `--max-request-fee-wait-blocks 0` | 1063-1071 | 1300-1324 | Partial |
 | S10 | Overpaid fee | 1072-1077 | — | Yes |
 | S11 | Happy path exit | 1078-1083 | — | Yes |
 | S12 | Batch stale exit (withdrawal contract) | 1084-1089 | 1350-1399 | Yes (polls) |
@@ -248,13 +269,13 @@ direct_switch queue-1
 check_excess ${CONSOL}   # MUST be > 12 (~24 expected)
 
 # 3. Execute (interactive) — SELECT "Wait" on the per-tx prompt
-safe_exec --max-fee-wait-blocks 30
+safe_exec --max-request-fee-wait-blocks 30
 ```
 
 **Expected:**
 
 - Stale warnings for both batches, block estimates
-- `Stale fees detected (2 of 2 transactions) — continuing will wait per transaction for fees to decrease, bounded by --max-fee-wait-blocks.` (informational summary only, **no** Wait/Reject prompt)
+- `Stale fees detected (2 of 2 transactions) — continuing will wait per transaction for fees to decrease, bounded by --max-request-fee-wait-blocks.` (informational summary only, **no** Wait/Reject prompt)
 - Execute-confirm prompt -> confirm
 - Per-tx stale detected before first execute -> prompt: **Wait** / Abort -> select **Wait**
 - `Waiting for fee to drop...` progress logs -> `fee is now sufficient, proceeding`
@@ -271,7 +292,7 @@ Same propose+sign-then-inflate pattern as S2, only the execute command differs.
 **Precondition:** Consolidation excess ≤ 12 (fee at minimum) when proposing.
 
 ```bash
-# S3: --stale-fee-action wait (default --max-fee-wait-blocks = 50)
+# S3: --stale-fee-action wait (default --max-request-fee-wait-blocks = 50)
 fetch_pubkeys 1018 1023 s3 && safe_propose s3 && safe_sign
 fetch_pubkeys 1150 1174 queue-2 && direct_switch queue-2
 check_excess ${CONSOL}   # MUST be > 12
@@ -286,15 +307,15 @@ safe_exec --stale-fee-action reject
 # Expected: NO prompt, rejections proposed automatically
 # Complete: safe_sign && safe_exec --yes
 
-# S5: -y (auto-wait, default --max-fee-wait-blocks = 50)
+# S5: -y (auto-wait, default --max-request-fee-wait-blocks = 50)
 fetch_pubkeys 1030 1035 s5 && safe_propose s5 && safe_sign
 fetch_pubkeys 1200 1224 queue-4 && direct_switch queue-4
 check_excess ${CONSOL}   # MUST be > 12
 safe_exec -y
 # Expected: NO prompt, per-tx wait polls until fee drops -> batches execute
 
-# S3b/S5b: --max-fee-wait-blocks 0 (opt-in for immediate abort on stale)
-safe_exec --stale-fee-action wait --max-fee-wait-blocks 0
+# S3b/S5b: --max-request-fee-wait-blocks 0 (opt-in for immediate abort on stale)
+safe_exec --stale-fee-action wait --max-request-fee-wait-blocks 0
 # Expected: stale warnings, "Estimated N blocks exceeds max wait of 0 blocks" -> exit code 1
 ```
 
@@ -308,7 +329,7 @@ Per-tx stale requires batch-level to PASS but per-tx check (after batch 1) to FA
 2. Execute when excess = **exactly 12** -> batch-level: fee=1 -> SUFFICIENT
 3. Batch 1 MultiSend (3 ops) executes -> excess = 12+3-1 = **14** -> fee = **2 wei** -> STALE for batch 2
 
-**Recovery:** excess 14 -> 12 takes ~2 blocks (24s). Use `--max-fee-wait-blocks` to control behavior.
+**Recovery:** excess 14 -> 12 takes ~2 blocks (24s). Use `--max-request-fee-wait-blocks` to control behavior.
 
 **Common setup for S6-S9:**
 
@@ -339,7 +360,7 @@ safe_sign
 fetch_pubkeys 1225 1249 queue-5 && direct_switch queue-5
 wait_for_decay ${CONSOL} "consolidation"
 # Execute IMMEDIATELY when excess = 12
-safe_exec --max-fee-wait-blocks 5
+safe_exec --max-request-fee-wait-blocks 5
 ```
 
 **Expected:**
@@ -384,21 +405,21 @@ safe_exec
 Same propose+sign, only execute flags differ. Both abort immediately because estimated blocks (2) exceeds max wait.
 
 ```bash
-# S8: --max-fee-wait-blocks 1 (estimated 2 > max 1 -> abort)
+# S8: --max-request-fee-wait-blocks 1 (estimated 2 > max 1 -> abort)
 fetch_pubkeys 1054 1062 s8 && safe_propose s8 && safe_sign
 fetch_pubkeys 1275 1299 queue-7 && direct_switch queue-7
 wait_for_decay ${CONSOL} "consolidation"
 # Execute IMMEDIATELY when excess = 12
-safe_exec --stale-fee-action wait --max-fee-wait-blocks 1
+safe_exec --stale-fee-action wait --max-request-fee-wait-blocks 1
 # Expected: "Estimated 2 blocks exceeds max wait of 1 blocks — aborting"
 # Exit code 1. Cleanup: `safe_exec` after excess is low enough
 
-# S9: --max-fee-wait-blocks 0 (any stale -> immediate abort)
+# S9: --max-request-fee-wait-blocks 0 (any stale -> immediate abort)
 fetch_pubkeys 1063 1071 s9 && safe_propose s9 && safe_sign
 fetch_pubkeys 1300 1324 queue-8 && direct_switch queue-8
 wait_for_decay ${CONSOL} "consolidation"
 # Execute IMMEDIATELY when excess = 12
-safe_exec --stale-fee-action wait --max-fee-wait-blocks 0
+safe_exec --stale-fee-action wait --max-request-fee-wait-blocks 0
 # Expected: "Estimated 2 blocks exceeds max wait of 0 blocks — aborting"
 # Exit code 1. Cleanup: `safe_exec` after excess is low enough
 ```

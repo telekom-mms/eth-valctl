@@ -29,7 +29,7 @@ export async function checkTransactionServiceHealth(
       console.error(chalk.red(logging.SAFE_TX_SERVICE_UNREACHABLE_ERROR(txServiceUrl)));
       process.exit(1);
     }
-    throw new Error(logging.SAFE_TX_SERVICE_UNKNOWN_ERROR(txServiceUrl));
+    throw new Error(logging.SAFE_TX_SERVICE_UNKNOWN_ERROR(txServiceUrl), { cause: error });
   }
 
   if (info.name !== SAFE_TRANSACTION_SERVICE_NAME) {

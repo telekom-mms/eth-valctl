@@ -2,12 +2,7 @@ import type { SafeInfoResponse } from '@safe-global/api-kit';
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import type { JsonRpcProvider } from 'ethers';
 
-import {
-  CONSOLIDATION_CONTRACT_ADDRESS,
-  DEFAULT_SAFE_FEE_TIP,
-  OWNER_LABEL_SAFE,
-  WITHDRAWAL_CONTRACT_ADDRESS
-} from '../../constants/application';
+import * as application from '../../constants/application';
 import { SAFE_FEE_TIP_INFO } from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
 import type { ISigner } from '../../ports/signer.interface';
@@ -35,7 +30,18 @@ const MOCK_SAFE_INFO: SafeInfoResponse = {
   version: '1.4.1'
 };
 
-const mockProvider = {} as JsonRpcProvider;
+const SUFFICIENT_BALANCE = 10n ** 21n;
+const MAX_FEE_PER_GAS = 2n;
+const GAS_COST_PER_REQUEST =
+  (MAX_FEE_PER_GAS *
+    application.TRANSACTION_GAS_LIMIT *
+    application.TRANSACTION_FEE_INCREASE_PERCENTAGE) /
+  application.PERCENTAGE_DENOMINATOR;
+
+const mockGetBalance = mock(() => Promise.resolve(SUFFICIENT_BALANCE));
+const mockProvider = {
+  getBalance: mockGetBalance
+} as unknown as JsonRpcProvider;
 const mockSigner = {
   address: DIRECT_SIGNER_ADDRESS,
   dispose: mock(() => Promise.resolve())
@@ -75,7 +81,7 @@ function buildPipelineConfig(
     globalOptions: buildGlobalOptions(),
     validatorPubkeys: ['0xpubkey1'],
     encodeRequestData: (pubkey: string) => `data:${pubkey}`,
-    resolveContractAddress: () => CONSOLIDATION_CONTRACT_ADDRESS,
+    resolveContractAddress: () => application.CONSOLIDATION_CONTRACT_ADDRESS,
     ...overrides
   };
 }
@@ -94,6 +100,7 @@ describe('executeRequestPipeline', () => {
     spyOn(console, 'log').mockImplementation(() => {});
 
     mockDispose = mock(() => Promise.resolve());
+    (mockSigner.dispose as ReturnType<typeof mock>).mockClear();
 
     createEthereumConnectionSpy = spyOn(
       ethereumModule,
@@ -130,6 +137,15 @@ describe('executeRequestPipeline', () => {
       'fetchContractFee'
     ).mockImplementation(() => Promise.resolve(CONTRACT_FEE));
     fetchContractFeeSpy.mockClear();
+
+    spyOn(
+      ethereumStateServiceModule.EthereumStateService.prototype,
+      'getMaxNetworkFees'
+    ).mockImplementation(() =>
+      Promise.resolve({ maxFeePerGas: MAX_FEE_PER_GAS, maxPriorityFeePerGas: 1n })
+    );
+    mockGetBalance.mockReset();
+    mockGetBalance.mockImplementation(() => Promise.resolve(SUFFICIENT_BALANCE));
   });
 
   afterEach(() => {
@@ -177,17 +193,18 @@ describe('executeRequestPipeline', () => {
         buildPipelineConfig({
           globalOptions: options,
           validatorPubkeys: pubkeys,
-          resolveContractAddress: () => WITHDRAWAL_CONTRACT_ADDRESS
+          resolveContractAddress: () => application.WITHDRAWAL_CONTRACT_ADDRESS
         })
       );
 
       expect(sendExecutionLayerRequestsSpy).toHaveBeenCalledWith(
-        WITHDRAWAL_CONTRACT_ADDRESS,
+        application.WITHDRAWAL_CONTRACT_ADDRESS,
         mockProvider,
         mockSigner,
         ['data:0xaaa', 'data:0xbbb'],
         5,
-        'http://b:1'
+        'http://b:1',
+        undefined
       );
     });
 
@@ -196,6 +213,96 @@ describe('executeRequestPipeline', () => {
 
       expect(initializeSafeSpy).not.toHaveBeenCalled();
       expect(proposeSafeTransactionsSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('balance check', () => {
+    let exitSpy: ReturnType<typeof spyOn>;
+
+    beforeEach(() => {
+      exitSpy = spyOn(process, 'exit').mockImplementation((() => {
+        throw new Error('process.exit');
+      }) as never);
+    });
+
+    it('exits before broadcasting when the signer cannot pay fees and gas of all requests', async () => {
+      const requiredPerRequest = CONTRACT_FEE + GAS_COST_PER_REQUEST;
+      mockGetBalance.mockImplementation(() => Promise.resolve(2n * requiredPerRequest - 1n));
+
+      await expect(
+        executeRequestPipeline(buildPipelineConfig({ validatorPubkeys: ['0xa', '0xb'] }))
+      ).rejects.toThrow('process.exit');
+
+      expect(mockGetBalance).toHaveBeenCalledWith(DIRECT_SIGNER_ADDRESS);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(sendExecutionLayerRequestsSpy).not.toHaveBeenCalled();
+    });
+
+    it('broadcasts when the signer balance covers fees and gas of all requests exactly', async () => {
+      const requiredPerRequest = CONTRACT_FEE + GAS_COST_PER_REQUEST;
+      mockGetBalance.mockImplementation(() => Promise.resolve(2n * requiredPerRequest));
+
+      await executeRequestPipeline(buildPipelineConfig({ validatorPubkeys: ['0xa', '0xb'] }));
+
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(sendExecutionLayerRequestsSpy).toHaveBeenCalled();
+    });
+
+    it('uses the request fee cap when it is above the current request fee', async () => {
+      const maxRequestFee = CONTRACT_FEE * 10n;
+      const requiredPerRequest = maxRequestFee + GAS_COST_PER_REQUEST;
+      const globalOptions = buildGlobalOptions({ maxRequestFee, maxRequestFeeWaitBlocks: 0n });
+      mockGetBalance.mockImplementation(() => Promise.resolve(2n * requiredPerRequest - 1n));
+
+      await expect(
+        executeRequestPipeline(
+          buildPipelineConfig({ globalOptions, validatorPubkeys: ['0xa', '0xb'] })
+        )
+      ).rejects.toThrow('process.exit');
+      expect(sendExecutionLayerRequestsSpy).not.toHaveBeenCalled();
+
+      mockGetBalance.mockImplementation(() => Promise.resolve(2n * requiredPerRequest));
+      await executeRequestPipeline(
+        buildPipelineConfig({ globalOptions, validatorPubkeys: ['0xa', '0xb'] })
+      );
+      expect(sendExecutionLayerRequestsSpy).toHaveBeenCalled();
+    });
+
+    it('uses the Safe request fee cap plus the fee tip', async () => {
+      const maxRequestFee = CONTRACT_FEE * 10n;
+      const globalOptions = buildGlobalOptions({
+        safe: SAFE_ADDRESS,
+        maxRequestFee,
+        maxRequestFeeWaitBlocks: 0n
+      });
+      mockGetBalance.mockImplementation(() =>
+        Promise.resolve(maxRequestFee + application.DEFAULT_SAFE_FEE_TIP - 1n)
+      );
+
+      await expect(executeRequestPipeline(buildPipelineConfig({ globalOptions }))).rejects.toThrow(
+        'process.exit'
+      );
+      expect(proposeSafeTransactionsSpy).not.toHaveBeenCalled();
+
+      mockGetBalance.mockImplementation(() =>
+        Promise.resolve(maxRequestFee + application.DEFAULT_SAFE_FEE_TIP)
+      );
+      await executeRequestPipeline(buildPipelineConfig({ globalOptions }));
+      expect(proposeSafeTransactionsSpy).toHaveBeenCalled();
+    });
+
+    it('exits before proposing when the Safe cannot pay the request fees', async () => {
+      mockGetBalance.mockImplementation(() => Promise.resolve(0n));
+
+      await expect(
+        executeRequestPipeline(
+          buildPipelineConfig({ globalOptions: buildGlobalOptions({ safe: SAFE_ADDRESS }) })
+        )
+      ).rejects.toThrow('process.exit');
+
+      expect(mockGetBalance).toHaveBeenCalledWith(SAFE_ADDRESS);
+      expect(proposeSafeTransactionsSpy).not.toHaveBeenCalled();
+      expect(mockDispose).toHaveBeenCalled();
     });
   });
 
@@ -216,14 +323,14 @@ describe('executeRequestPipeline', () => {
       expect(safeArg).toBe(SAFE_ADDRESS);
     });
 
-    it('calls validate with the safe address and OWNER_LABEL_SAFE', async () => {
+    it('calls validate with the safe address and application.OWNER_LABEL_SAFE', async () => {
       const validate = mock(() => Promise.resolve());
       const options = buildGlobalOptions({ safe: SAFE_ADDRESS });
 
       await executeRequestPipeline(buildPipelineConfig({ globalOptions: options, validate }));
 
       expect(validate).toHaveBeenCalledTimes(1);
-      expect(validate).toHaveBeenCalledWith(SAFE_ADDRESS, OWNER_LABEL_SAFE);
+      expect(validate).toHaveBeenCalledWith(SAFE_ADDRESS, application.OWNER_LABEL_SAFE);
     });
 
     it('uses the default safe fee tip when safeFeeTip is unset', async () => {
@@ -234,7 +341,7 @@ describe('executeRequestPipeline', () => {
       const proposeCall = proposeSafeTransactionsSpy.mock.calls[0] as unknown as [
         { contractFee: bigint }
       ];
-      expect(proposeCall[0].contractFee).toBe(CONTRACT_FEE + DEFAULT_SAFE_FEE_TIP);
+      expect(proposeCall[0].contractFee).toBe(CONTRACT_FEE + application.DEFAULT_SAFE_FEE_TIP);
     });
 
     it('adds an explicit safe fee tip on top of the contract fee', async () => {
@@ -321,7 +428,7 @@ describe('executeRequestPipeline', () => {
       ];
       expect(proposeCall[0].requestData).toEqual(['data:0xaaa', 'data:0xbbb']);
       expect(proposeCall[0].validatorPubkeys).toEqual(pubkeys);
-      expect(proposeCall[0].contractAddress).toBe(CONSOLIDATION_CONTRACT_ADDRESS);
+      expect(proposeCall[0].contractAddress).toBe(application.CONSOLIDATION_CONTRACT_ADDRESS);
       expect(proposeCall[0].safeAddress).toBe(SAFE_ADDRESS);
       expect(proposeCall[0].apiKit).toBe(mockApiKit);
       expect(proposeCall[0].protocolKit).toBe(mockProtocolKit);
@@ -334,6 +441,70 @@ describe('executeRequestPipeline', () => {
 
       expect(createEthereumConnectionSpy).not.toHaveBeenCalled();
       expect(sendExecutionLayerRequestsSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('request fee cap handling', () => {
+    it('broadcasts directly without prompting when the current request fee is equal to the cap', async () => {
+      const options = {
+        ...buildGlobalOptions(),
+        maxRequestFee: CONTRACT_FEE
+      } as GlobalCliOptions;
+
+      await executeRequestPipeline(buildPipelineConfig({ globalOptions: options }));
+
+      expect(sendExecutionLayerRequestsSpy).toHaveBeenCalledTimes(1);
+      expect(stderrSpy.mock.calls.flat().join('\n')).not.toContain('request fee cap');
+    });
+
+    it('does not broadcast direct requests when --yes waits and the cap stays exceeded', async () => {
+      const options = {
+        ...buildGlobalOptions(),
+        maxRequestFee: CONTRACT_FEE - 1n,
+        maxRequestFeeWaitBlocks: 0n,
+        yes: true
+      } as GlobalCliOptions;
+
+      await expect(
+        executeRequestPipeline(buildPipelineConfig({ globalOptions: options }))
+      ).rejects.toThrow('request fee');
+
+      expect(sendExecutionLayerRequestsSpy).not.toHaveBeenCalled();
+      expect(mockSigner.dispose).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not propose Safe requests when --yes waits and the raw contract fee exceeds the cap', async () => {
+      const options = {
+        ...buildGlobalOptions({ safe: SAFE_ADDRESS }),
+        maxRequestFee: CONTRACT_FEE - 1n,
+        maxRequestFeeWaitBlocks: 0n,
+        yes: true
+      } as GlobalCliOptions;
+
+      await expect(
+        executeRequestPipeline(buildPipelineConfig({ globalOptions: options }))
+      ).rejects.toThrow('request fee');
+
+      expect(proposeSafeTransactionsSpy).not.toHaveBeenCalled();
+      expect(mockDispose).toHaveBeenCalledTimes(1);
+    });
+
+    it('compares Safe proposal caps against the raw request fee before adding safe fee tip', async () => {
+      const safeFeeTip = 5_000n;
+      const options = {
+        ...buildGlobalOptions({
+          safe: SAFE_ADDRESS,
+          safeFeeTip: String(safeFeeTip)
+        }),
+        maxRequestFee: CONTRACT_FEE
+      } as GlobalCliOptions;
+
+      await executeRequestPipeline(buildPipelineConfig({ globalOptions: options }));
+
+      const proposeCall = proposeSafeTransactionsSpy.mock.calls[0] as unknown as [
+        { contractFee: bigint }
+      ];
+      expect(proposeCall[0].contractFee).toBe(CONTRACT_FEE + safeFeeTip);
     });
   });
 

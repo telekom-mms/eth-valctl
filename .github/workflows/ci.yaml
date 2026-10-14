@@ -18,7 +18,7 @@ jobs:
     runs-on: "ubuntu-latest"
     steps:
       - name: "Checkout"
-        uses: "actions/checkout@v6"
+        uses: "actions/checkout@v7"
 
       - name: "Setup Bun"
         uses: "oven-sh/setup-bun@v2"
@@ -26,7 +26,7 @@ jobs:
           bun-version-file: "package.json"
 
       - name: "Cache Bun dependencies"
-        uses: "actions/cache@v5"
+        uses: "actions/cache@v6"
         with:
           path: |
             ~/.bun/install/cache
@@ -53,7 +53,7 @@ jobs:
     needs: "validate"
     steps:
       - name: "Checkout"
-        uses: "actions/checkout@v6"
+        uses: "actions/checkout@v7"
 
       - name: "Setup Bun"
         uses: "oven-sh/setup-bun@v2"
@@ -61,7 +61,7 @@ jobs:
           bun-version-file: "package.json"
 
       - name: "Cache Bun dependencies"
-        uses: "actions/cache@v5"
+        uses: "actions/cache@v6"
         with:
           path: |
             ~/.bun/install/cache

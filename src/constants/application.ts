@@ -35,19 +35,55 @@ export const MAX_FETCH_NETWORK_FEES_RETRIES = 5;
  * Fee increase percentage for transaction replacement (112% = 12% increase minimum)
  */
 export const TRANSACTION_FEE_INCREASE_PERCENTAGE = 112n;
+export const PERCENTAGE_DENOMINATOR = 100n;
 
 /** Withdrawal credential types */
 export const WITHDRAWAL_CREDENTIALS_0x00 = '0x00';
 export const WITHDRAWAL_CREDENTIALS_0x01 = '0x01';
 export const WITHDRAWAL_CREDENTIALS_0x02 = '0x02';
 
-/** Beacon API endpoints */
-export const VALIDATOR_STATE_BEACON_API_ENDPOINT = '/eth/v1/beacon/states/head/validators/';
-export const GENESIS_BEACON_API_ENDPOINT = '/eth/v1/beacon/genesis';
+/** Withdrawal credentials layout: type prefix ('0x' + 1 byte) and offset of the 20-byte address */
+export const WITHDRAWAL_CREDENTIALS_PREFIX_LENGTH = 4;
+export const WITHDRAWAL_CREDENTIALS_ADDRESS_OFFSET = 26;
 
-/** Beacon chain timing constants */
-export const SECONDS_PER_SLOT = 12;
-export const SLOT_BOUNDARY_THRESHOLD = 10;
+/** Validator roles of a consolidation request */
+export const VALIDATOR_ROLE_SOURCE = 'source';
+export const VALIDATOR_ROLE_TARGET = 'target';
+
+/** Beacon API endpoints */
+export const VALIDATORS_BEACON_API_ENDPOINT = '/eth/v1/beacon/states/head/validators';
+export const PENDING_PARTIAL_WITHDRAWALS_BEACON_API_ENDPOINT =
+  '/eth/v1/beacon/states/head/pending_partial_withdrawals';
+export const PENDING_CONSOLIDATIONS_BEACON_API_ENDPOINT =
+  '/eth/v1/beacon/states/head/pending_consolidations';
+export const GENESIS_BEACON_API_ENDPOINT = '/eth/v1/beacon/genesis';
+export const SPEC_BEACON_API_ENDPOINT = '/eth/v1/config/spec';
+export const DEPOSIT_CONTRACT_BEACON_API_ENDPOINT = '/eth/v1/config/deposit_contract';
+
+/** Max. number of validator ids per bulk validators request */
+export const VALIDATORS_REQUEST_CHUNK_SIZE = 500;
+
+/** HTTP request values for beacon API POST requests */
+export const HTTP_METHOD_POST = 'POST';
+export const HTTP_HEADER_CONTENT_TYPE = 'content-type';
+export const CONTENT_TYPE_JSON = 'application/json';
+
+/** Beacon chain spec keys */
+export const SPEC_KEY_SLOT_DURATION_MS = 'SLOT_DURATION_MS';
+export const SPEC_KEY_SECONDS_PER_SLOT = 'SECONDS_PER_SLOT';
+export const SPEC_KEY_SLOTS_PER_EPOCH = 'SLOTS_PER_EPOCH';
+export const SPEC_KEY_SHARD_COMMITTEE_PERIOD = 'SHARD_COMMITTEE_PERIOD';
+export const SPEC_KEY_MIN_ACTIVATION_BALANCE = 'MIN_ACTIVATION_BALANCE';
+export const SPEC_KEY_PENDING_PARTIAL_WITHDRAWALS_LIMIT = 'PENDING_PARTIAL_WITHDRAWALS_LIMIT';
+export const SPEC_KEY_PENDING_CONSOLIDATIONS_LIMIT = 'PENDING_CONSOLIDATIONS_LIMIT';
+
+/** Beacon API validator status of an active validator which is not exiting and not slashed */
+export const VALIDATOR_STATUS_ACTIVE_ONGOING = 'active_ongoing';
+
+/**
+ * Fraction of the slot after which broadcasting waits for the next slot (10s of a 12s slot)
+ */
+export const SLOT_BOUNDARY_THRESHOLD_RATIO = 10 / 12;
 
 /**
  * Buffer time in milliseconds after slot boundary to account for network propagation
@@ -60,6 +96,7 @@ export const PUBKEY_PATTERN = /^(0x)?[a-fA-F0-9]{96}$/;
 
 /** General */
 export const PREFIX_0x = '0x';
+export const DIGITS_PATTERN = /^\d+$/;
 
 /** Time conversion */
 export const MS_PER_SECOND = 1000;
@@ -73,8 +110,27 @@ export const CONSOLIDATION_TARGET_PER_BLOCK = 1n;
 export const WITHDRAWAL_TARGET_PER_BLOCK = 2n;
 export const DEFAULT_FEE_OVERPAYMENT_THRESHOLD = 100n;
 export const DEFAULT_SAFE_FEE_TIP = 100n;
-export const DEFAULT_MAX_FEE_WAIT_BLOCKS = 50n;
+export const WEI_UNIT = 'wei';
+export const GWEI_UNIT = 'gwei';
+export const ETHER_UNIT = 'ether';
+export const ETH_UNIT = 'eth';
+export const ETH_SYMBOL = 'ETH';
+export const WEI_PER_GWEI = 1_000_000_000n;
+export const WEI_PER_ETHER = 1_000_000_000_000_000_000n;
+export const REQUEST_FEE_AMOUNT_PATTERN = /^(\d+(?:\.\d+)?)\s*(wei|gwei|eth)$/i;
+export type RequestFeeInputUnit = typeof WEI_UNIT | typeof GWEI_UNIT | typeof ETH_UNIT;
+export type RequestFeeEthersUnit = typeof WEI_UNIT | typeof GWEI_UNIT | typeof ETHER_UNIT;
+export const DEFAULT_MAX_REQUEST_FEE = 10n;
+export const DEFAULT_MAX_REQUEST_FEE_INPUT = '10wei';
+export const DEFAULT_MAX_REQUEST_FEE_WAIT_BLOCKS = 50n;
+export const DEFAULT_TOTAL_REQUEST_COUNT = 1;
 export const FEE_WAIT_POLL_INTERVAL_MS = 12_000;
+
+/** Supported `fees` command operation names */
+export const FEES_OPERATION_CONSOLIDATE = 'consolidate';
+export const FEES_OPERATION_SWITCH = 'switch';
+export const FEES_OPERATION_WITHDRAW = 'withdraw';
+export const FEES_OPERATION_EXIT = 'exit';
 
 export const TARGET_PER_BLOCK_BY_CONTRACT: Record<string, bigint> = {
   [CONSOLIDATION_CONTRACT_ADDRESS.toLowerCase()]: CONSOLIDATION_TARGET_PER_BLOCK,
@@ -86,13 +142,20 @@ export const LEDGER_CONNECTION_TIMEOUT_MS = 5000;
 export const LEDGER_ADDRESSES_PER_PAGE = 5;
 export const LEDGER_NAV_VALUE_NEXT = 'next';
 export const LEDGER_NAV_VALUE_PREV = 'prev';
+export const LEDGER_ERROR_NAMES = {
+  LOCKED_DEVICE: 'LockedDeviceError',
+  DISCONNECTED: 'DisconnectedDevice',
+  DISCONNECTED_DURING_OPERATION: 'DisconnectedDeviceDuringOperation',
+  USER_REFUSED: 'UserRefusedOnDevice',
+  TRANSPORT_STATUS: 'TransportStatusError',
+  BLIND_SIGNING: 'EthAppPleaseEnableContractData'
+} as const;
 
 /** Error codes */
 export const REPLACEMENT_UNDERPRICED_ERROR_CODE = 'REPLACEMENT_UNDERPRICED';
 export const NONCE_EXPIRED_ERROR_CODE = 'NONCE_EXPIRED';
 export const INSUFFICIENT_FUNDS_ERROR_CODE = 'INSUFFICIENT_FUNDS';
 export const VIEM_INSUFFICIENT_FUNDS_PATTERN = 'insufficient funds';
-export const ECONNREFUSED_ERROR_CODE = 'ECONNREFUSED';
 export const CONNECTION_REFUSED_ERROR_CODE = 'ConnectionRefused';
 export const CALL_EXCEPTION_ERROR_CODE = 'CALL_EXCEPTION';
 
@@ -108,9 +171,15 @@ export const OWNER_LABEL_SAFE = 'Safe';
 
 /** Safe fee validation action values */
 export const FEE_ACTION_WAIT = 'wait';
+export const FEE_ACTION_CONTINUE = 'continue';
 export const FEE_ACTION_REJECT = 'reject';
 export const FEE_ACTION_PROCEED = 'proceed';
 export const FEE_ACTION_ABORT = 'abort';
+
+/** Request-fee cap check boundary operation values */
+export const FEE_CAP_OPERATION_BATCH = 'batch';
+export const FEE_CAP_OPERATION_REPLACEMENT = 'replacement';
+export const FEE_CAP_OPERATION_SAFE_PROPOSAL = 'safe proposal';
 
 /** Safe multisig constants */
 export const SAFE_TRANSACTION_SERVICE_NAME = 'Safe Transaction Service';

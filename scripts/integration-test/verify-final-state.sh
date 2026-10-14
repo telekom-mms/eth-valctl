@@ -270,6 +270,12 @@ main() {
 	wait_for_range "${FEE_QUEUE_DIRECT_START}" "${FEE_QUEUE_DIRECT_STOP}" \
 		"exited_unslashed" "Queue filler exit (Direct)"
 
+	echo "--- Default cap below-boundary fillers (Direct) — validators ${DEFAULT_CAP_BELOW_DIRECT_START}-${DEFAULT_CAP_BELOW_DIRECT_STOP} ---"
+	verify_range_credentials "${DEFAULT_CAP_BELOW_DIRECT_START}" "${DEFAULT_CAP_BELOW_DIRECT_STOP}" "0x02" "Default cap below-boundary filler (Direct)"
+
+	echo "--- Default cap above-boundary fillers (Direct) — validators ${DEFAULT_CAP_ABOVE_DIRECT_START}-${DEFAULT_CAP_ABOVE_DIRECT_STOP} ---"
+	verify_range_credentials "${DEFAULT_CAP_ABOVE_DIRECT_START}" "${DEFAULT_CAP_ABOVE_DIRECT_STOP}" "0x02" "Default cap above-boundary filler (Direct)"
+
 	print_summary
 
 	if [[ "${FAILED}" -gt 0 ]]; then

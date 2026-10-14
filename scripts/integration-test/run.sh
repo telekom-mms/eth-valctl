@@ -97,11 +97,15 @@ setup_phase() {
 	fetch_pubkeys "${CONSOL_SAFE_SOURCE_START}" "${CONSOL_SAFE_SOURCE_STOP}" "${TMP_DIR}/consol-safe-sources.txt"
 	fetch_pubkeys "${WITHDRAW_SAFE_START}" "${WITHDRAW_SAFE_STOP}" "${TMP_DIR}/withdraw-safe-pubkeys.txt"
 	fetch_pubkeys "${EXIT_SAFE_START}" "${EXIT_SAFE_STOP}" "${TMP_DIR}/exit-safe-pubkeys.txt"
+	fetch_pubkeys "${ERROR_SAFE_START}" "${ERROR_SAFE_STOP}" "${TMP_DIR}/error-safe-pubkeys.txt"
 	fetch_pubkeys "${THRESHOLD_SAFE_START}" "${THRESHOLD_SAFE_STOP}" "${TMP_DIR}/threshold-safe-pubkeys.txt"
 	fetch_pubkeys "${FEE_TIP_SAFE_START}" "${FEE_TIP_SAFE_STOP}" "${TMP_DIR}/fee-tip-pubkeys.txt"
 	fetch_pubkeys "${FEE_SAFE_START}" "${FEE_SAFE_STOP}" "${TMP_DIR}/fee-safe-pubkeys.txt"
 	fetch_pubkeys "${FEE_QUEUE_SMALL_DIRECT_START}" "${FEE_QUEUE_SMALL_DIRECT_STOP}" "${TMP_DIR}/fee-queue-small-pubkeys.txt"
 	fetch_pubkeys "${FEE_QUEUE_DIRECT_START}" "${FEE_QUEUE_DIRECT_STOP}" "${TMP_DIR}/fee-queue-pubkeys.txt"
+	fetch_pubkeys "${DEFAULT_CAP_BELOW_DIRECT_START}" "${DEFAULT_CAP_BELOW_DIRECT_STOP}" "${TMP_DIR}/default-cap-below-pubkeys.txt"
+	fetch_pubkeys "${DEFAULT_CAP_ABOVE_DIRECT_START}" "${DEFAULT_CAP_ABOVE_DIRECT_STOP}" "${TMP_DIR}/default-cap-above-pubkeys.txt"
+	fetch_pubkeys "${CAP_ABORT_DIRECT_START}" "${CAP_ABORT_DIRECT_STOP}" "${TMP_DIR}/cap-abort-pubkeys.txt"
 
 	fetch_pubkeys "${DUPLICATE_SAFE_START}" "${DUPLICATE_SAFE_STOP}" "${TMP_DIR}/duplicate-safe-pubkeys.txt"
 	fetch_pubkeys "${NO_EXEC_SAFE_START}" "${NO_EXEC_SAFE_STOP}" "${TMP_DIR}/no-exec-safe-pubkeys.txt"
@@ -250,6 +254,11 @@ phase_c_withdrawal() {
 		log_info "Safe withdrawal validators already have 0x02 credentials"
 	fi
 
+	log_info "Waiting for switch deposits to restore excess balance..."
+	for i in $(seq "${WITHDRAW_SAFE_START}" "${WITHDRAW_SAFE_STOP}"); do
+		wait_for_excess_balance "${i}"
+	done
+
 	safe_full_cycle "${OWNER_0_KEY}" "${OWNER_1_KEY}" "${OWNER_0_KEY}" \
 		withdraw -v "${TMP_DIR}/withdraw-safe-pubkeys.txt" -a 0.001
 
@@ -266,6 +275,11 @@ phase_c_withdrawal() {
 	else
 		log_info "Direct withdrawal validators already have 0x02 credentials"
 	fi
+
+	log_info "Waiting for switch deposits to restore excess balance..."
+	for i in $(seq "${WITHDRAW_DIRECT_START}" "${WITHDRAW_DIRECT_STOP}"); do
+		wait_for_excess_balance "${i}"
+	done
 
 	run_ethvalctl "${OWNER_0_KEY}" withdraw -v "${TMP_DIR}/withdraw-direct-pubkeys.txt" -a 0.001
 	assert_output_contains "${LAST_CMD_OUTPUT}" "Mined execution layer request" "Partial Withdrawal (Direct) CLI output contains mined TX"
@@ -328,6 +342,57 @@ phase_e_errors() {
 	log_test "Wrong network"
 	capture_cmd bash -c "echo '${OWNER_0_KEY}' | bun run start -n hoodi -r ${RPC_URL} -b ${BEACON_URL} switch -v ${TMP_DIR}/switch-safe-pubkeys.txt"
 	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Wrong network rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "is not connected to network hoodi" "Wrong network error message present"
+
+	log_test "Unreachable JSON-RPC"
+	capture_cmd bash -c "echo '${OWNER_0_KEY}' | bun run start -n kurtosis_devnet -r ${UNREACHABLE_RPC_URL} -b ${BEACON_URL} switch -v ${TMP_DIR}/switch-safe-pubkeys.txt"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Unreachable JSON-RPC rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "Error while trying to open connection" "Unreachable JSON-RPC error message present"
+
+	log_test "Sanity check: all failures reported together"
+	run_ethvalctl "${OWNER_0_KEY}" switch -v "${TMP_DIR}/error-safe-pubkeys.txt"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Foreign validators rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "$((ERROR_SAFE_STOP - ERROR_SAFE_START + 1)) pre-request sanity check(s) failed" "All ownership failures reported together"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "does not match signer address" "Ownership error message present"
+
+	log_test "Sanity check: partial withdrawal requires 0x02 credentials"
+	run_ethvalctl_safe "${OWNER_0_KEY}" withdraw -v "${TMP_DIR}/error-safe-pubkeys.txt" -a 0.001
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Withdrawal from 0x01 validators rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "0x02 is required" "Credentials error message present"
+
+	log_test "Sanity check: exit of already exiting validators"
+	run_ethvalctl "${OWNER_0_KEY}" exit -v "${TMP_DIR}/exit-direct-pubkeys.txt"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Exiting validators rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "must be active and not exiting" "Not active error message present"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "No transaction was sent" "No transaction sent"
+
+	log_test "Sanity check: validator not found"
+	local unknown_pubkey_file="${TMP_DIR}/unknown-pubkey.txt"
+	echo "${UNKNOWN_VALIDATOR_PUBKEY}" >"${unknown_pubkey_file}"
+	run_ethvalctl "${OWNER_0_KEY}" exit -v "${unknown_pubkey_file}"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Unknown validator rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "was not found on the beacon chain" "Not found error message present"
+
+	log_test "Sanity check: consolidation source equals target"
+	local target_pubkey
+	target_pubkey="$(head -n 1 "${TMP_DIR}/exit-direct-pubkeys.txt")"
+	run_ethvalctl "${OWNER_0_KEY}" consolidate -s "${target_pubkey}" -t "${target_pubkey}"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Source equals target rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "equals the target validator" "Source equals target error message present"
+
+	log_test "Balance check: signer cannot pay request fees"
+	INTEGRATION_MAX_REQUEST_FEE="${UNPAYABLE_MAX_REQUEST_FEE}" \
+		run_ethvalctl "${OWNER_0_KEY}" exit -v "${TMP_DIR}/switch-direct-pubkeys.txt"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Underfunded signer rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "ETH is required to send all requests" "Signer balance error message present"
+	assert_output_not_contains "${LAST_CMD_OUTPUT}" "Mined execution layer request" "No request sent by underfunded signer"
+
+	log_test "Balance check: Safe cannot pay request fees"
+	INTEGRATION_MAX_REQUEST_FEE="${UNPAYABLE_MAX_REQUEST_FEE}" \
+		run_ethvalctl_safe "${OWNER_0_KEY}" switch -v "${TMP_DIR}/error-safe-pubkeys.txt"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Underfunded Safe rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "ETH is required to send all requests" "Safe balance error message present"
+	assert_output_not_contains "${LAST_CMD_OUTPUT}" "proposed to Safe" "No proposal by underfunded Safe"
 }
 
 phase_f_threshold() {
@@ -420,9 +485,9 @@ phase_g_fee_validation() {
 	assert_output_contains "${LAST_CMD_OUTPUT}" "Mined execution layer request" "Large queue fill mined"
 
 	# --- G.4: Stale fee — wait action with immediate-abort budget ---
-	log_test "Stale fee — wait action with --max-fee-wait-blocks 0"
-	log_info "Executing with --stale-fee-action wait --max-fee-wait-blocks 0 (should detect stale and abort immediately)..."
-	safe_execute "${OWNER_0_KEY}" --stale-fee-action wait --max-fee-wait-blocks 0
+	log_test "Stale fee — wait action with --max-request-fee-wait-blocks 0"
+	log_info "Executing with --stale-fee-action wait --max-request-fee-wait-blocks 0 (should detect stale and abort immediately)..."
+	safe_execute "${OWNER_0_KEY}" --stale-fee-action wait --max-request-fee-wait-blocks 0
 	assert_output_contains "${LAST_CMD_OUTPUT}" "Stale fees detected" "Wait action: stale fee summary logged"
 	assert_output_contains "${LAST_CMD_OUTPUT}" "exceeds max wait" "Wait action: immediate abort logged"
 
@@ -432,6 +497,44 @@ phase_g_fee_validation() {
 	safe_execute "${OWNER_0_KEY}" --stale-fee-action reject
 	assert_output_contains "${LAST_CMD_OUTPUT}" "Stale fees detected" "Reject action: stale fee summary logged"
 	assert_output_contains "${LAST_CMD_OUTPUT}" "rejection transaction" "Reject action: rejection transactions proposed"
+
+	# --- G.6: Default request-fee cap (10 wei) does not block a normal-sized batch ---
+	log_test "Default request-fee cap — normal queue depth does not block or prompt"
+	log_info "Resetting consolidation contract fee to minimum before the default-cap check..."
+	wait_for_fee_decay "0x0000BBdDc7CE488642fb579F8B00f3a590007251"
+
+	log_info "Below-cap queue fill: ${DEFAULT_CAP_BELOW_DIRECT_START}-${DEFAULT_CAP_BELOW_DIRECT_STOP} direct switches (no -x flag, exercises the real default)..."
+	run_ethvalctl_default_request_fee "${OWNER_0_KEY}" switch -v "${TMP_DIR}/default-cap-below-pubkeys.txt"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 0 "Default cap: below-cap batch succeeds without --yes"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "Mined execution layer request" "Default cap: below-cap batch mined"
+	assert_output_not_contains "${LAST_CMD_OUTPUT}" "exceeds --max-request-fee" "Default cap: no cap-exceeded warning at normal queue depth"
+
+	# --- G.7: Default request-fee cap engages once the fee genuinely exceeds 10 wei ---
+	log_test "Default request-fee cap — engages once fee exceeds 10 wei"
+	log_info "Above-cap queue fill: ${DEFAULT_CAP_ABOVE_DIRECT_START}-${DEFAULT_CAP_ABOVE_DIRECT_STOP} direct switches (continues from G.6's excess, pushes fee past 10 wei)..."
+	run_ethvalctl_default_request_fee "${OWNER_0_KEY}" --yes --max-request-fee-wait-blocks 3 switch -v "${TMP_DIR}/default-cap-above-pubkeys.txt"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "exceeds --max-request-fee" "Default cap: cap-exceeded warning logged once fee exceeds 10 wei"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "Waiting for request fee to drop" "Default cap: --yes selects wait action automatically"
+
+	# --- G.8: Cap abort between batches reports sent and unsent requests ---
+	# Deterministic: each batch of 10 switches adds ~9 excess. Fee is 1 wei up to excess 12, so
+	# batch 2 always passes a 1wei cap and batch 4 always exceeds it, even with per-block decay.
+	log_test "Request-fee cap abort — multi-batch run reports unsent requests"
+	log_info "Resetting consolidation contract fee to excess <= 1 before the abort check..."
+	wait_for_fee_decay "0x0000BBdDc7CE488642fb579F8B00f3a590007251" 1
+
+	log_info "Switching ${CAP_ABORT_DIRECT_START}-${CAP_ABORT_DIRECT_STOP} in batches of 10 with a 1wei cap and no wait budget..."
+	run_ethvalctl_default_request_fee "${OWNER_0_KEY}" --yes -x 1wei -m 10 -w 0 switch -v "${TMP_DIR}/cap-abort-pubkeys.txt"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Cap abort: run stops with exit code 1"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "exceeds --max-request-fee" "Cap abort: cap-exceeded warning logged"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "Mined execution layer request" "Cap abort: earlier batches mined"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "Requests not sent" "Cap abort: unsent requests listed"
+	assert_output_not_contains "${LAST_CMD_OUTPUT}" "Request status unknown" "Cap abort: wallet path aborts before broadcasting"
+
+	wait_for_credential_range "${CAP_ABORT_DIRECT_START}" "$((CAP_ABORT_DIRECT_START + 9))" "0x02" "${CREDENTIAL_WAIT_TIMEOUT}" &&
+		log_pass "Cap abort: first batch switched on-chain"
+	assert_credential_prefix "${CAP_ABORT_LAST_BATCH_START}" "0x01" "Cap abort: first request of last batch not sent"
+	assert_credential_prefix "${CAP_ABORT_DIRECT_STOP}" "0x01" "Cap abort: last request of last batch not sent"
 }
 
 phase_h_safe_edge_cases() {
@@ -496,7 +599,7 @@ phase_h_safe_edge_cases() {
 
 	local fake_safe="0x0000000000000000000000000000000000001234"
 	# shellcheck disable=SC2086
-	capture_cmd bash -c "echo '${OWNER_0_KEY}' | SAFE_API_KEY=${SAFE_API_KEY} bun run start -n kurtosis_devnet -r ${RPC_URL} -b ${BEACON_URL} --safe ${fake_safe} -m 3 safe sign --yes"
+	capture_cmd bash -c "echo '${OWNER_0_KEY}' | SAFE_API_KEY=${SAFE_API_KEY} bun run start -n kurtosis_devnet -r ${RPC_URL} -b ${BEACON_URL} --safe ${fake_safe} -m 3 --yes safe sign"
 	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Fake Safe address rejected"
 	assert_output_contains "${LAST_CMD_OUTPUT}" "No Safe found" "Safe not found error present"
 
@@ -505,7 +608,7 @@ phase_h_safe_edge_cases() {
 
 	stop_mock_tx_service
 
-	run_ethvalctl_safe "${OWNER_0_KEY}" safe sign --yes
+	run_ethvalctl_safe "${OWNER_0_KEY}" --yes safe sign
 	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Unreachable TX Service causes failure"
 	assert_output_contains "${LAST_CMD_OUTPUT}" "unreachable" "TX Service unreachable error present"
 	assert_output_not_contains "${LAST_CMD_OUTPUT}" "Fatal error" "TX Service unreachable shows clean error (no stack trace)"
@@ -580,7 +683,7 @@ phase_i_rate_limit() {
 	assert_exit_code "${LAST_CMD_EXIT_CODE}" 0 "Rate limit test: propose succeeds"
 
 	log_info "Signing without API key (triggers rate limiting)..."
-	run_ethvalctl_safe_no_apikey "${OWNER_1_KEY}" safe sign --yes
+	run_ethvalctl_safe_no_apikey "${OWNER_1_KEY}" --yes safe sign
 	assert_exit_code "${LAST_CMD_EXIT_CODE}" 0 "Unauthenticated sign completes (retries succeed)"
 	assert_output_contains "${LAST_CMD_OUTPUT}" "retrying" "Rate limit retry warning present"
 
@@ -594,7 +697,7 @@ phase_i_rate_limit() {
 	mock_admin_set_rate_limit 1
 	mock_admin_reset_rate_limit
 
-	run_ethvalctl_safe_no_apikey "${OWNER_0_KEY}" safe sign --yes
+	run_ethvalctl_safe_no_apikey "${OWNER_0_KEY}" --yes safe sign
 	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Exhausted rate limit causes failure"
 	assert_output_contains "${LAST_CMD_OUTPUT}" "rate limit exceeded" "Rate limit exhausted error present"
 
@@ -656,9 +759,11 @@ Phases:
   b    Consolidation (Safe + Direct)
   c    Partial withdrawal (Safe + Direct)
   d    Full exit (Safe + Direct)
-  e    Error scenarios (non-owner, invalid pubkey, wrong network)
+  e    Error scenarios (non-owner, invalid input, wrong network, sanity and
+       balance checks)
   f    Threshold change (propose at 2, change to 3, verify revert)
-  g    Fee validation (fee tip resilience, stale fee detection, rejection)
+  g    Fee validation (fee tip resilience, stale fee detection, rejection,
+       default request-fee cap boundary)
   h    Safe edge cases (duplicate, already signed, no pending/executable,
        not deployed, unreachable, nonce gap, filtering, single validator)
   i    Rate limiting & partial failure (unauth retries, exhausted, partial fail)

@@ -1,10 +1,7 @@
 import { PREFIX_0x } from '../../constants/application';
 import type { GlobalCliOptions } from '../../model/commander';
 import { executeRequestPipeline } from './execution-layer-request-pipeline';
-import {
-  checkWithdrawalAddressOwnership,
-  filterSwitchableValidators
-} from './pre-request-validation';
+import { filterSwitchableValidators, validateSwitchRequests } from './pre-request-validation';
 
 /**
  * Switch withdrawal credential type from 0x01 to 0x02 for one or many validators
@@ -31,13 +28,13 @@ export async function switchWithdrawalCredentialType(
     encodeRequestData: createSwitchRequestData,
     resolveContractAddress: (config) => config.consolidationContractAddress,
     validate: async (ownerAddress, ownerLabel) => {
-      await checkWithdrawalAddressOwnership(
-        globalOptions.beaconApiUrl,
+      await validateSwitchRequests({
+        beaconApiUrl: globalOptions.beaconApiUrl,
+        network: globalOptions.network,
         ownerAddress,
-        switchableValidators,
-        undefined,
-        ownerLabel
-      );
+        ownerLabel,
+        validatorPubkeys: switchableValidators
+      });
     }
   });
 }

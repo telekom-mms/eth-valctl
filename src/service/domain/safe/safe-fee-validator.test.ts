@@ -120,6 +120,26 @@ describe('validateTransactionFees', () => {
     }
   });
 
+  it('computes STALE block estimate via the shared request-fee estimator', async () => {
+    spyOn(EthereumStateService.prototype, 'fetchContractFeeWithExcess').mockResolvedValue({
+      fee: 10n,
+      excess: 40n
+    });
+    const tx = createTx({ value: '1' });
+
+    const result = await validateTransactionFees({
+      transactions: [tx as never],
+      provider: createMockProvider(),
+      systemContractAddresses: [CONSOLIDATION_CONTRACT_ADDRESS],
+      overpaymentThreshold: 0n
+    });
+
+    expect(result.validations[0]!.status).toBe(FeeStatus.STALE);
+    if (result.validations[0]!.status === FeeStatus.STALE) {
+      expect(result.validations[0]!.estimatedBlocks).toBe(28n);
+    }
+  });
+
   it('classifies transaction as OVERPAID when proposed exceeds current plus threshold', async () => {
     const tx = createTx({ value: '300' });
 

@@ -1,4 +1,4 @@
-import { MAX_NUMBER_OF_REQUESTS_PER_BLOCK } from './application';
+import * as application from './application';
 
 /** User related input errors */
 export const NO_PRIVATE_KEY_ERROR = 'Please provide a valid private key';
@@ -29,7 +29,46 @@ export const GENERAL_JSON_RPC_ERROR = (url: string): string =>
   `Error while trying to open connection for provided json rpc url ${url}:`;
 export const INVALID_REQUESTS_PER_BLOCK_ERROR =
   'Number of max. requests per block should be a number';
-export const TOO_MANY_REQUESTS_PER_BLOCK_ERROR = `Provided maximal number of requests per block is too high. To minimize the risk of transaction reverts/replacements due to underpriced fees, the number should not exceed ${MAX_NUMBER_OF_REQUESTS_PER_BLOCK}.`;
+export const TOO_MANY_REQUESTS_PER_BLOCK_ERROR = `Provided maximal number of requests per block is too high. To minimize the risk of transaction reverts/replacements due to underpriced fees, the number should not exceed ${application.MAX_NUMBER_OF_REQUESTS_PER_BLOCK}.`;
+export const INVALID_MAX_REQUEST_FEE_FORMAT_ERROR =
+  'Invalid max request fee format. Use an explicit unit: wei/gwei/eth, for example 1wei, 0.5gwei, or 0.01eth.';
+export const MAX_REQUEST_FEE_TOO_LOW_ERROR =
+  'Max request fee must be greater than zero and at least 1 wei.';
+export const REQUEST_FEE_PRECISION_ERROR = (amount: string, unit: string): string =>
+  `Request fee amount is below 1 wei precision: ${amount}${unit}`;
+export const INVALID_MAX_REQUEST_FEE_WAIT_BLOCKS_ERROR =
+  'Max request fee wait blocks must be a non-negative integer.';
+export const INVALID_TOTAL_REQUEST_COUNT_ERROR = 'Total request count must be a positive integer.';
+export const UNKNOWN_FEES_OPERATION_ERROR = (operation: string): string =>
+  `Unknown fees operation: ${operation}. Use ${application.FEES_OPERATION_CONSOLIDATE}, ${application.FEES_OPERATION_SWITCH}, ${application.FEES_OPERATION_WITHDRAW}, or ${application.FEES_OPERATION_EXIT}.`;
+export const FATAL_ERROR_PREFIX = 'Fatal error:';
+export const UNHANDLED_PROMISE_REJECTION_PREFIX = 'Unhandled promise rejection:';
+export const FEES_ESTIMATE_HEADER = (operation: string, network: string): string =>
+  `Fee estimate for ${operation} requests on ${network}:`;
+export const FEES_CURRENT_REQUEST_FEE_INFO = (fee: string): string => `Current request fee: ${fee}`;
+export const FEES_BLOCKS_UNTIL_CAP_INFO = (blocks: bigint): string =>
+  `~${blocks} block${blocks === 1n ? '' : 's'} until the fee drops below --max-request-fee (assuming no new requests)`;
+export const FEES_MAX_TRANSACTION_GAS_BUDGET_INFO = (
+  gasBudget: string,
+  maxFeePerGas: string
+): string => `Max transaction gas budget: ${gasBudget} ETH at ${maxFeePerGas} Gwei max fee per gas`;
+export const FEES_BATCH_HEADER = (
+  totalCount: number,
+  batchCount: number,
+  batchSize: number
+): string =>
+  `Idealized batch projection for ${totalCount} request${totalCount === 1 ? '' : 's'} (${batchCount} batch${batchCount === 1 ? '' : 'es'} of up to ${batchSize}):`;
+export const FEES_BATCH_LINE = (
+  batchNumber: number,
+  requestCount: number,
+  requestFee: string,
+  capExceeded: boolean
+): string =>
+  `  Batch ${batchNumber}: ${requestCount} request${requestCount === 1 ? '' : 's'}, request fee ${requestFee}${capExceeded ? ' (above cap)' : ''}`;
+export const CONSOLIDATION_CONTRACT_NAME = 'consolidation contract';
+export const WITHDRAWAL_CONTRACT_NAME = 'withdrawal contract';
+export const FEES_CAP_WARNING = (targetPerBlock: bigint, contractName: string): string =>
+  `Warning: A projected batch exceeds --max-request-fee. Real execution will wait or prompt before that above-cap batch. The fee only stays flat while sending ${targetPerBlock} request${targetPerBlock === 1n ? '' : 's'} per block to the ${contractName}; a lower -m slows the fee increase but needs more batches.`;
 
 /** Fetching errors */
 export const BEACON_API_ERROR = 'Error while calling beacon API endpoint:';
@@ -68,8 +107,6 @@ export const BROADCAST_START_SEQUENTIAL_INFO = (count: number, maxFeePerGasGwei:
 export const SLOT_BOUNDARY_WAIT_INFO = (secondsUntilNextSlot: number): string =>
   `⏳ Near slot boundary, waiting ${secondsUntilNextSlot}s for next slot...`;
 export const PROMPT_PRIVATE_KEY_INFO = 'Private key for 0x01 or 0x02 withdrawal credentials:';
-export const DISCLAIMER_INFO =
-  'The eth-valctl is in active development and still missing some pre-transaction checks (see here: https://github.com/telekom-mms/eth-valctl/issues/14). Please double-check your inputs before executing a command.';
 export const EL_REQUEST_REVERTED_INFO = (transactionHash: string): string =>
   `Execution layer request ${transactionHash} was mined but REVERTED (likely due to incorrect fee)`;
 export const EL_REQUEST_REVERTED_SENDING_NEW_INFO = (transactionHash: string): string =>
@@ -92,6 +129,9 @@ export const FAILED_VALIDATORS_FOR_RETRY_HEADER =
   '📋 Failed validator pubkeys to retry in next eth-valctl call:';
 export const REJECTED_VALIDATORS_HEADER =
   '⚠️ Rejected validator pubkeys (skipped by user on Ledger device):';
+export const ABORTED_UNKNOWN_STATUS_VALIDATORS_HEADER =
+  'Request status unknown (may already be on-chain). Verify via the beacon chain before resending, especially partial withdrawals:';
+export const ABORTED_NOT_SENT_VALIDATORS_HEADER = 'Requests not sent (safe to resend):';
 
 /** Warnings */
 export const MAX_RETRIES_EXCEEDED_WARNING = (
@@ -106,6 +146,33 @@ export const REPLACEMENT_FAILED_WARNING = (failed: number, total: number): strin
   `❌ ${failed} of ${total} execution layer requests failed to replace (unexpected error)`;
 export const REPLACEMENT_USER_REJECTED_INFO = (rejected: number, total: number): string =>
   `⚠️ ${rejected} of ${total} replacement execution layer requests rejected by user on Ledger device`;
+export const REQUEST_FEE_CAP_EXCEEDED_WARNING = (
+  currentFee: bigint,
+  maxFee: bigint,
+  operation: string,
+  requestCount: number
+): string =>
+  `Current request fee ${currentFee} wei exceeds --max-request-fee ${maxFee} wei for ${operation} (${requestCount} request${requestCount === 1 ? '' : 's'}).`;
+export const REQUEST_FEE_CAP_PROMPT = 'Choose how to handle the above-cap request fee:';
+export const REQUEST_FEE_CAP_WAIT_ACTION =
+  'Wait until request fee is at or below --max-request-fee';
+export const REQUEST_FEE_CAP_CONTINUE_ACTION =
+  'Continue at this request fee and ask again if a later request fee is higher';
+export const REQUEST_FEE_CAP_ABORT_ACTION = 'Abort';
+export const REQUEST_FEE_CAP_WAIT_PROGRESS_INFO = (
+  currentFee: bigint,
+  maxFee: bigint,
+  blocksWaited: bigint,
+  maxBlocks: bigint
+): string =>
+  `Waiting for request fee to drop... ${blocksWaited}/${maxBlocks} blocks elapsed, current ${currentFee} wei, cap ${maxFee} wei`;
+export const REQUEST_FEE_CAP_WAIT_EXCEEDED_ERROR = (
+  currentFee: bigint,
+  maxFee: bigint,
+  maxBlocks: bigint
+): string =>
+  `request fee ${currentFee} wei stayed above --max-request-fee ${maxFee} wei after waiting ${maxBlocks} blocks.`;
+export const REQUEST_FEE_CAP_ABORTED_INFO = 'Request fee cap check aborted by user.';
 
 /** Other errors */
 export const SYSTEM_CONTRACT_NOT_ACTIVATED_ERROR = (contractAddress: string): string =>
@@ -133,7 +200,7 @@ export const WITHDRAWAL_ADDRESS_MISMATCH_ERROR = (
 ): string => {
   const prefix = role ? `${role.charAt(0).toUpperCase()}${role.slice(1)} ` : '';
   const validator = role ? 'validator' : 'Validator';
-  return `${prefix}${validator} ${validatorPubkey} has withdrawal address ${withdrawalAddress} which does not match ${ownerLabel} address ${ownerAddress}`;
+  return `${prefix}${validator} ${validatorPubkey} has withdrawal address ${withdrawalAddress} which does not match ${ownerLabel} address ${ownerAddress}.`;
 };
 export const WITHDRAWAL_ADDRESS_TARGET_MISMATCH_HINT =
   'Hint: Use --skip-target-ownership-check to bypass the ownership check for the target validator.';
@@ -288,7 +355,7 @@ export const SAFE_FEE_OVERPAYMENT_INFO = (
 export const SAFE_FEE_ALL_SUFFICIENT_INFO = (count: number): string =>
   `  ✅ All ${count} transaction${count === 1 ? '' : 's'}: contract fees sufficient`;
 export const SAFE_FEE_STALE_SUMMARY_INFO = (staleCount: number, total: number): string =>
-  `Stale fees detected (${staleCount} of ${total} transaction${total === 1 ? '' : 's'}) — continuing will wait per transaction for fees to decrease, bounded by --max-fee-wait-blocks.`;
+  `Stale fees detected (${staleCount} of ${total} transaction${total === 1 ? '' : 's'}) — continuing will wait per transaction for fees to decrease, bounded by --max-request-fee-wait-blocks.`;
 export const SAFE_FEE_REJECTING_INFO = (count: number): string =>
   `Proposing ${count} rejection transaction${count === 1 ? '' : 's'}...`;
 export const SAFE_FEE_REJECTED_INFO = (batch: number, nonce: number, safeTxHash: string): string =>
@@ -375,9 +442,8 @@ export const LEDGER_ETH_APP_NOT_OPEN_ERROR =
   'Ethereum app is not open on the Ledger device. Please open the Ethereum app and try again.';
 export const LEDGER_USER_REJECTED_ERROR = 'Transaction was rejected on the Ledger device.';
 export const LEDGER_BLIND_SIGNING_REQUIRED_ERROR =
-  'Transaction requires blind signing which is not enabled on your Ledger device. ' +
-  'Either enable "Blind signing" in the Ethereum app settings on your Ledger, ' +
-  'or upgrade to the latest firmware which natively displays transaction details without requiring blind signing.';
+  'Ledger device rejected the transaction data. The Ethereum app cannot clear-sign this request. ' +
+  'Enable both "Blind signing" and "Debug contracts" in the Ethereum app settings on your Ledger and try again.';
 export const LEDGER_UNKNOWN_ERROR = (code: number): string =>
   `Unknown Ledger error (0x${code.toString(16)}). Please ensure the Ethereum app is open and try again.`;
 export const LEDGER_CONNECTION_TIMEOUT_ERROR =
@@ -402,3 +468,79 @@ export const EXECUTION_COMPLETED_WITH_FAILURES_ERROR = (
   totalCount: number
 ): string =>
   `❌ Execution finished with ${failedCount} of ${totalCount} execution layer requests failed`;
+
+/** Beacon chain spec */
+export const BEACON_SPEC_FETCH_ERROR = (status: number, statusText: string): string =>
+  `Failed to fetch beacon chain spec: ${status} ${statusText}`;
+export const BEACON_SPEC_INVALID_VALUE_ERROR = (key: string, value: string | undefined): string =>
+  `Invalid or missing beacon chain spec value for ${key}: ${value}`;
+export const BEACON_GENESIS_FETCH_ERROR = (status: number, statusText: string): string =>
+  `Failed to fetch beacon genesis: ${status} ${statusText}`;
+export const BEACON_GENESIS_INVALID_ERROR = (genesisTime: string): string =>
+  `Invalid genesis time received from beacon API: ${genesisTime}`;
+export const BEACON_SERVICE_INIT_ERROR = 'Unable to initialize beacon service';
+
+/** Pre-request sanity checks */
+export const SANITY_CHECK_FETCH_INFO =
+  'Fetching validator and beacon chain state for sanity checks';
+export const SANITY_CHECK_RUN_INFO = 'Running pre-request sanity checks';
+export const SANITY_CHECK_PASSED_INFO = 'All pre-request sanity checks passed';
+export const SANITY_CHECK_FAILED_HEADER = (failureCount: number): string =>
+  `${failureCount} pre-request sanity check(s) failed. No transaction was sent:`;
+export const SANITY_CHECK_FAILURE_ITEM = (failure: string): string => `  - ${failure}`;
+export const MESSAGE_WITH_HINT = (message: string, hint: string): string => `${message} ${hint}`;
+export const BEACON_API_REQUEST_ERROR = (url: string, status: number, body: string): string =>
+  `Beacon API request ${url} failed with status ${status}: ${body}`;
+export const BEACON_NETWORK_MISMATCH_ERROR = (
+  network: string,
+  expectedChainId: bigint,
+  beaconChainId: string
+): string =>
+  `Beacon node is connected to chain id ${beaconChainId} but network ${network} expects chain id ${expectedChainId}. Please check --beacon-api-url.`;
+export const VALIDATOR_SUBJECT = (validatorPubkey: string, role?: string): string =>
+  role
+    ? `${role.charAt(0).toUpperCase()}${role.slice(1)} validator ${validatorPubkey}`
+    : `Validator ${validatorPubkey}`;
+export const VALIDATOR_NOT_FOUND_ERROR = (validator: string): string =>
+  `${validator} was not found on the beacon chain.`;
+export const VALIDATOR_NOT_COMPOUNDING_ERROR = (
+  validator: string,
+  credentialsType: string
+): string =>
+  `${validator} has withdrawal credentials of type ${credentialsType} but 0x02 is required.`;
+export const VALIDATOR_NOT_ACTIVE_ERROR = (validator: string, status: string): string =>
+  `${validator} has status ${status} but must be active and not exiting (active_ongoing).`;
+export const VALIDATOR_NOT_OLD_ENOUGH_ERROR = (
+  validator: string,
+  eligibleEpoch: number,
+  currentEpoch: number
+): string =>
+  `${validator} has not been active long enough. Requests are possible from epoch ${eligibleEpoch} (current epoch: ${currentEpoch}).`;
+export const VALIDATOR_HAS_PENDING_WITHDRAWAL_ERROR = (validator: string): string =>
+  `${validator} has a pending partial withdrawal. Please wait until it is processed.`;
+export const VALIDATOR_BALANCE_TOO_LOW_ERROR = (validatorPubkey: string): string =>
+  `Validator ${validatorPubkey} has no withdrawable balance above the minimum activation balance (incl. pending partial withdrawals).`;
+export const WITHDRAWAL_AMOUNT_CAPPED_WARNING = (
+  validatorPubkey: string,
+  withdrawableEth: string
+): string =>
+  `Validator ${validatorPubkey}: requested amount exceeds the withdrawable balance. Only ${withdrawableEth} ETH will be withdrawn.`;
+export const CONSOLIDATION_SOURCE_EQUALS_TARGET_ERROR = (validatorPubkey: string): string =>
+  `Source validator ${validatorPubkey} equals the target validator. Use the 'switch' subcommand to switch withdrawal credentials to 0x02.`;
+export const PENDING_PARTIAL_WITHDRAWALS_QUEUE_FULL_ERROR = (
+  pendingCount: number,
+  limit: number
+): string =>
+  `Pending partial withdrawals queue cannot take all requests (${pendingCount} pending, limit ${limit}).`;
+export const PENDING_CONSOLIDATIONS_QUEUE_FULL_ERROR = (
+  pendingCount: number,
+  limit: number
+): string =>
+  `Pending consolidations queue cannot take all requests (${pendingCount} pending, limit ${limit}).`;
+export const INSUFFICIENT_BALANCE_ERROR = (
+  ownerLabel: string,
+  address: string,
+  balanceEth: string,
+  requiredEth: string
+): string =>
+  `The ${ownerLabel} ${address} has a balance of ${balanceEth} ETH but at least ${requiredEth} ETH is required to send all requests.`;
