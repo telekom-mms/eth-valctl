@@ -1,12 +1,7 @@
 import { PREFIX_0x } from '../../constants/application';
-import { SOURCE_VALIDATOR_0x00_CREDENTIALS_ERROR } from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
 import { executeRequestPipeline } from './execution-layer-request-pipeline';
-import {
-  checkCompoundingCredentials,
-  checkHasExecutionCredentials,
-  checkWithdrawalAddressOwnership
-} from './pre-request-validation';
+import { validateConsolidationRequests } from './pre-request-validation';
 
 /**
  * Consolidate one or many validators to one target validator
@@ -28,21 +23,16 @@ export async function consolidate(
     encodeRequestData: (pubkey) => createConsolidationRequestData(pubkey, targetValidatorPubkey),
     resolveContractAddress: (config) => config.consolidationContractAddress,
     validate: async (ownerAddress, ownerLabel) => {
-      await checkCompoundingCredentials(globalOptions.beaconApiUrl, [targetValidatorPubkey]);
-      await checkHasExecutionCredentials(
-        globalOptions.beaconApiUrl,
-        sourceValidatorPubkeys,
-        SOURCE_VALIDATOR_0x00_CREDENTIALS_ERROR
-      );
-      const pubkeysToCheck = skipTargetOwnershipCheck
-        ? sourceValidatorPubkeys
-        : [targetValidatorPubkey, ...sourceValidatorPubkeys];
-      await checkWithdrawalAddressOwnership(
-        globalOptions.beaconApiUrl,
-        ownerAddress,
-        pubkeysToCheck,
-        [targetValidatorPubkey],
-        ownerLabel
+      await validateConsolidationRequests(
+        {
+          beaconApiUrl: globalOptions.beaconApiUrl,
+          network: globalOptions.network,
+          ownerAddress,
+          ownerLabel,
+          validatorPubkeys: sourceValidatorPubkeys
+        },
+        targetValidatorPubkey,
+        skipTargetOwnershipCheck
       );
     }
   });

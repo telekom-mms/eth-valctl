@@ -9,7 +9,10 @@ import type { RequestFeeBatchProjection } from '../model/ethereum';
 import { networkConfig } from '../network-config';
 import { createValidatedProvider } from '../service/domain/ethereum';
 import { EthereumStateService } from '../service/domain/request/ethereum-state-service';
-import { RequestFeeEstimationService } from '../service/domain/request/request-fee-estimation-service';
+import {
+  getTargetPerBlock,
+  RequestFeeEstimationService
+} from '../service/domain/request/request-fee-estimation-service';
 import { parseAndValidateTotalRequestCount } from './validation/cli';
 
 const feesCommand = new Command('fees');
@@ -58,14 +61,13 @@ async function showFees(
     network: globalOptions.network,
     estimate,
     totalRequestCount: options.totalRequestCount,
-    maxRequestsPerBlock,
-    contractAddress
+    maxRequestsPerBlock
   })) {
     console.log(line);
   }
 
   if (estimate.batches.some((batch) => batch.capExceeded)) {
-    console.error(chalk.yellow(logging.FEES_CAP_WARNING));
+    console.error(chalk.yellow(renderFeeCapWarning(contractAddress)));
   }
 }
 
@@ -90,12 +92,23 @@ export function renderFeeEstimate(config: FeeEstimateRenderConfig): string[] {
       config.estimate.batches.length,
       config.maxRequestsPerBlock
     ),
-    ...config.estimate.batches.map(formatBatchLine),
-    logging.FEES_OPTIMAL_RATE_INFO(
-      application.TARGET_PER_BLOCK_BY_CONTRACT[config.contractAddress.toLowerCase()] ??
-        application.CONSOLIDATION_TARGET_PER_BLOCK
-    )
+    ...config.estimate.batches.map(formatBatchLine)
   ];
+}
+
+/**
+ * Render the warning shown when a projected batch exceeds the request fee cap.
+ *
+ * @param contractAddress - Request contract address
+ * @returns Warning naming the contract and the request rate that keeps its fee flat
+ */
+export function renderFeeCapWarning(contractAddress: string): string {
+  const contractName =
+    contractAddress.toLowerCase() === application.WITHDRAWAL_CONTRACT_ADDRESS.toLowerCase()
+      ? logging.WITHDRAWAL_CONTRACT_NAME
+      : logging.CONSOLIDATION_CONTRACT_NAME;
+
+  return logging.FEES_CAP_WARNING(getTargetPerBlock(contractAddress), contractName);
 }
 
 /**

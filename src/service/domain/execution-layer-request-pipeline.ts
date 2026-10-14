@@ -1,11 +1,13 @@
 import chalk from 'chalk';
-import type { JsonRpcProvider } from 'ethers';
+import { formatEther, type JsonRpcProvider } from 'ethers';
 
 import * as application from '../../constants/application';
-import { SAFE_FEE_TIP_INFO } from '../../constants/logging';
+import { INSUFFICIENT_BALANCE_ERROR, SAFE_FEE_TIP_INFO } from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
 import type {
+  FeePayer,
   NetworkConfig,
+  RequestBalanceCheck,
   RequestFeeCapCheckContext,
   RequestFeeCapPolicy,
   RequestFeeCapRuntime
@@ -102,6 +104,11 @@ async function executeDirectPipeline(
     if (validate) {
       await validate(ethereumConnection.signer.address);
     }
+    await checkSignerBalance(ethereumConnection.provider, ethereumConnection.signer.address, {
+      contractAddress,
+      requestCount: requestData.length,
+      maxRequestFee: globalOptions.maxRequestFee
+    });
 
     const requestFeeCapPolicy = createRequestFeeCapPolicy(globalOptions);
     requestFeeCapRuntime = requestFeeCapPolicy
@@ -176,6 +183,13 @@ async function executeSafePipeline(
       console.error(chalk.blue(SAFE_FEE_TIP_INFO(contractFee, safeFeeTip, proposalFee)));
     }
 
+    await exitOnInsufficientBalance(
+      safeInitResult.provider,
+      { address: safeAddress, label: application.OWNER_LABEL_SAFE },
+      BigInt(requestData.length) *
+        (feeUpperBound(contractFee, globalOptions.maxRequestFee) + safeFeeTip)
+    );
+
     await proposeSafeTransactions({
       apiKit: safeInitResult.apiKit,
       protocolKit: safeInitResult.protocolKit,
@@ -213,4 +227,78 @@ async function createRequestFeeCapRuntime(
   const initialApprovedRequestFee = await resolver.resolveRequestFee(policy, context);
 
   return { policy, resolver, initialApprovedRequestFee };
+}
+
+/**
+ * Check that the signer can pay the request fees and gas of all requests
+ *
+ * The request fee is bounded by the request fee cap (which no request exceeds without approval).
+ * Gas is priced at the fixed transaction gas limit, which nodes reserve up front, and includes the
+ * fee bump of one replacement transaction.
+ *
+ * @param provider - JSON-RPC provider
+ * @param signerAddress - Address of the signer paying fees and gas
+ * @param check - Target system contract, number of requests and request fee cap
+ */
+async function checkSignerBalance(
+  provider: JsonRpcProvider,
+  signerAddress: string,
+  check: RequestBalanceCheck
+): Promise<void> {
+  const stateService = new EthereumStateService(provider, check.contractAddress);
+  const [contractFee, networkFees] = await Promise.all([
+    stateService.fetchContractFee(),
+    stateService.getMaxNetworkFees()
+  ]);
+  const gasCostPerRequest =
+    (networkFees.maxFeePerGas *
+      application.TRANSACTION_GAS_LIMIT *
+      application.TRANSACTION_FEE_INCREASE_PERCENTAGE) /
+    application.PERCENTAGE_DENOMINATOR;
+  const costPerRequest = feeUpperBound(contractFee, check.maxRequestFee) + gasCostPerRequest;
+
+  await exitOnInsufficientBalance(
+    provider,
+    { address: signerAddress, label: application.OWNER_LABEL_SIGNER },
+    BigInt(check.requestCount) * costPerRequest
+  );
+}
+
+/**
+ * Terminate the process if the balance of an account is below the required amount
+ *
+ * @param provider - JSON-RPC provider
+ * @param payer - Address and label (e.g. 'signer' or 'Safe') of the paying account
+ * @param requiredWei - Required balance in wei
+ */
+async function exitOnInsufficientBalance(
+  provider: JsonRpcProvider,
+  payer: FeePayer,
+  requiredWei: bigint
+): Promise<void> {
+  const balance = await provider.getBalance(payer.address);
+  if (balance < requiredWei) {
+    console.error(
+      chalk.red(
+        INSUFFICIENT_BALANCE_ERROR(
+          payer.label,
+          payer.address,
+          formatEther(balance),
+          formatEther(requiredWei)
+        )
+      )
+    );
+    process.exit(1);
+  }
+}
+
+/**
+ * Return the larger of a fee and an optional fee cap
+ *
+ * @param fee - The current fee
+ * @param cap - Optional fee cap
+ * @returns The larger value, or the fee when no cap is set
+ */
+function feeUpperBound(fee: bigint, cap?: bigint): bigint {
+  return cap !== undefined && cap > fee ? cap : fee;
 }

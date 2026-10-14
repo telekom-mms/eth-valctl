@@ -65,10 +65,10 @@ export const FEES_BATCH_LINE = (
   capExceeded: boolean
 ): string =>
   `  Batch ${batchNumber}: ${requestCount} request${requestCount === 1 ? '' : 's'}, request fee ${requestFee}${capExceeded ? ' (above cap)' : ''}`;
-export const FEES_CAP_WARNING =
-  'Warning: A projected batch exceeds --max-request-fee. Real execution will wait or prompt before that above-cap batch.';
-export const FEES_OPTIMAL_RATE_INFO = (target: bigint): string =>
-  `Fee-optimal rate for this request contract is ${target} request${target === 1n ? '' : 's'} per block; lower fee growth can mean longer wall-clock time.`;
+export const CONSOLIDATION_CONTRACT_NAME = 'consolidation contract';
+export const WITHDRAWAL_CONTRACT_NAME = 'withdrawal contract';
+export const FEES_CAP_WARNING = (targetPerBlock: bigint, contractName: string): string =>
+  `Warning: A projected batch exceeds --max-request-fee. Real execution will wait or prompt before that above-cap batch. The fee only stays flat while sending ${targetPerBlock} request${targetPerBlock === 1n ? '' : 's'} per block to the ${contractName}; a lower -m slows the fee increase but needs more batches.`;
 
 /** Fetching errors */
 export const BEACON_API_ERROR = 'Error while calling beacon API endpoint:';
@@ -107,8 +107,6 @@ export const BROADCAST_START_SEQUENTIAL_INFO = (count: number, maxFeePerGasGwei:
 export const SLOT_BOUNDARY_WAIT_INFO = (secondsUntilNextSlot: number): string =>
   `⏳ Near slot boundary, waiting ${secondsUntilNextSlot}s for next slot...`;
 export const PROMPT_PRIVATE_KEY_INFO = 'Private key for 0x01 or 0x02 withdrawal credentials:';
-export const DISCLAIMER_INFO =
-  'The eth-valctl is in active development and still missing some pre-transaction checks (see here: https://github.com/telekom-mms/eth-valctl/issues/14). Please double-check your inputs before executing a command.';
 export const EL_REQUEST_REVERTED_INFO = (transactionHash: string): string =>
   `Execution layer request ${transactionHash} was mined but REVERTED (likely due to incorrect fee)`;
 export const EL_REQUEST_REVERTED_SENDING_NEW_INFO = (transactionHash: string): string =>
@@ -202,7 +200,7 @@ export const WITHDRAWAL_ADDRESS_MISMATCH_ERROR = (
 ): string => {
   const prefix = role ? `${role.charAt(0).toUpperCase()}${role.slice(1)} ` : '';
   const validator = role ? 'validator' : 'Validator';
-  return `${prefix}${validator} ${validatorPubkey} has withdrawal address ${withdrawalAddress} which does not match ${ownerLabel} address ${ownerAddress}`;
+  return `${prefix}${validator} ${validatorPubkey} has withdrawal address ${withdrawalAddress} which does not match ${ownerLabel} address ${ownerAddress}.`;
 };
 export const WITHDRAWAL_ADDRESS_TARGET_MISMATCH_HINT =
   'Hint: Use --skip-target-ownership-check to bypass the ownership check for the target validator.';
@@ -470,3 +468,79 @@ export const EXECUTION_COMPLETED_WITH_FAILURES_ERROR = (
   totalCount: number
 ): string =>
   `❌ Execution finished with ${failedCount} of ${totalCount} execution layer requests failed`;
+
+/** Beacon chain spec */
+export const BEACON_SPEC_FETCH_ERROR = (status: number, statusText: string): string =>
+  `Failed to fetch beacon chain spec: ${status} ${statusText}`;
+export const BEACON_SPEC_INVALID_VALUE_ERROR = (key: string, value: string | undefined): string =>
+  `Invalid or missing beacon chain spec value for ${key}: ${value}`;
+export const BEACON_GENESIS_FETCH_ERROR = (status: number, statusText: string): string =>
+  `Failed to fetch beacon genesis: ${status} ${statusText}`;
+export const BEACON_GENESIS_INVALID_ERROR = (genesisTime: string): string =>
+  `Invalid genesis time received from beacon API: ${genesisTime}`;
+export const BEACON_SERVICE_INIT_ERROR = 'Unable to initialize beacon service';
+
+/** Pre-request sanity checks */
+export const SANITY_CHECK_FETCH_INFO =
+  'Fetching validator and beacon chain state for sanity checks';
+export const SANITY_CHECK_RUN_INFO = 'Running pre-request sanity checks';
+export const SANITY_CHECK_PASSED_INFO = 'All pre-request sanity checks passed';
+export const SANITY_CHECK_FAILED_HEADER = (failureCount: number): string =>
+  `${failureCount} pre-request sanity check(s) failed. No transaction was sent:`;
+export const SANITY_CHECK_FAILURE_ITEM = (failure: string): string => `  - ${failure}`;
+export const MESSAGE_WITH_HINT = (message: string, hint: string): string => `${message} ${hint}`;
+export const BEACON_API_REQUEST_ERROR = (url: string, status: number, body: string): string =>
+  `Beacon API request ${url} failed with status ${status}: ${body}`;
+export const BEACON_NETWORK_MISMATCH_ERROR = (
+  network: string,
+  expectedChainId: bigint,
+  beaconChainId: string
+): string =>
+  `Beacon node is connected to chain id ${beaconChainId} but network ${network} expects chain id ${expectedChainId}. Please check --beacon-api-url.`;
+export const VALIDATOR_SUBJECT = (validatorPubkey: string, role?: string): string =>
+  role
+    ? `${role.charAt(0).toUpperCase()}${role.slice(1)} validator ${validatorPubkey}`
+    : `Validator ${validatorPubkey}`;
+export const VALIDATOR_NOT_FOUND_ERROR = (validator: string): string =>
+  `${validator} was not found on the beacon chain.`;
+export const VALIDATOR_NOT_COMPOUNDING_ERROR = (
+  validator: string,
+  credentialsType: string
+): string =>
+  `${validator} has withdrawal credentials of type ${credentialsType} but 0x02 is required.`;
+export const VALIDATOR_NOT_ACTIVE_ERROR = (validator: string, status: string): string =>
+  `${validator} has status ${status} but must be active and not exiting (active_ongoing).`;
+export const VALIDATOR_NOT_OLD_ENOUGH_ERROR = (
+  validator: string,
+  eligibleEpoch: number,
+  currentEpoch: number
+): string =>
+  `${validator} has not been active long enough. Requests are possible from epoch ${eligibleEpoch} (current epoch: ${currentEpoch}).`;
+export const VALIDATOR_HAS_PENDING_WITHDRAWAL_ERROR = (validator: string): string =>
+  `${validator} has a pending partial withdrawal. Please wait until it is processed.`;
+export const VALIDATOR_BALANCE_TOO_LOW_ERROR = (validatorPubkey: string): string =>
+  `Validator ${validatorPubkey} has no withdrawable balance above the minimum activation balance (incl. pending partial withdrawals).`;
+export const WITHDRAWAL_AMOUNT_CAPPED_WARNING = (
+  validatorPubkey: string,
+  withdrawableEth: string
+): string =>
+  `Validator ${validatorPubkey}: requested amount exceeds the withdrawable balance. Only ${withdrawableEth} ETH will be withdrawn.`;
+export const CONSOLIDATION_SOURCE_EQUALS_TARGET_ERROR = (validatorPubkey: string): string =>
+  `Source validator ${validatorPubkey} equals the target validator. Use the 'switch' subcommand to switch withdrawal credentials to 0x02.`;
+export const PENDING_PARTIAL_WITHDRAWALS_QUEUE_FULL_ERROR = (
+  pendingCount: number,
+  limit: number
+): string =>
+  `Pending partial withdrawals queue cannot take all requests (${pendingCount} pending, limit ${limit}).`;
+export const PENDING_CONSOLIDATIONS_QUEUE_FULL_ERROR = (
+  pendingCount: number,
+  limit: number
+): string =>
+  `Pending consolidations queue cannot take all requests (${pendingCount} pending, limit ${limit}).`;
+export const INSUFFICIENT_BALANCE_ERROR = (
+  ownerLabel: string,
+  address: string,
+  balanceEth: string,
+  requiredEth: string
+): string =>
+  `The ${ownerLabel} ${address} has a balance of ${balanceEth} ETH but at least ${requiredEth} ETH is required to send all requests.`;

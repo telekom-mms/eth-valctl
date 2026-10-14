@@ -97,6 +97,7 @@ setup_phase() {
 	fetch_pubkeys "${CONSOL_SAFE_SOURCE_START}" "${CONSOL_SAFE_SOURCE_STOP}" "${TMP_DIR}/consol-safe-sources.txt"
 	fetch_pubkeys "${WITHDRAW_SAFE_START}" "${WITHDRAW_SAFE_STOP}" "${TMP_DIR}/withdraw-safe-pubkeys.txt"
 	fetch_pubkeys "${EXIT_SAFE_START}" "${EXIT_SAFE_STOP}" "${TMP_DIR}/exit-safe-pubkeys.txt"
+	fetch_pubkeys "${ERROR_SAFE_START}" "${ERROR_SAFE_STOP}" "${TMP_DIR}/error-safe-pubkeys.txt"
 	fetch_pubkeys "${THRESHOLD_SAFE_START}" "${THRESHOLD_SAFE_STOP}" "${TMP_DIR}/threshold-safe-pubkeys.txt"
 	fetch_pubkeys "${FEE_TIP_SAFE_START}" "${FEE_TIP_SAFE_STOP}" "${TMP_DIR}/fee-tip-pubkeys.txt"
 	fetch_pubkeys "${FEE_SAFE_START}" "${FEE_SAFE_STOP}" "${TMP_DIR}/fee-safe-pubkeys.txt"
@@ -253,6 +254,11 @@ phase_c_withdrawal() {
 		log_info "Safe withdrawal validators already have 0x02 credentials"
 	fi
 
+	log_info "Waiting for switch deposits to restore excess balance..."
+	for i in $(seq "${WITHDRAW_SAFE_START}" "${WITHDRAW_SAFE_STOP}"); do
+		wait_for_excess_balance "${i}"
+	done
+
 	safe_full_cycle "${OWNER_0_KEY}" "${OWNER_1_KEY}" "${OWNER_0_KEY}" \
 		withdraw -v "${TMP_DIR}/withdraw-safe-pubkeys.txt" -a 0.001
 
@@ -269,6 +275,11 @@ phase_c_withdrawal() {
 	else
 		log_info "Direct withdrawal validators already have 0x02 credentials"
 	fi
+
+	log_info "Waiting for switch deposits to restore excess balance..."
+	for i in $(seq "${WITHDRAW_DIRECT_START}" "${WITHDRAW_DIRECT_STOP}"); do
+		wait_for_excess_balance "${i}"
+	done
 
 	run_ethvalctl "${OWNER_0_KEY}" withdraw -v "${TMP_DIR}/withdraw-direct-pubkeys.txt" -a 0.001
 	assert_output_contains "${LAST_CMD_OUTPUT}" "Mined execution layer request" "Partial Withdrawal (Direct) CLI output contains mined TX"
@@ -331,6 +342,57 @@ phase_e_errors() {
 	log_test "Wrong network"
 	capture_cmd bash -c "echo '${OWNER_0_KEY}' | bun run start -n hoodi -r ${RPC_URL} -b ${BEACON_URL} switch -v ${TMP_DIR}/switch-safe-pubkeys.txt"
 	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Wrong network rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "is not connected to network hoodi" "Wrong network error message present"
+
+	log_test "Unreachable JSON-RPC"
+	capture_cmd bash -c "echo '${OWNER_0_KEY}' | bun run start -n kurtosis_devnet -r ${UNREACHABLE_RPC_URL} -b ${BEACON_URL} switch -v ${TMP_DIR}/switch-safe-pubkeys.txt"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Unreachable JSON-RPC rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "Error while trying to open connection" "Unreachable JSON-RPC error message present"
+
+	log_test "Sanity check: all failures reported together"
+	run_ethvalctl "${OWNER_0_KEY}" switch -v "${TMP_DIR}/error-safe-pubkeys.txt"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Foreign validators rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "$((ERROR_SAFE_STOP - ERROR_SAFE_START + 1)) pre-request sanity check(s) failed" "All ownership failures reported together"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "does not match signer address" "Ownership error message present"
+
+	log_test "Sanity check: partial withdrawal requires 0x02 credentials"
+	run_ethvalctl_safe "${OWNER_0_KEY}" withdraw -v "${TMP_DIR}/error-safe-pubkeys.txt" -a 0.001
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Withdrawal from 0x01 validators rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "0x02 is required" "Credentials error message present"
+
+	log_test "Sanity check: exit of already exiting validators"
+	run_ethvalctl "${OWNER_0_KEY}" exit -v "${TMP_DIR}/exit-direct-pubkeys.txt"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Exiting validators rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "must be active and not exiting" "Not active error message present"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "No transaction was sent" "No transaction sent"
+
+	log_test "Sanity check: validator not found"
+	local unknown_pubkey_file="${TMP_DIR}/unknown-pubkey.txt"
+	echo "${UNKNOWN_VALIDATOR_PUBKEY}" >"${unknown_pubkey_file}"
+	run_ethvalctl "${OWNER_0_KEY}" exit -v "${unknown_pubkey_file}"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Unknown validator rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "was not found on the beacon chain" "Not found error message present"
+
+	log_test "Sanity check: consolidation source equals target"
+	local target_pubkey
+	target_pubkey="$(head -n 1 "${TMP_DIR}/exit-direct-pubkeys.txt")"
+	run_ethvalctl "${OWNER_0_KEY}" consolidate -s "${target_pubkey}" -t "${target_pubkey}"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Source equals target rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "equals the target validator" "Source equals target error message present"
+
+	log_test "Balance check: signer cannot pay request fees"
+	INTEGRATION_MAX_REQUEST_FEE="${UNPAYABLE_MAX_REQUEST_FEE}" \
+		run_ethvalctl "${OWNER_0_KEY}" exit -v "${TMP_DIR}/switch-direct-pubkeys.txt"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Underfunded signer rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "ETH is required to send all requests" "Signer balance error message present"
+	assert_output_not_contains "${LAST_CMD_OUTPUT}" "Mined execution layer request" "No request sent by underfunded signer"
+
+	log_test "Balance check: Safe cannot pay request fees"
+	INTEGRATION_MAX_REQUEST_FEE="${UNPAYABLE_MAX_REQUEST_FEE}" \
+		run_ethvalctl_safe "${OWNER_0_KEY}" switch -v "${TMP_DIR}/error-safe-pubkeys.txt"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Underfunded Safe rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "ETH is required to send all requests" "Safe balance error message present"
+	assert_output_not_contains "${LAST_CMD_OUTPUT}" "proposed to Safe" "No proposal by underfunded Safe"
 }
 
 phase_f_threshold() {
@@ -697,7 +759,8 @@ Phases:
   b    Consolidation (Safe + Direct)
   c    Partial withdrawal (Safe + Direct)
   d    Full exit (Safe + Direct)
-  e    Error scenarios (non-owner, invalid pubkey, wrong network)
+  e    Error scenarios (non-owner, invalid input, wrong network, sanity and
+       balance checks)
   f    Threshold change (propose at 2, change to 3, verify revert)
   g    Fee validation (fee tip resilience, stale fee detection, rejection,
        default request-fee cap boundary)

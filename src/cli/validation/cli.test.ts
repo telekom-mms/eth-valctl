@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import chalk from 'chalk';
+import { JsonRpcProvider } from 'ethers';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -17,6 +18,7 @@ import {
   parseAndValidateValidatorPubKey,
   parseAndValidateValidatorPubKeys,
   parseAndValidateWithdrawAmount,
+  validateNetwork,
   validateSafeAddress,
   validateSafeNetworkSupport
 } from './cli';
@@ -301,6 +303,58 @@ describe('CLI Validation', () => {
       expect(() =>
         parseAndValidateSafeAddress('0xZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ')
       ).toThrow('process.exit');
+    });
+  });
+
+  describe('validateNetwork', () => {
+    let stderrSpy: ReturnType<typeof spyOn>;
+    let exitSpy: ReturnType<typeof spyOn>;
+    let sendSpy: ReturnType<typeof spyOn>;
+
+    beforeEach(() => {
+      stderrSpy = spyOn(console, 'error').mockImplementation(() => {});
+      exitSpy = spyOn(process, 'exit').mockImplementation(() => {
+        throw new Error('process.exit');
+      });
+      sendSpy = spyOn(JsonRpcProvider.prototype, 'send');
+    });
+
+    afterEach(() => {
+      stderrSpy.mockRestore();
+      exitSpy.mockRestore();
+      sendSpy.mockRestore();
+    });
+
+    it('passes when the rpc chain id matches the network', async () => {
+      sendSpy.mockResolvedValue('0x1');
+
+      await validateNetwork('http://localhost:8545', 'mainnet');
+
+      expect(sendSpy).toHaveBeenCalledWith('eth_chainId', []);
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it('exits when the rpc chain id does not match the network', async () => {
+      sendSpy.mockResolvedValue('0x301824');
+
+      await expect(validateNetwork('http://localhost:8545', 'mainnet')).rejects.toThrow(
+        'process.exit'
+      );
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(
+        logging.WRONG_CONNECTED_NETWORK_ERROR('mainnet', 'unknown', 3151908n)
+      );
+    });
+
+    it('exits for any rpc error instead of swallowing it', async () => {
+      sendSpy.mockRejectedValue(new Error('socket hang up'));
+
+      await expect(validateNetwork('http://localhost:8545', 'mainnet')).rejects.toThrow(
+        'process.exit'
+      );
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });
 

@@ -347,6 +347,26 @@ range_has_bls_credentials() {
 	return 1
 }
 
+# A 0x01 -> 0x02 switch moves the balance above 32 ETH into pending_deposits. Partial withdrawals
+# are rejected until that deposit is processed and the excess is back in the balance.
+wait_for_excess_balance() {
+	local index=$1
+	local timeout=${2:-${STATUS_WAIT_TIMEOUT}}
+	local deadline=$((SECONDS + timeout))
+
+	while ((SECONDS < deadline)); do
+		local balance
+		balance=$(curl -s "${BEACON_URL}/eth/v1/beacon/states/head/validators/${index}" | jq -r .data.balance)
+		if ((balance > MIN_ACTIVATION_BALANCE_GWEI)); then
+			return 0
+		fi
+		sleep "${CREDENTIAL_POLL_INTERVAL}"
+	done
+
+	echo "Timeout waiting for validator ${index} to have balance above ${MIN_ACTIVATION_BALANCE_GWEI} gwei" >&2
+	return 1
+}
+
 get_validator_status() {
 	local index=$1
 	curl -s "${BEACON_URL}/eth/v1/beacon/states/head/validators/${index}" | jq -r .data.status

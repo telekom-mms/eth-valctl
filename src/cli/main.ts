@@ -13,7 +13,7 @@ import { Command, Option } from 'commander';
 
 import packageJson from '../../package.json';
 import * as application from '../constants/application';
-import { DISCLAIMER_INFO, UNHANDLED_PROMISE_REJECTION_PREFIX } from '../constants/logging';
+import { UNHANDLED_PROMISE_REJECTION_PREFIX } from '../constants/logging';
 import type { GlobalCliOptions } from '../model/commander';
 import { consolidateCommand } from './consolidate';
 import { handleCliError } from './error-handler';
@@ -40,7 +40,7 @@ const program = new Command();
 
 program
   .name('eth-valctl')
-  .description(`CLI tool for managing Ethereum validators.\n${chalk.yellow(DISCLAIMER_INFO)}`)
+  .description('CLI tool for managing Ethereum validators.')
   .version(packageJson.version)
   .enablePositionalOptions()
   .addOption(
@@ -105,10 +105,9 @@ program
       )
   )
   .option('-y, --yes', 'Skip confirmation prompts using default actions', false)
-  .hook('preAction', (thisCommand) => {
-    console.log(chalk.yellow(DISCLAIMER_INFO));
+  .hook('preAction', async (thisCommand) => {
     const globalOptions: GlobalCliOptions = thisCommand.opts();
-    validateNetwork(globalOptions.jsonRpcUrl, globalOptions.network);
+    await validateNetwork(globalOptions.jsonRpcUrl, globalOptions.network);
     validateSafeNetworkSupport(globalOptions.network, globalOptions.safe);
   })
   .addCommand(consolidateCommand)

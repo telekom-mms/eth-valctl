@@ -103,4 +103,15 @@ CREDENTIAL_WAIT_TIMEOUT=300
 STATUS_WAIT_TIMEOUT=300
 CREDENTIAL_POLL_INTERVAL=12
 
+MIN_ACTIVATION_BALANCE_GWEI=32000000000
+
 MOCK_ADMIN_URL="http://localhost:5555/_admin"
+
+# Valid BLS pubkey which is not registered on the devnet (sanity check "validator not found")
+UNKNOWN_VALIDATOR_PUBKEY="0x93247f2209abcacf57b75a51dafae777f9dd38bc7053d1af526f220a7489a6d3a2753e5f3e8b1cfe39b56f43611df74a"
+
+# Request fee cap no account can ever pay (1e30 ETH). The balance check requires
+# requests x max(current fee, cap), so balance-check failures stay deterministic even though
+# the Safe and owner 0 keep receiving withdrawals: total devnet supply is orders of magnitude lower.
+UNPAYABLE_MAX_REQUEST_FEE="1000000000000000000000000000000eth"
+UNREACHABLE_RPC_URL="http://127.0.0.1:1"

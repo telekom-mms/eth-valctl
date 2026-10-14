@@ -14,7 +14,18 @@ const createMockFetchResponse = () => ({
   ok: true,
   status: 200,
   statusText: 'OK',
-  json: () => Promise.resolve({ data: { genesis_time: String(MOCK_GENESIS_TIME) } })
+  json: () =>
+    Promise.resolve({
+      data: {
+        genesis_time: String(MOCK_GENESIS_TIME),
+        SECONDS_PER_SLOT: '12',
+        SLOTS_PER_EPOCH: '32',
+        SHARD_COMMITTEE_PERIOD: '256',
+        MIN_ACTIVATION_BALANCE: '32000000000',
+        PENDING_PARTIAL_WITHDRAWALS_LIMIT: '134217728',
+        PENDING_CONSOLIDATIONS_LIMIT: '262144'
+      }
+    })
 });
 
 const mockFetch = mock(() => Promise.resolve(createMockFetchResponse()));
@@ -111,8 +122,9 @@ describe('Strategy Selection Logic', () => {
 
       await BeaconService.create('http://localhost:5052');
 
-      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(mockFetch).toHaveBeenCalledWith('http://localhost:5052/eth/v1/beacon/genesis');
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:5052/eth/v1/config/spec');
     });
 
     it('is only needed for sequential strategy (Ledger)', async () => {

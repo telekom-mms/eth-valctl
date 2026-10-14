@@ -1,6 +1,6 @@
 import { PublicKey } from '@chainsafe/blst';
 import chalk from 'chalk';
-import { getAddress, JsonRpcProvider, parseUnits } from 'ethers';
+import { getAddress, JsonRpcProvider, Network, parseUnits } from 'ethers';
 import { existsSync, readFileSync, statSync } from 'fs';
 
 import * as application from '../../constants/application';
@@ -95,8 +95,12 @@ export async function validateNetwork(jsonRpcUrl: string, network: string): Prom
     if (!config) {
       exitWithValidationError(logging.INVALID_NETWORK_ERROR(network));
     }
-    const jsonRpcProvider = new JsonRpcProvider(jsonRpcUrl);
-    const connectedNetwork = await jsonRpcProvider.getNetwork();
+    const jsonRpcProvider = new JsonRpcProvider(jsonRpcUrl, config.chainId, {
+      staticNetwork: true
+    });
+    const connectedChainId = BigInt(await jsonRpcProvider.send('eth_chainId', []));
+    jsonRpcProvider.destroy();
+    const connectedNetwork = Network.from(connectedChainId);
     if (connectedNetwork.chainId != config.chainId) {
       exitWithValidationError(
         logging.WRONG_CONNECTED_NETWORK_ERROR(
@@ -107,14 +111,11 @@ export async function validateNetwork(jsonRpcUrl: string, network: string): Prom
       );
     }
   } catch (error) {
-    if (
-      error instanceof Error &&
-      'message' in error &&
-      error.message.includes(application.ECONNREFUSED_ERROR_CODE)
-    ) {
-      console.error(chalk.red(logging.GENERAL_JSON_RPC_ERROR(jsonRpcUrl)), error.message);
-      process.exit(1);
-    }
+    console.error(
+      chalk.red(logging.GENERAL_JSON_RPC_ERROR(jsonRpcUrl)),
+      error instanceof Error ? error.message : error
+    );
+    process.exit(1);
   }
 }
 
