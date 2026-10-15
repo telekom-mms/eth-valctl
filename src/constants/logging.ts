@@ -544,3 +544,9 @@ export const INSUFFICIENT_BALANCE_ERROR = (
   requiredEth: string
 ): string =>
   `The ${ownerLabel} ${address} has a balance of ${balanceEth} ETH but at least ${requiredEth} ETH is required to send all requests.`;
+export const SAFE_BALANCE_LOW_AT_PROPOSAL_WARNING = (
+  address: string,
+  balanceEth: string,
+  requiredEth: string
+): string =>
+  `The Safe ${address} has a balance of ${balanceEth} ETH but ${requiredEth} ETH is required to execute these requests. Fund the Safe before running 'safe execute'.`;

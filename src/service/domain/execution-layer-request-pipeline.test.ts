@@ -1,9 +1,9 @@
 import type { SafeInfoResponse } from '@safe-global/api-kit';
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
-import type { JsonRpcProvider } from 'ethers';
+import { formatEther, type JsonRpcProvider } from 'ethers';
 
 import * as application from '../../constants/application';
-import { SAFE_FEE_TIP_INFO } from '../../constants/logging';
+import { SAFE_BALANCE_LOW_AT_PROPOSAL_WARNING, SAFE_FEE_TIP_INFO } from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
 import type { ISigner } from '../../ports/signer.interface';
 import * as ethereumModule from './ethereum';
@@ -268,40 +268,42 @@ describe('executeRequestPipeline', () => {
       expect(sendExecutionLayerRequestsSpy).toHaveBeenCalled();
     });
 
-    it('uses the Safe request fee cap plus the fee tip', async () => {
-      const maxRequestFee = CONTRACT_FEE * 10n;
+    it('warns at proposal based on the proposed fee, not the request fee cap', async () => {
+      const requiredWei = CONTRACT_FEE + application.DEFAULT_SAFE_FEE_TIP;
       const globalOptions = buildGlobalOptions({
         safe: SAFE_ADDRESS,
-        maxRequestFee,
+        maxRequestFee: CONTRACT_FEE * 10n,
         maxRequestFeeWaitBlocks: 0n
       });
-      mockGetBalance.mockImplementation(() =>
-        Promise.resolve(maxRequestFee + application.DEFAULT_SAFE_FEE_TIP - 1n)
+      const lowBalanceWarning = SAFE_BALANCE_LOW_AT_PROPOSAL_WARNING(
+        SAFE_ADDRESS,
+        formatEther(requiredWei - 1n),
+        formatEther(requiredWei)
       );
 
-      await expect(executeRequestPipeline(buildPipelineConfig({ globalOptions }))).rejects.toThrow(
-        'process.exit'
-      );
-      expect(proposeSafeTransactionsSpy).not.toHaveBeenCalled();
-
-      mockGetBalance.mockImplementation(() =>
-        Promise.resolve(maxRequestFee + application.DEFAULT_SAFE_FEE_TIP)
-      );
+      mockGetBalance.mockImplementation(() => Promise.resolve(requiredWei - 1n));
       await executeRequestPipeline(buildPipelineConfig({ globalOptions }));
-      expect(proposeSafeTransactionsSpy).toHaveBeenCalled();
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(lowBalanceWarning);
+      expect(proposeSafeTransactionsSpy).toHaveBeenCalledTimes(1);
+
+      stderrSpy.mockClear();
+      mockGetBalance.mockImplementation(() => Promise.resolve(requiredWei));
+      await executeRequestPipeline(buildPipelineConfig({ globalOptions }));
+      expect(stderrSpy.mock.calls.flat().join('\n')).not.toContain("before running 'safe execute'");
+      expect(proposeSafeTransactionsSpy).toHaveBeenCalledTimes(2);
     });
 
-    it('exits before proposing when the Safe cannot pay the request fees', async () => {
+    it('warns but still proposes when the Safe cannot pay the request fees yet', async () => {
       mockGetBalance.mockImplementation(() => Promise.resolve(0n));
 
-      await expect(
-        executeRequestPipeline(
-          buildPipelineConfig({ globalOptions: buildGlobalOptions({ safe: SAFE_ADDRESS }) })
-        )
-      ).rejects.toThrow('process.exit');
+      await executeRequestPipeline(
+        buildPipelineConfig({ globalOptions: buildGlobalOptions({ safe: SAFE_ADDRESS }) })
+      );
 
       expect(mockGetBalance).toHaveBeenCalledWith(SAFE_ADDRESS);
-      expect(proposeSafeTransactionsSpy).not.toHaveBeenCalled();
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain("before running 'safe execute'");
+      expect(proposeSafeTransactionsSpy).toHaveBeenCalled();
       expect(mockDispose).toHaveBeenCalled();
     });
   });

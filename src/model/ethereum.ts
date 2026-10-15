@@ -480,15 +480,6 @@ export interface ValidatorCheckGroup {
 export type RequestCheck = (context: ValidationContext) => string | undefined;
 
 /**
- * Account paying request fees (signer or Safe)
- */
-export interface FeePayer {
-  address: string;
-  /** Label for error messages (e.g. 'signer' or 'Safe') */
-  label: string;
-}
-
-/**
  * Input of the balance check before sending execution layer requests
  */
 export interface RequestBalanceCheck {

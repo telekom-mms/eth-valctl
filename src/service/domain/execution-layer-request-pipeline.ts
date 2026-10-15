@@ -2,10 +2,13 @@ import chalk from 'chalk';
 import { formatEther, type JsonRpcProvider } from 'ethers';
 
 import * as application from '../../constants/application';
-import { INSUFFICIENT_BALANCE_ERROR, SAFE_FEE_TIP_INFO } from '../../constants/logging';
+import {
+  INSUFFICIENT_BALANCE_ERROR,
+  SAFE_BALANCE_LOW_AT_PROPOSAL_WARNING,
+  SAFE_FEE_TIP_INFO
+} from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
 import type {
-  FeePayer,
   NetworkConfig,
   RequestBalanceCheck,
   RequestFeeCapCheckContext,
@@ -183,11 +186,10 @@ async function executeSafePipeline(
       console.error(chalk.blue(SAFE_FEE_TIP_INFO(contractFee, safeFeeTip, proposalFee)));
     }
 
-    await exitOnInsufficientBalance(
+    await warnOnLowSafeBalance(
       safeInitResult.provider,
-      { address: safeAddress, label: application.OWNER_LABEL_SAFE },
-      BigInt(requestData.length) *
-        (feeUpperBound(contractFee, globalOptions.maxRequestFee) + safeFeeTip)
+      safeAddress,
+      BigInt(requestData.length) * proposalFee
     );
 
     await proposeSafeTransactions({
@@ -257,38 +259,49 @@ async function checkSignerBalance(
     application.PERCENTAGE_DENOMINATOR;
   const costPerRequest = feeUpperBound(contractFee, check.maxRequestFee) + gasCostPerRequest;
 
-  await exitOnInsufficientBalance(
-    provider,
-    { address: signerAddress, label: application.OWNER_LABEL_SIGNER },
-    BigInt(check.requestCount) * costPerRequest
-  );
-}
-
-/**
- * Terminate the process if the balance of an account is below the required amount
- *
- * @param provider - JSON-RPC provider
- * @param payer - Address and label (e.g. 'signer' or 'Safe') of the paying account
- * @param requiredWei - Required balance in wei
- */
-async function exitOnInsufficientBalance(
-  provider: JsonRpcProvider,
-  payer: FeePayer,
-  requiredWei: bigint
-): Promise<void> {
-  const balance = await provider.getBalance(payer.address);
+  const requiredWei = BigInt(check.requestCount) * costPerRequest;
+  const balance = await provider.getBalance(signerAddress);
   if (balance < requiredWei) {
     console.error(
       chalk.red(
         INSUFFICIENT_BALANCE_ERROR(
-          payer.label,
-          payer.address,
+          application.OWNER_LABEL_SIGNER,
+          signerAddress,
           formatEther(balance),
           formatEther(requiredWei)
         )
       )
     );
     process.exit(1);
+  }
+}
+
+/**
+ * Warn if the Safe balance is below the amount needed to execute the proposals
+ *
+ * ETH only leaves the Safe at `safe execute`, where the balance is checked again. At proposal
+ * time a low balance is only a warning, so the Safe can still be funded before execution.
+ *
+ * @param provider - JSON-RPC provider
+ * @param safeAddress - Safe multisig address
+ * @param requiredWei - Total proposed value in wei of all proposals
+ */
+async function warnOnLowSafeBalance(
+  provider: JsonRpcProvider,
+  safeAddress: string,
+  requiredWei: bigint
+): Promise<void> {
+  const balance = await provider.getBalance(safeAddress);
+  if (balance < requiredWei) {
+    console.error(
+      chalk.yellow(
+        SAFE_BALANCE_LOW_AT_PROPOSAL_WARNING(
+          safeAddress,
+          formatEther(balance),
+          formatEther(requiredWei)
+        )
+      )
+    );
   }
 }
 
