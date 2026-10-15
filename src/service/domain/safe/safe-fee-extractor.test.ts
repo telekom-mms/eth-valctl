@@ -10,6 +10,7 @@ import {
 
 const SYSTEM_CONTRACTS = [CONSOLIDATION_CONTRACT_ADDRESS];
 const UNKNOWN_ADDRESS = '0x0000000000000000000000000000000000099999';
+const MULTISEND_ADDRESS = '0x9641d764fc13c8B624c04430C7356C1C7C8102e2';
 
 function createTx(
   overrides: Partial<SafeMultisigTransactionResponse> = {}
@@ -107,7 +108,7 @@ describe('extractFeeInfo', () => {
 
   it('extracts fee from MultiSend via dataDecoded', () => {
     const tx = createTx({
-      to: '0x9641d764fc13c8B624c04430C7356C1C7C8102e2',
+      to: MULTISEND_ADDRESS,
       value: '0',
       dataDecoded: {
         method: 'multiSend',
@@ -143,7 +144,7 @@ describe('extractFeeInfo', () => {
     const multiSendData = buildMultiSendData([opData]);
 
     const tx = createTx({
-      to: '0x9641d764fc13c8B624c04430C7356C1C7C8102e2',
+      to: MULTISEND_ADDRESS,
       value: '0',
       data: multiSendData,
       dataDecoded: undefined
@@ -163,7 +164,7 @@ describe('extractFeeInfo', () => {
     const multiSendData = buildMultiSendData([opData]);
 
     const tx = createTx({
-      to: '0x9641d764fc13c8B624c04430C7356C1C7C8102e2',
+      to: MULTISEND_ADDRESS,
       value: '0',
       data: multiSendData,
       dataDecoded: undefined
@@ -239,8 +240,6 @@ describe('decodeMultiSendOperations', () => {
 });
 
 describe('sumSafeTransactionValue', () => {
-  const MULTISEND_ADDRESS = '0x9641d764fc13c8B624c04430C7356C1C7C8102e2';
-
   it('returns tx.value for a direct system contract call', () => {
     expect(sumSafeTransactionValue(createTx({ value: '100', data: '0xdata' }))).toBe(100n);
   });
