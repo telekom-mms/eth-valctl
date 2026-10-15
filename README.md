@@ -187,7 +187,9 @@ The beacon chain silently drops invalid execution layer requests, but the reques
 
 ¹ Skip the target with `--skip-target-ownership-check`. ² Validators which already have 0x02 are skipped with a warning. ³ If the requested amount exceeds the withdrawable balance, a warning is printed because the beacon chain only withdraws the available excess.
 
-Additionally, the JSON-RPC and beacon node must be connected to the chain of `--network`, and the signer (direct mode) or Safe must hold enough ETH to pay the request fees (plus gas in direct mode) of all requests. The estimate uses the higher of the current request fee and `--max-request-fee`; gas is priced at the fixed transaction gas limit and the current max fee per gas, plus 12% for one replacement transaction.
+Additionally, the JSON-RPC and beacon node must be connected to the chain of `--network`, and the signer (direct mode) must hold enough ETH to pay the request fees and gas of all requests. The estimate uses the higher of the current request fee and `--max-request-fee`; gas is priced at the fixed transaction gas limit and the current max fee per gas, plus 12% for one replacement transaction.
+
+In Safe mode, ETH only leaves the Safe at `safe execute`. Before it sends any transaction, `safe execute` checks that the Safe holds the exact ETH all executable transactions will transfer, and aborts with exit code 1 otherwise. At proposal time, a Safe balance below the proposed value (current request fee plus `--safe-fee-tip`, per request) only prints a warning, so the Safe can still be funded before execution.
 
 ## Transaction handling
 

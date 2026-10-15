@@ -84,7 +84,7 @@ src/
         safe-sign-service.ts         Pending transaction signing
         safe-execute-service.ts      On-chain execution of fully-signed transactions
         safe-fee-validator.ts        Fee validation (stale/sufficient/overpaid detection)
-        safe-fee-extractor.ts        Extract per-operation fees from MultiSend tx data
+        safe-fee-extractor.ts        Extract per-operation fees and summed ETH value from Safe tx data
         safe-fee-prompt.ts           Interactive fee validation prompts and stale fee handling
         safe-transaction-filter.ts   Filter transactions by origin/contract
         safe-api-retry.ts            Safe API retry with exponential backoff
@@ -225,7 +225,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/) as defined i
 10. **Request fee cap is active by default** (`--max-request-fee` defaults to `10wei`, tolerating a consolidation queue of ~40 excess before tripping — the curve is near-flat below that and steepens sharply after). On breach: prompt wait/continue/abort, or wait automatically with `--yes`. Choosing continue approves that fee *and anything lower* for the rest of the run; a further increase re-prompts
 11. **Cap check granularity depends on the path** — once per batch (wallet/parallel), once per transaction (Ledger/sequential), once per replacement group or transaction, once per Safe proposal. The Safe cap applies to the raw contract fee *before* `--safe-fee-tip` is added
 12. **Cap aborts throw, they do not fail a single request** — `RequestFeeCapExceededError` (exit 1) and `RequestFeeOperationCancelledError` (exit 0) propagate past per-transaction error handling via `isRequestFeePolicyStopError`, stopping the whole run. Before rethrowing, the orchestrator logs completed-batch failures plus the unfinished requests as *unknown status* (broadcast started) or *not sent*
-13. **Balance pre-check** (`checkSignerBalance`) requires per request `max(contractFee, cap)` + `TRANSACTION_GAS_LIMIT × maxFeePerGas × 1.12` (headroom for one replacement). Don't use `estimateGas`: it throws a raw RPC error exactly when the signer is underfunded. The Safe balance is only checked at proposal time; the execute-time check is deferred (`tickets/safe-fee-validation/SFV-01`)
+13. **Balance pre-check** (`checkSignerBalance`) requires per request `max(contractFee, cap)` + `TRANSACTION_GAS_LIMIT × maxFeePerGas × 1.12` (headroom for one replacement). Don't use `estimateGas`: it throws a raw RPC error exactly when the signer is underfunded. The Safe balance only warns at proposal time (`SAFE_BALANCE_LOW_AT_PROPOSAL_WARNING`); `safe execute` hard-checks the exact ETH of all executable transactions (`sumSafeTransactionValue`) before sending anything
 
 ## Testing
 
