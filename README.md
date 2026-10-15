@@ -92,7 +92,7 @@ Print the help message with `--help`. This works also for every subcommand.
 | -m           | --max-requests-per-block                     | The max. number of EL requests which are tried to be packaged into one block                     |
 | -l           | --ledger                                     | Use Ledger hardware wallet for signing (requires Ledger device with Ethereum app)                |
 | -s           | --safe \<address\>                           | Safe multisig address for proposal, signing, and execution                                       |
-| -f           | --safe-fee-tip \<wei\>                       | Tip in wei added to system contract fee per operation (default: 100)                             |
+| -f           | --safe-fee-tip \<amount\>                    | Tip added to system contract fee per operation, in wei or with unit (default: 100)               |
 | -x           | --max-request-fee \<amount\>                 | Maximum request fee per EL request before eth-valctl waits or asks what to do (default: 10wei)   |
 | -w           | --max-request-fee-wait-blocks \<blocks\>     | Max blocks to wait when request fee exceeds `--max-request-fee` (default: 50)                    |
 | -y           | --yes                                        | Skip confirmation prompts using default actions                                                  |
@@ -159,10 +159,10 @@ Execute fully-signed eth-valctl Safe transactions on-chain. Requires `--safe`.
 
 <!-- markdownlint-disable MD060 -->
 
-| Short Option | Long Option                          | Description                                                                                  |
-| ------------ | ------------------------------------ | -------------------------------------------------------------------------------------------- |
-| -o           | --fee-overpayment-threshold \<wei\>  | Wei threshold above which fee overpayment is flagged (default: 100)                          |
-| -a           | --stale-fee-action \<action\>        | Non-interactive stale fee handling: `wait` (poll) or `reject` (propose rejection)            |
+| Short Option | Long Option                            | Description                                                                                  |
+| ------------ | -------------------------------------- | -------------------------------------------------------------------------------------------- |
+| -o           | --fee-overpayment-threshold \<amount\> | Threshold above which fee overpayment is flagged, in wei or with unit (default: 100)         |
+| -a           | --stale-fee-action \<action\>          | Non-interactive stale fee handling: `wait` (poll) or `reject` (propose rejection)            |
 
 <!-- markdownlint-enable MD060 -->
 
