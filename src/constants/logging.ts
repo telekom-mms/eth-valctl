@@ -349,9 +349,10 @@ export const SAFE_FEE_OVERPAYMENT_INFO = (
   safeTxHash: string,
   proposed: bigint,
   current: bigint,
-  overpaymentAmount: bigint
+  overpaymentAmount: bigint,
+  overpaymentThreshold: bigint
 ): string =>
-  `  ℹ Batch ${batch}/${total} (${safeTxHash.slice(0, 10)}...): proposed fee ${proposed} wei > current fee ${current} wei (overpayment: ${overpaymentAmount} wei above threshold)`;
+  `  ℹ Batch ${batch}/${total} (${safeTxHash.slice(0, 10)}...): fee overpaid by ${overpaymentAmount} wei (proposed ${proposed}, current ${current}, overpayment threshold ${overpaymentThreshold} via -o)`;
 export const SAFE_FEE_ALL_SUFFICIENT_INFO = (count: number): string =>
   `  ✅ All ${count} transaction${count === 1 ? '' : 's'}: contract fees sufficient`;
 export const SAFE_FEE_STALE_SUMMARY_INFO = (staleCount: number, total: number): string =>

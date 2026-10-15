@@ -219,7 +219,8 @@ describe('handleFeeValidationResult', () => {
       proposedFee: 500n,
       currentFee: 100n,
       contractAddress: '0x0000BBdDc7CE488642fb579F8B00f3a590007251',
-      overpaymentAmount: 400n
+      overpaymentAmount: 400n,
+      overpaymentThreshold: 100n
     };
 
     const result: FeeValidationResult = {
@@ -232,7 +233,9 @@ describe('handleFeeValidationResult', () => {
 
     expect(action).toBe('proceed');
     const output = stderrSpy.mock.calls.flat().join('\n');
-    expect(output).toContain('overpayment');
+    expect(output).toContain(
+      'fee overpaid by 400 wei (proposed 500, current 100, overpayment threshold 100 via -o)'
+    );
   });
 
   it('returns wait for unvalidated transactions with skipConfirmation', async () => {

@@ -6,7 +6,7 @@ Manual test scenarios for Safe fee validation — all wait/abort/reject paths at
 
 - Kurtosis devnet running (beacon `http://localhost:5052`, execution `http://127.0.0.1:8545`)
 - Mock TX Service on port 5555
-- Safe `0x78a4AA95Ae1031C8ded9c7b11D35AEDfD8dafd7e` deployed (2-of-3 threshold). Deploy extra safe with:
+- Safe `0x8aF1d0BB6677a7706a1f71415d16e1acf2343a0B` deployed (2-of-3 threshold). Deploy extra safe with:
 
   ```bash
   # extra owner is test ledger address
@@ -28,7 +28,7 @@ Safe commands prompt for the private key interactively. Do **not** pipe keys via
 Paste into your terminal before running scenarios:
 
 ```bash
-SAFE="0x78a4AA95Ae1031C8ded9c7b11D35AEDfD8dafd7e"
+SAFE="0x8aF1d0BB6677a7706a1f71415d16e1acf2343a0B"
 EOA="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 KEY0="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 KEY1="0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
@@ -440,7 +440,7 @@ safe_exec --yes
 
 **Expected:**
 
-- `Batch 1/2: proposed fee 10001 > current fee 1 (overpayment: 10000 wei)` (blue info, NOT blocking)
+- `Batch 1/2 (0x...): fee overpaid by 10000 wei (proposed 10001, current 1, overpayment threshold 100 via -o)` (yellow info, NOT blocking)
 - Both batches execute successfully
 
 **Verify:** `check_creds 1072 1077` -> all `0x02`
