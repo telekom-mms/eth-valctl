@@ -2,7 +2,7 @@ import type SafeApiKit from '@safe-global/api-kit';
 import type Safe from '@safe-global/protocol-kit';
 import type { SafeMultisigTransactionResponse } from '@safe-global/types-kit';
 import chalk from 'chalk';
-import type { JsonRpcProvider } from 'ethers';
+import { formatEther, type JsonRpcProvider } from 'ethers';
 import prompts from 'prompts';
 
 import * as application from '../../../constants/application';
@@ -15,6 +15,7 @@ import {
   isViemInsufficientFundsError
 } from '../error-utils';
 import { withRateRetry } from './safe-api-retry';
+import { sumSafeTransactionValue } from './safe-fee-extractor';
 import { handleFeeValidationResult, handleStaleFeeBeforeExecution } from './safe-fee-prompt';
 import {
   validateSingleTransactionFee,
@@ -33,7 +34,8 @@ import {
  * Filters pending transactions by origin and system contract address,
  * selects only those with enough confirmations (threshold met),
  * deduplicates competing transactions at the same nonce (preferring rejections),
- * checks for nonce gaps, and executes sequentially in nonce order.
+ * checks for nonce gaps, checks the Safe balance covers the ETH of all executable
+ * transactions, and executes sequentially in nonce order.
  * Fee validation is skipped when all transactions are rejections.
  *
  * @param config - Configuration with SDK instances and filter criteria
@@ -75,6 +77,11 @@ export async function executeReadyTransactions(config: SafeExecuteConfig): Promi
   }
 
   await validateNonceSequence(config.protocolKit, sorted, config.safeAddress);
+
+  if (!(await hasSufficientSafeBalance(config.provider, config.safeAddress, sorted))) {
+    process.exitCode = 1;
+    return;
+  }
 
   if (!config.skipConfirmation) {
     const { confirmed } = await prompts({
@@ -223,6 +230,36 @@ async function validateNonceSequence(
   console.error(
     chalk.blue(logging.SAFE_FOUND_EXECUTABLE_INFO(sorted.length, rejectionCount || undefined))
   );
+}
+
+/**
+ * Check that the Safe holds the ETH all executable transactions will move out of it
+ *
+ * @param provider - JSON-RPC provider
+ * @param safeAddress - Safe multisig address
+ * @param transactions - Transactions that will be executed
+ * @returns true if the Safe balance covers the summed transaction values
+ */
+async function hasSufficientSafeBalance(
+  provider: JsonRpcProvider,
+  safeAddress: string,
+  transactions: SafeMultisigTransactionResponse[]
+): Promise<boolean> {
+  const requiredWei = transactions.reduce((sum, tx) => sum + sumSafeTransactionValue(tx), 0n);
+  const balance = await provider.getBalance(safeAddress);
+  if (balance >= requiredWei) return true;
+
+  console.error(
+    chalk.red(
+      logging.INSUFFICIENT_BALANCE_ERROR(
+        application.OWNER_LABEL_SAFE,
+        safeAddress,
+        formatEther(balance),
+        formatEther(requiredWei)
+      )
+    )
+  );
+  return false;
 }
 
 /**

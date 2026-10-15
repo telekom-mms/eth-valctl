@@ -37,6 +37,25 @@ export function extractFeeInfo(
 }
 
 /**
+ * Sum the ETH that leaves the Safe when a transaction is executed
+ *
+ * Adds `tx.value` and the values of all inner MultiSend operations, taken from
+ * `dataDecoded` (primary) or raw packed MultiSend data (fallback). Direct calls and
+ * rejections have no inner operations and contribute only `tx.value`.
+ *
+ * @param tx - Safe multisig transaction response
+ * @returns Total value in wei moved out of the Safe by the transaction
+ */
+export function sumSafeTransactionValue(tx: SafeMultisigTransactionResponse): bigint {
+  const decodedOperations = tx.dataDecoded?.parameters?.[0]?.valueDecoded;
+  const innerValues = decodedOperations
+    ? decodedOperations.map((op) => BigInt(op.value))
+    : decodeMultiSendOperations(tx.data ?? '').map((op) => op.value);
+
+  return innerValues.reduce((sum, value) => sum + value, BigInt(tx.value));
+}
+
+/**
  * Extract fee info from a MultiSend transaction
  *
  * Tries `dataDecoded.parameters[0].valueDecoded` first, then falls back

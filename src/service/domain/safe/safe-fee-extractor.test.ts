@@ -2,7 +2,11 @@ import type { OperationType, SafeMultisigTransactionResponse } from '@safe-globa
 import { describe, expect, it } from 'bun:test';
 
 import { CONSOLIDATION_CONTRACT_ADDRESS } from '../../../constants/application';
-import { decodeMultiSendOperations, extractFeeInfo } from './safe-fee-extractor';
+import {
+  decodeMultiSendOperations,
+  extractFeeInfo,
+  sumSafeTransactionValue
+} from './safe-fee-extractor';
 
 const SYSTEM_CONTRACTS = [CONSOLIDATION_CONTRACT_ADDRESS];
 const UNKNOWN_ADDRESS = '0x0000000000000000000000000000000000099999';
@@ -231,5 +235,59 @@ describe('decodeMultiSendOperations', () => {
 
     expect(ops).toHaveLength(1);
     expect(ops[0]!.value).toBe(77n);
+  });
+});
+
+describe('sumSafeTransactionValue', () => {
+  const MULTISEND_ADDRESS = '0x9641d764fc13c8B624c04430C7356C1C7C8102e2';
+
+  it('returns tx.value for a direct system contract call', () => {
+    expect(sumSafeTransactionValue(createTx({ value: '100', data: '0xdata' }))).toBe(100n);
+  });
+
+  it('sums outer and inner values of a MultiSend via dataDecoded', () => {
+    const innerOperation = {
+      operation: 0 as OperationType,
+      to: CONSOLIDATION_CONTRACT_ADDRESS,
+      value: '200',
+      data: '0x',
+      dataDecoded: undefined
+    };
+    const tx = createTx({
+      to: MULTISEND_ADDRESS,
+      value: '1',
+      dataDecoded: {
+        method: 'multiSend',
+        parameters: [
+          {
+            name: 'transactions',
+            type: 'bytes',
+            value: '0x',
+            valueDecoded: [innerOperation, { ...innerOperation, value: '300' }]
+          }
+        ]
+      }
+    });
+
+    expect(sumSafeTransactionValue(tx)).toBe(501n);
+  });
+
+  it('falls back to raw MultiSend data without dataDecoded', () => {
+    const op1 = encodeMultiSendOperation(0, CONSOLIDATION_CONTRACT_ADDRESS, 300n, '0xdeadbeef');
+    const op2 = encodeMultiSendOperation(0, CONSOLIDATION_CONTRACT_ADDRESS, 400n, '0xdeadbeef');
+    const tx = createTx({
+      to: MULTISEND_ADDRESS,
+      value: '0',
+      data: buildMultiSendData([op1, op2]),
+      dataDecoded: undefined
+    });
+
+    expect(sumSafeTransactionValue(tx)).toBe(700n);
+  });
+
+  it('returns 0 for a rejection transaction', () => {
+    const tx = createTx({ to: createTx().safe, value: '0', data: undefined });
+
+    expect(sumSafeTransactionValue(tx)).toBe(0n);
   });
 });
