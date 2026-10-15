@@ -179,7 +179,7 @@ async function executeSafePipeline(
           requestCount: requestData.length
         })
       : await stateService.fetchContractFee();
-    const safeFeeTip = BigInt(globalOptions.safeFeeTip ?? String(application.DEFAULT_SAFE_FEE_TIP));
+    const safeFeeTip = globalOptions.safeFeeTip ?? application.DEFAULT_SAFE_FEE_TIP;
     const proposalFee = contractFee + safeFeeTip;
 
     if (safeFeeTip > 0n) {

@@ -347,7 +347,7 @@ describe('executeRequestPipeline', () => {
     });
 
     it('adds an explicit safe fee tip on top of the contract fee', async () => {
-      const options = buildGlobalOptions({ safe: SAFE_ADDRESS, safeFeeTip: '250' });
+      const options = buildGlobalOptions({ safe: SAFE_ADDRESS, safeFeeTip: 250n });
 
       await executeRequestPipeline(buildPipelineConfig({ globalOptions: options }));
 
@@ -358,7 +358,7 @@ describe('executeRequestPipeline', () => {
     });
 
     it('logs the fee tip info line when tip is greater than zero', async () => {
-      const options = buildGlobalOptions({ safe: SAFE_ADDRESS, safeFeeTip: '250' });
+      const options = buildGlobalOptions({ safe: SAFE_ADDRESS, safeFeeTip: 250n });
 
       await executeRequestPipeline(buildPipelineConfig({ globalOptions: options }));
 
@@ -368,7 +368,7 @@ describe('executeRequestPipeline', () => {
     });
 
     it('does not log the fee tip info line when tip is zero', async () => {
-      const options = buildGlobalOptions({ safe: SAFE_ADDRESS, safeFeeTip: '0' });
+      const options = buildGlobalOptions({ safe: SAFE_ADDRESS, safeFeeTip: 0n });
 
       await executeRequestPipeline(buildPipelineConfig({ globalOptions: options }));
 
@@ -496,7 +496,7 @@ describe('executeRequestPipeline', () => {
       const options = {
         ...buildGlobalOptions({
           safe: SAFE_ADDRESS,
-          safeFeeTip: String(safeFeeTip)
+          safeFeeTip
         }),
         maxRequestFee: CONTRACT_FEE
       } as GlobalCliOptions;

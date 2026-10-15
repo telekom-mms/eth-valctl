@@ -451,7 +451,7 @@ phase_g_fee_validation() {
 
 	# --- G.1: Fee tip proposal with output verification ---
 	log_test "Fee tip — propose with --safe-fee-tip"
-	safe_propose "${OWNER_0_KEY}" --safe-fee-tip 1000 switch -v "${TMP_DIR}/fee-tip-pubkeys.txt"
+	safe_propose "${OWNER_0_KEY}" --safe-fee-tip 0.000001gwei switch -v "${TMP_DIR}/fee-tip-pubkeys.txt"
 	assert_output_contains "${LAST_CMD_OUTPUT}" "proposed to Safe" "Fee tip propose output"
 	assert_output_contains "${LAST_CMD_OUTPUT}" "tip" "Fee tip info logged in output"
 

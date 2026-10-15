@@ -9,11 +9,13 @@ import { GWEI_UNIT, MAX_NUMBER_OF_REQUESTS_PER_BLOCK } from '../../constants/app
 import * as logging from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
 import {
+  parseAndValidateFeeOverpaymentThreshold,
   parseAndValidateMaxNumberOfRequestsPerBlock,
   parseAndValidateMaxRequestFee,
   parseAndValidateMaxRequestFeeWaitBlocks,
   parseAndValidateNodeUrl,
   parseAndValidateSafeAddress,
+  parseAndValidateSafeFeeTip,
   parseAndValidateTotalRequestCount,
   parseAndValidateValidatorPubKey,
   parseAndValidateValidatorPubKeys,
@@ -531,6 +533,59 @@ describe('CLI Validation', () => {
 
     it('exits when the amount resolves below one wei', () => {
       expect(() => parseAndValidateMaxRequestFee('0.0000000001gwei')).toThrow('process.exit');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(
+        logging.REQUEST_FEE_PRECISION_ERROR('0.0000000001', GWEI_UNIT)
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe.each([
+    {
+      name: 'parseAndValidateSafeFeeTip',
+      parse: parseAndValidateSafeFeeTip,
+      formatError: logging.INVALID_SAFE_FEE_TIP_FORMAT_ERROR
+    },
+    {
+      name: 'parseAndValidateFeeOverpaymentThreshold',
+      parse: parseAndValidateFeeOverpaymentThreshold,
+      formatError: logging.INVALID_FEE_OVERPAYMENT_THRESHOLD_FORMAT_ERROR
+    }
+  ])('$name', ({ parse, formatError }) => {
+    let stderrSpy: ReturnType<typeof spyOn>;
+    let exitSpy: ReturnType<typeof spyOn>;
+
+    beforeEach(() => {
+      stderrSpy = spyOn(console, 'error').mockImplementation(() => {});
+      exitSpy = spyOn(process, 'exit').mockImplementation(() => {
+        throw new Error('process.exit');
+      });
+    });
+
+    afterEach(() => {
+      stderrSpy.mockRestore();
+      exitSpy.mockRestore();
+    });
+
+    it.each([
+      ['100', 100n],
+      ['0', 0n],
+      ['100wei', 100n],
+      ['0.1gwei', 100_000_000n],
+      ['0.001eth', 1_000_000_000_000_000n],
+      ['2 GWEI', 2_000_000_000n]
+    ])('returns wei for %p', (input, expected) => {
+      expect(parse(input)).toBe(expected);
+    });
+
+    it.each(['0.5', '-1', 'abc', '1btc'])('exits with the format error for %p', (input) => {
+      expect(() => parse(input)).toThrow('process.exit');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(formatError);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('exits when the amount resolves below one wei', () => {
+      expect(() => parse('0.0000000001gwei')).toThrow('process.exit');
       expect(stderrSpy.mock.calls.flat().join('\n')).toContain(
         logging.REQUEST_FEE_PRECISION_ERROR('0.0000000001', GWEI_UNIT)
       );

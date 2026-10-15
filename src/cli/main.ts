@@ -27,6 +27,7 @@ import {
   parseAndValidateMaxRequestFeeWaitBlocks,
   parseAndValidateNodeUrl,
   parseAndValidateSafeAddress,
+  parseAndValidateSafeFeeTip,
   validateNetwork,
   validateSafeNetworkSupport
 } from './validation/cli';
@@ -80,10 +81,13 @@ program
     'Safe multisig address to use for transaction proposals',
     parseAndValidateSafeAddress
   )
-  .option(
-    `-f, --safe-fee-tip <wei>`,
-    'Absolute tip in wei added to system contract fee per operation in Safe proposals',
-    String(application.DEFAULT_SAFE_FEE_TIP)
+  .addOption(
+    new Option(
+      '-f, --safe-fee-tip <amount>',
+      'Absolute tip added to system contract fee per operation in Safe proposals, in wei by default or with unit, for example 100, 100wei, or 0.1gwei'
+    )
+      .argParser(parseAndValidateSafeFeeTip)
+      .default(application.DEFAULT_SAFE_FEE_TIP, String(application.DEFAULT_SAFE_FEE_TIP))
   )
   .addOption(
     new Option(

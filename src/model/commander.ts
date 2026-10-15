@@ -33,7 +33,7 @@ export interface GlobalCliOptions {
   maxRequestsPerBlock: number;
   ledger: boolean;
   safe?: string;
-  safeFeeTip?: string;
+  safeFeeTip?: bigint;
   maxRequestFee?: bigint;
   maxRequestFeeWaitBlocks?: bigint;
   yes?: boolean;

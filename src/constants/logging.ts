@@ -32,10 +32,14 @@ export const INVALID_REQUESTS_PER_BLOCK_ERROR =
 export const TOO_MANY_REQUESTS_PER_BLOCK_ERROR = `Provided maximal number of requests per block is too high. To minimize the risk of transaction reverts/replacements due to underpriced fees, the number should not exceed ${application.MAX_NUMBER_OF_REQUESTS_PER_BLOCK}.`;
 export const INVALID_MAX_REQUEST_FEE_FORMAT_ERROR =
   'Invalid max request fee format. Use an explicit unit: wei/gwei/eth, for example 1wei, 0.5gwei, or 0.01eth.';
+export const INVALID_SAFE_FEE_TIP_FORMAT_ERROR =
+  'Invalid Safe fee tip format. Use wei (default unit), gwei or eth, for example 100, 100wei, or 0.1gwei.';
+export const INVALID_FEE_OVERPAYMENT_THRESHOLD_FORMAT_ERROR =
+  'Invalid fee overpayment threshold format. Use wei (default unit), gwei or eth, for example 100, 100wei, or 0.1gwei.';
 export const MAX_REQUEST_FEE_TOO_LOW_ERROR =
   'Max request fee must be greater than zero and at least 1 wei.';
 export const REQUEST_FEE_PRECISION_ERROR = (amount: string, unit: string): string =>
-  `Request fee amount is below 1 wei precision: ${amount}${unit}`;
+  `Fee amount is below 1 wei precision: ${amount}${unit}`;
 export const INVALID_MAX_REQUEST_FEE_WAIT_BLOCKS_ERROR =
   'Max request fee wait blocks must be a non-negative integer.';
 export const INVALID_TOTAL_REQUEST_COUNT_ERROR = 'Total request count must be a positive integer.';
