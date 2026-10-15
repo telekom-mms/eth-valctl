@@ -47,12 +47,15 @@ function isAlreadyExistsError(error: unknown): boolean {
  * Propose a non-eth-valctl transaction to the mock TX Service.
  *
  * Creates a 0-value ETH transfer to a random address with origin 'foreign-app'.
+ * With `drain`, the transfer moves the Safe's full current balance instead, which
+ * empties the Safe once executed (execute-time balance check scenario).
  * Optionally signs with Owner 1 to reach threshold for filtering tests.
  * Prints the assigned nonce and safeTxHash to stdout for test verification.
  *
  * @param signWithOwner1 - Whether to add a second confirmation from Owner 1
+ * @param drain - Whether to transfer the Safe's full balance instead of 0 ETH
  */
-async function proposeForeignTx(signWithOwner1: boolean): Promise<void> {
+async function proposeForeignTx(signWithOwner1: boolean, drain: boolean): Promise<void> {
   const contractNetworks = buildContractNetworks();
   const txServiceUrl = `http://localhost:${MOCK_TX_SERVICE_PORT}/api`;
 
@@ -71,12 +74,15 @@ async function proposeForeignTx(signWithOwner1: boolean): Promise<void> {
   const nextNonce = await apiKit.getNextNonce(SAFE_ADDRESS);
   console.error(`Next nonce: ${nextNonce}`);
 
+  const value = drain ? (await protocolKit0.getBalance()).toString() : '0';
+  console.error(`Transfer value: ${value} wei`);
+
   const safeTransaction = await protocolKit0.createTransaction({
     transactions: [
       {
         to: RANDOM_RECIPIENT,
         data: '0x',
-        value: '0'
+        value
       }
     ],
     options: { nonce: Number(nextNonce) }
@@ -170,6 +176,7 @@ const { values } = parseArgs({
   args: process.argv.slice(2),
   options: {
     'sign-with-owner1': { type: 'boolean', default: false },
+    drain: { type: 'boolean', default: false },
     'execute-hash': { type: 'string' }
   }
 });
@@ -180,7 +187,7 @@ if (values['execute-hash']) {
     process.exit(1);
   });
 } else {
-  proposeForeignTx(values['sign-with-owner1'] ?? false).catch((error) => {
+  proposeForeignTx(values['sign-with-owner1'] ?? false, values.drain ?? false).catch((error) => {
     console.error('Fatal error:', error);
     process.exit(1);
   });

@@ -200,7 +200,8 @@ All should show `0x01`. Wait and re-check if still `0x00`.
 | S10 | Overpaid fee | 1072-1077 | — | Yes |
 | S11 | Happy path exit | 1078-1083 | — | Yes |
 | S12 | Batch stale exit (withdrawal contract) | 1084-1089 | 1350-1399 | Yes (polls) |
-| — | Reserve | 1012-1017, 1090-1099 | 1125-1149, 1400-1500 | — |
+| S13 | Safe drained before execute | 1012-1017 | — | Yes (after refund) |
+| — | Reserve | 1090-1099 | 1125-1149, 1400-1500 | — |
 
 ### EOA Queue Fill Ranges
 
@@ -518,3 +519,44 @@ safe_exec --stale-fee-action wait
 ```
 
 **Verify:** `check_status 1084 1089` -> all `active_exiting`
+
+---
+
+## S13: Safe Drained Before Execute (Execute-Time Balance Check)
+
+The Safe is funded at proposal time but drained before `safe execute`. The execute-time balance check must abort before any transaction is sent. The drain transaction must hold the **lower** nonce, so it is proposed first.
+
+The Safe keeps receiving withdrawal sweeps from its validators after the drain, so the proposal uses a 1 ETH tip per operation (~6 ETH required). Sweeps stay far below that, which keeps the abort deterministic. The overpayment is only reported as info at execution.
+
+```bash
+# 1. Propose a foreign tx that transfers the Safe's full balance (note the printed safeTxHash)
+SAFE_ADDRESS=${SAFE} KURTOSIS_RPC_URL=${RPC} \
+  bun run scripts/integration-test/propose-foreign-tx.ts --drain --sign-with-owner1
+
+# 2. Propose + sign the eth-valctl transactions while the Safe is still funded (tip = 1 ETH)
+fetch_pubkeys 1012 1017 s13
+safe_propose s13 1000000000000000000 && safe_sign
+
+# 3. Execute the drain (Safe balance -> 0)
+SAFE_ADDRESS=${SAFE} KURTOSIS_RPC_URL=${RPC} \
+  bun run scripts/integration-test/propose-foreign-tx.ts --execute-hash <safeTxHash>
+cast balance ${SAFE} --rpc-url ${RPC}   # -> 0 (plus later withdrawal sweeps)
+
+# 4. Execute the eth-valctl transactions
+safe_exec --yes; echo "exit=$?"
+```
+
+**Expected (step 4):**
+
+- Red `The Safe 0x78a4... has a balance of 0.0... ETH but at least 6.000000000000000... ETH is required to send all requests.`
+- `exit=1`, no `Executing 1/2` line, no confirmation prompt
+
+```bash
+# 5. Refund the Safe and execute again
+cast send ${SAFE} --value 10ether --private-key ${KEY0} --rpc-url ${RPC}
+safe_exec --yes
+```
+
+**Expected (step 5):** both batches execute.
+
+**Verify:** `check_creds 1012 1017` -> all `0x02`
