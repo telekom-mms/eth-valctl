@@ -92,7 +92,7 @@ Print the help message with `--help`. This works also for every subcommand.
 | -m           | --max-requests-per-block                     | The max. number of EL requests which are tried to be packaged into one block                     |
 | -l           | --ledger                                     | Use Ledger hardware wallet for signing (requires Ledger device with Ethereum app)                |
 | -s           | --safe \<address\>                           | Safe multisig address for proposal, signing, and execution                                       |
-| -f           | --safe-fee-tip \<wei\>                       | Tip in wei added to system contract fee per operation (default: 100)                             |
+| -f           | --safe-fee-tip \<amount\>                    | Tip added to system contract fee per operation, in wei or with unit (default: 100)               |
 | -x           | --max-request-fee \<amount\>                 | Maximum request fee per EL request before eth-valctl waits or asks what to do (default: 10wei)   |
 | -w           | --max-request-fee-wait-blocks \<blocks\>     | Max blocks to wait when request fee exceeds `--max-request-fee` (default: 50)                    |
 | -y           | --yes                                        | Skip confirmation prompts using default actions                                                  |
@@ -159,10 +159,10 @@ Execute fully-signed eth-valctl Safe transactions on-chain. Requires `--safe`.
 
 <!-- markdownlint-disable MD060 -->
 
-| Short Option | Long Option                          | Description                                                                                  |
-| ------------ | ------------------------------------ | -------------------------------------------------------------------------------------------- |
-| -o           | --fee-overpayment-threshold \<wei\>  | Wei threshold above which fee overpayment is flagged (default: 100)                          |
-| -a           | --stale-fee-action \<action\>        | Non-interactive stale fee handling: `wait` (poll) or `reject` (propose rejection)            |
+| Short Option | Long Option                            | Description                                                                                  |
+| ------------ | -------------------------------------- | -------------------------------------------------------------------------------------------- |
+| -o           | --fee-overpayment-threshold \<amount\> | Threshold above which fee overpayment is flagged, in wei or with unit (default: 100)         |
+| -a           | --stale-fee-action \<action\>          | Non-interactive stale fee handling: `wait` (poll) or `reject` (propose rejection)            |
 
 <!-- markdownlint-enable MD060 -->
 
@@ -187,7 +187,9 @@ The beacon chain silently drops invalid execution layer requests, but the reques
 
 ¹ Skip the target with `--skip-target-ownership-check`. ² Validators which already have 0x02 are skipped with a warning. ³ If the requested amount exceeds the withdrawable balance, a warning is printed because the beacon chain only withdraws the available excess.
 
-Additionally, the JSON-RPC and beacon node must be connected to the chain of `--network`, and the signer (direct mode) or Safe must hold enough ETH to pay the request fees (plus gas in direct mode) of all requests. The estimate uses the higher of the current request fee and `--max-request-fee`; gas is priced at the fixed transaction gas limit and the current max fee per gas, plus 12% for one replacement transaction.
+Additionally, the JSON-RPC and beacon node must be connected to the chain of `--network`, and the signer (direct mode) must hold enough ETH to pay the request fees and gas of all requests. The estimate uses the higher of the current request fee and `--max-request-fee`; gas is priced at the fixed transaction gas limit and the current max fee per gas, plus 12% for one replacement transaction.
+
+In Safe mode, ETH only leaves the Safe at `safe execute`. Before it sends any transaction, `safe execute` checks that the Safe holds the exact ETH all executable transactions will transfer, and aborts with exit code 1 otherwise. At proposal time, a Safe balance below the proposed value (current request fee plus `--safe-fee-tip`, per request) only prints a warning, so the Safe can still be funded before execution.
 
 ## Transaction handling
 

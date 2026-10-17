@@ -32,10 +32,14 @@ export const INVALID_REQUESTS_PER_BLOCK_ERROR =
 export const TOO_MANY_REQUESTS_PER_BLOCK_ERROR = `Provided maximal number of requests per block is too high. To minimize the risk of transaction reverts/replacements due to underpriced fees, the number should not exceed ${application.MAX_NUMBER_OF_REQUESTS_PER_BLOCK}.`;
 export const INVALID_MAX_REQUEST_FEE_FORMAT_ERROR =
   'Invalid max request fee format. Use an explicit unit: wei/gwei/eth, for example 1wei, 0.5gwei, or 0.01eth.';
+export const INVALID_SAFE_FEE_TIP_FORMAT_ERROR =
+  'Invalid Safe fee tip format. Use wei (default unit), gwei or eth, for example 100, 100wei, or 0.1gwei.';
+export const INVALID_FEE_OVERPAYMENT_THRESHOLD_FORMAT_ERROR =
+  'Invalid fee overpayment threshold format. Use wei (default unit), gwei or eth, for example 100, 100wei, or 0.1gwei.';
 export const MAX_REQUEST_FEE_TOO_LOW_ERROR =
   'Max request fee must be greater than zero and at least 1 wei.';
 export const REQUEST_FEE_PRECISION_ERROR = (amount: string, unit: string): string =>
-  `Request fee amount is below 1 wei precision: ${amount}${unit}`;
+  `Fee amount is below 1 wei precision: ${amount}${unit}`;
 export const INVALID_MAX_REQUEST_FEE_WAIT_BLOCKS_ERROR =
   'Max request fee wait blocks must be a non-negative integer.';
 export const INVALID_TOTAL_REQUEST_COUNT_ERROR = 'Total request count must be a positive integer.';
@@ -349,9 +353,10 @@ export const SAFE_FEE_OVERPAYMENT_INFO = (
   safeTxHash: string,
   proposed: bigint,
   current: bigint,
-  overpaymentAmount: bigint
+  overpaymentAmount: bigint,
+  overpaymentThreshold: bigint
 ): string =>
-  `  ℹ Batch ${batch}/${total} (${safeTxHash.slice(0, 10)}...): proposed fee ${proposed} wei > current fee ${current} wei (overpayment: ${overpaymentAmount} wei above threshold)`;
+  `  ℹ Batch ${batch}/${total} (${safeTxHash.slice(0, 10)}...): fee overpaid by ${overpaymentAmount} wei (proposed ${proposed}, current ${current}, overpayment threshold ${overpaymentThreshold} via -o)`;
 export const SAFE_FEE_ALL_SUFFICIENT_INFO = (count: number): string =>
   `  ✅ All ${count} transaction${count === 1 ? '' : 's'}: contract fees sufficient`;
 export const SAFE_FEE_STALE_SUMMARY_INFO = (staleCount: number, total: number): string =>
@@ -544,3 +549,9 @@ export const INSUFFICIENT_BALANCE_ERROR = (
   requiredEth: string
 ): string =>
   `The ${ownerLabel} ${address} has a balance of ${balanceEth} ETH but at least ${requiredEth} ETH is required to send all requests.`;
+export const SAFE_BALANCE_LOW_AT_PROPOSAL_WARNING = (
+  address: string,
+  balanceEth: string,
+  requiredEth: string
+): string =>
+  `The Safe ${address} has a balance of ${balanceEth} ETH but ${requiredEth} ETH is required to execute these requests. Fund the Safe before running 'safe execute'.`;

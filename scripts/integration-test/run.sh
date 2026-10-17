@@ -387,12 +387,20 @@ phase_e_errors() {
 	assert_output_contains "${LAST_CMD_OUTPUT}" "ETH is required to send all requests" "Signer balance error message present"
 	assert_output_not_contains "${LAST_CMD_OUTPUT}" "Mined execution layer request" "No request sent by underfunded signer"
 
-	log_test "Balance check: Safe cannot pay request fees"
-	INTEGRATION_MAX_REQUEST_FEE="${UNPAYABLE_MAX_REQUEST_FEE}" \
-		run_ethvalctl_safe "${OWNER_0_KEY}" switch -v "${TMP_DIR}/error-safe-pubkeys.txt"
-	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Underfunded Safe rejected"
+	log_test "Balance check: Safe cannot pay request fees (warn at proposal, abort at execute)"
+	mock_admin_clear_pending
+	safe_propose "${OWNER_0_KEY}" --safe-fee-tip "${UNPAYABLE_SAFE_FEE_TIP_WEI}" \
+		switch -v "${TMP_DIR}/error-safe-pubkeys.txt"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 0 "Underfunded Safe proposal still submitted"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "before running 'safe execute'" "Safe low balance warning present"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "proposed to Safe" "Proposal by underfunded Safe"
+
+	safe_sign "${OWNER_1_KEY}"
+	safe_execute "${OWNER_0_KEY}"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Underfunded Safe execution rejected"
 	assert_output_contains "${LAST_CMD_OUTPUT}" "ETH is required to send all requests" "Safe balance error message present"
-	assert_output_not_contains "${LAST_CMD_OUTPUT}" "proposed to Safe" "No proposal by underfunded Safe"
+	assert_output_not_contains "${LAST_CMD_OUTPUT}" "Executing 1/" "No transaction executed by underfunded Safe"
+	mock_admin_clear_pending
 }
 
 phase_f_threshold() {
@@ -443,7 +451,7 @@ phase_g_fee_validation() {
 
 	# --- G.1: Fee tip proposal with output verification ---
 	log_test "Fee tip — propose with --safe-fee-tip"
-	safe_propose "${OWNER_0_KEY}" --safe-fee-tip 1000 switch -v "${TMP_DIR}/fee-tip-pubkeys.txt"
+	safe_propose "${OWNER_0_KEY}" --safe-fee-tip 0.000001gwei switch -v "${TMP_DIR}/fee-tip-pubkeys.txt"
 	assert_output_contains "${LAST_CMD_OUTPUT}" "proposed to Safe" "Fee tip propose output"
 	assert_output_contains "${LAST_CMD_OUTPUT}" "tip" "Fee tip info logged in output"
 

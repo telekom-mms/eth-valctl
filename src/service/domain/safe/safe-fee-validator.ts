@@ -145,7 +145,8 @@ export function classifySingleTransaction(
       proposedFee: feeInfo.proposedFee,
       currentFee,
       contractAddress: feeInfo.contractAddress,
-      overpaymentAmount: feeInfo.proposedFee - currentFee
+      overpaymentAmount: feeInfo.proposedFee - currentFee,
+      overpaymentThreshold
     };
   }
 

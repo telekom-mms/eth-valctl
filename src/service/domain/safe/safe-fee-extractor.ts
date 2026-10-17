@@ -37,10 +37,20 @@ export function extractFeeInfo(
 }
 
 /**
- * Extract fee info from a MultiSend transaction
+ * Sum the ETH that leaves the Safe when a transaction is executed
  *
- * Tries `dataDecoded.parameters[0].valueDecoded` first, then falls back
- * to raw byte decoding of the packed MultiSend data.
+ * Adds `tx.value` and the values of all inner MultiSend operations. Direct calls and
+ * rejections have no inner operations and contribute only `tx.value`.
+ *
+ * @param tx - Safe multisig transaction response
+ * @returns Total value in wei moved out of the Safe by the transaction
+ */
+export function sumSafeTransactionValue(tx: SafeMultisigTransactionResponse): bigint {
+  return resolveMultiSendOperations(tx).reduce((sum, op) => sum + op.value, BigInt(tx.value));
+}
+
+/**
+ * Extract fee info from a MultiSend transaction
  *
  * @param tx - Safe multisig transaction response (MultiSend wrapper)
  * @param knownAddresses - Lowercased system contract addresses
@@ -50,45 +60,29 @@ function extractFromMultiSend(
   tx: SafeMultisigTransactionResponse,
   knownAddresses: Set<string>
 ): TransactionFeeInfo | null {
-  const decoded = tx.dataDecoded;
-  if (decoded?.parameters?.[0]?.valueDecoded) {
-    for (const op of decoded.parameters[0].valueDecoded) {
-      if (knownAddresses.has(op.to.toLowerCase())) {
-        return { proposedFee: BigInt(op.value), contractAddress: op.to };
-      }
-    }
-  }
-
-  if (tx.data) {
-    return extractFromRawMultiSendData(tx.data, knownAddresses);
-  }
-
-  return null;
+  const op = resolveMultiSendOperations(tx).find((candidate) =>
+    knownAddresses.has(candidate.to.toLowerCase())
+  );
+  return op ? { proposedFee: op.value, contractAddress: op.to } : null;
 }
 
 /**
- * Decode raw packed MultiSend data and extract fee info
+ * Resolve the inner operations of a MultiSend transaction
  *
- * MultiSend data format per operation:
- * `operation(1) | to(20) | value(32) | dataLength(32) | data(variable)`
+ * Uses `dataDecoded.parameters[0].valueDecoded` (primary) or decodes the raw packed
+ * MultiSend data (fallback). Returns an empty array for non-MultiSend transactions.
  *
- * @param data - Raw hex-encoded MultiSend calldata
- * @param knownAddresses - Lowercased system contract addresses
- * @returns Extracted fee info from the first matching operation, or null
+ * @param tx - Safe multisig transaction response
+ * @returns Inner operations with target address and value in wei
  */
-function extractFromRawMultiSendData(
-  data: string,
-  knownAddresses: Set<string>
-): TransactionFeeInfo | null {
-  const operations = decodeMultiSendOperations(data);
-
-  for (const op of operations) {
-    if (knownAddresses.has(op.to.toLowerCase())) {
-      return { proposedFee: op.value, contractAddress: op.to };
-    }
+function resolveMultiSendOperations(
+  tx: SafeMultisigTransactionResponse
+): Pick<DecodedMultiSendOperation, 'to' | 'value'>[] {
+  const decodedOperations = tx.dataDecoded?.parameters?.[0]?.valueDecoded;
+  if (decodedOperations) {
+    return decodedOperations.map((op) => ({ to: op.to, value: BigInt(op.value) }));
   }
-
-  return null;
+  return decodeMultiSendOperations(tx.data ?? '');
 }
 
 /**

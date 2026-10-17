@@ -1,4 +1,4 @@
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 
 import * as application from '../constants/application';
 import type { GlobalCliOptions } from '../model/commander';
@@ -7,7 +7,11 @@ import { networkConfig } from '../network-config';
 import { executeReadyTransactions } from '../service/domain/safe/safe-execute-service';
 import { initializeSafe } from '../service/domain/safe/safe-init';
 import { signPendingTransactions } from '../service/domain/safe/safe-sign-service';
-import { resolveMaxRequestFeeWaitBlocks, validateSafeAddress } from './validation/cli';
+import {
+  parseAndValidateFeeOverpaymentThreshold,
+  resolveMaxRequestFeeWaitBlocks,
+  validateSafeAddress
+} from './validation/cli';
 
 const SYSTEM_CONTRACT_ADDRESSES = [
   application.CONSOLIDATION_CONTRACT_ADDRESS,
@@ -32,10 +36,16 @@ safeCommand
 safeCommand
   .command('execute')
   .description('Execute fully-signed eth-valctl Safe transactions on-chain')
-  .option(
-    '-o, --fee-overpayment-threshold <wei>',
-    'Wei threshold above which fee overpayment is flagged',
-    String(application.DEFAULT_FEE_OVERPAYMENT_THRESHOLD)
+  .addOption(
+    new Option(
+      '-o, --fee-overpayment-threshold <amount>',
+      'Threshold above which fee overpayment is flagged, in wei by default or with unit, for example 100, 100wei, or 0.1gwei'
+    )
+      .argParser(parseAndValidateFeeOverpaymentThreshold)
+      .default(
+        application.DEFAULT_FEE_OVERPAYMENT_THRESHOLD,
+        String(application.DEFAULT_FEE_OVERPAYMENT_THRESHOLD)
+      )
   )
   .option(
     '-a, --stale-fee-action <action>',
@@ -43,7 +53,7 @@ safeCommand
   )
   .action(async (options, cmd) => {
     const globalOptions: GlobalCliOptions = cmd.parent!.parent!.opts();
-    const overpaymentThreshold = BigInt(options.feeOverpaymentThreshold);
+    const overpaymentThreshold: bigint = options.feeOverpaymentThreshold;
     const staleFeeAction = options.staleFeeAction as StaleFeeAction | undefined;
     const skipConfirmation = (globalOptions.yes ?? false) || staleFeeAction !== undefined;
     const maxFeeWaitBlocks = resolveMaxRequestFeeWaitBlocks(globalOptions.maxRequestFeeWaitBlocks);

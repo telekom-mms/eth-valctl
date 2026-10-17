@@ -1,6 +1,7 @@
 import type { SafeInfoResponse } from '@safe-global/api-kit';
 import type { OperationType } from '@safe-global/types-kit';
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import { formatEther } from 'ethers';
 
 import { CONSOLIDATION_CONTRACT_ADDRESS, FEE_ACTION_ABORT } from '../../../constants/application';
 import type {
@@ -43,6 +44,7 @@ const mockHandleStaleFeeBeforeExecution = mock(
 const SAFE_ADDRESS = '0x1234567890abcdef1234567890abcdef12345678';
 const SIGNER_ADDRESS = '0xaabbccddee1234567890aabbccddee1234567890';
 const OTHER_OWNER = '0x1111111111111111111111111111111111111111';
+const MULTISEND_ADDRESS = '0x9641d764fc13c8B624c04430C7356C1C7C8102e2';
 
 const MOCK_SAFE_INFO: SafeInfoResponse = {
   address: SAFE_ADDRESS,
@@ -146,7 +148,8 @@ function createMockProvider() {
       })
     ),
     getTransaction: mock(() => Promise.resolve(null)),
-    call: mock(() => Promise.resolve('0x'))
+    call: mock(() => Promise.resolve('0x')),
+    getBalance: mock(() => Promise.resolve(10n ** 21n))
   };
 }
 
@@ -836,5 +839,94 @@ describe('executeReadyTransactions', () => {
     expect(mockValidateTransactionFees).not.toHaveBeenCalled();
     const allOutput = stderrSpy.mock.calls.flat().join('\n');
     expect(allOutput).not.toContain('Validating contract fees');
+  });
+
+  describe('Safe balance check', () => {
+    function createMultiSendTx(overrides: Record<string, unknown> = {}) {
+      const innerOperation = {
+        operation: 0 as OperationType,
+        to: CONSOLIDATION_CONTRACT_ADDRESS,
+        value: '5',
+        data: '0x',
+        dataDecoded: undefined
+      };
+      return createPendingTx({
+        to: MULTISEND_ADDRESS,
+        value: '0',
+        dataDecoded: {
+          method: 'multiSend',
+          parameters: [
+            {
+              name: 'transactions',
+              type: 'bytes',
+              value: '0x',
+              valueDecoded: [innerOperation, { ...innerOperation, value: '7' }]
+            }
+          ]
+        },
+        ...overrides
+      });
+    }
+
+    async function executeWithBalance(pendingTxs: unknown[], balance: bigint) {
+      const mockApiKit = createMockApiKit(pendingTxs);
+      const mockProtocolKit = createMockProtocolKit(42);
+      const mockProvider = createMockProvider();
+      mockProvider.getBalance.mockResolvedValue(balance);
+
+      await executeReadyTransactions({
+        apiKit: mockApiKit as never,
+        protocolKit: mockProtocolKit as never,
+        provider: mockProvider as never,
+        safeAddress: SAFE_ADDRESS,
+        signerAddress: SIGNER_ADDRESS,
+        systemContractAddresses: [CONSOLIDATION_CONTRACT_ADDRESS],
+        multiSendAddress: MULTISEND_ADDRESS,
+        skipConfirmation: true
+      });
+
+      return { mockProtocolKit, mockProvider };
+    }
+
+    const directTx = createPendingTx({ safeTxHash: '0x_direct', nonce: '42', value: '3' });
+    const multiSendTx = createMultiSendTx({ safeTxHash: '0x_multisend', nonce: '43' });
+    const requiredWei = 3n + 5n + 7n;
+
+    it('aborts before executing when the Safe balance is below the summed value', async () => {
+      const { mockProtocolKit, mockProvider } = await executeWithBalance(
+        [directTx, multiSendTx],
+        requiredWei - 1n
+      );
+
+      expect(mockProvider.getBalance).toHaveBeenCalledWith(SAFE_ADDRESS);
+      expect(mockProtocolKit.executeTransaction).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+      const allOutput = stderrSpy.mock.calls.flat().join('\n');
+      expect(allOutput).toContain(SAFE_ADDRESS);
+      expect(allOutput).toContain(formatEther(requiredWei - 1n));
+      expect(allOutput).toContain(formatEther(requiredWei));
+    });
+
+    it('executes all transactions when the Safe balance equals the summed value', async () => {
+      const { mockProtocolKit } = await executeWithBalance([directTx, multiSendTx], requiredWei);
+
+      expect(mockProtocolKit.executeTransaction).toHaveBeenCalledTimes(2);
+      expect(process.exitCode).not.toBe(1);
+    });
+
+    it('requires no balance when all transactions are rejections', async () => {
+      const rejection = createPendingTx({
+        safeTxHash: '0x_rejection',
+        nonce: '42',
+        to: SAFE_ADDRESS,
+        value: '0',
+        data: undefined
+      });
+
+      const { mockProtocolKit } = await executeWithBalance([rejection], 0n);
+
+      expect(mockProtocolKit.executeTransaction).toHaveBeenCalledTimes(1);
+      expect(process.exitCode).not.toBe(1);
+    });
   });
 });

@@ -153,6 +153,7 @@ describe('validateTransactionFees', () => {
     expect(result.validations[0]!.status).toBe(FeeStatus.OVERPAID);
     if (result.validations[0]!.status === FeeStatus.OVERPAID) {
       expect(result.validations[0]!.overpaymentAmount).toBe(200n);
+      expect(result.validations[0]!.overpaymentThreshold).toBe(100n);
     }
   });
 
@@ -328,6 +329,7 @@ describe('validateSingleTransactionFee', () => {
     expect(result.status).toBe(FeeStatus.OVERPAID);
     if (result.status === FeeStatus.OVERPAID) {
       expect(result.overpaymentAmount).toBe(200n);
+      expect(result.overpaymentThreshold).toBe(100n);
     }
   });
 

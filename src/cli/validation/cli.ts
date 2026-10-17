@@ -151,7 +151,7 @@ export function parseAndValidateMaxNumberOfRequestsPerBlock(maxNumberOfRequests:
 export function parseAndValidateMaxRequestFee(value: string): bigint {
   let wei: bigint;
   try {
-    wei = parseRequestFeeAmount(value);
+    wei = parseRequestFeeAmount(value, logging.INVALID_MAX_REQUEST_FEE_FORMAT_ERROR);
   } catch (error) {
     exitWithValidationError(
       error instanceof Error ? error.message : logging.INVALID_MAX_REQUEST_FEE_FORMAT_ERROR
@@ -166,15 +166,58 @@ export function parseAndValidateMaxRequestFee(value: string): bigint {
 }
 
 /**
+ * Parse and validate the Safe fee tip.
+ *
+ * @param value - Tip as bare wei integer or with unit suffix (`wei`, `gwei`, or `eth`)
+ * @returns Tip in wei
+ */
+export function parseAndValidateSafeFeeTip(value: string): bigint {
+  return parseAndValidateFeeAmountInWei(value, logging.INVALID_SAFE_FEE_TIP_FORMAT_ERROR);
+}
+
+/**
+ * Parse and validate the Safe fee overpayment threshold.
+ *
+ * @param value - Threshold as bare wei integer or with unit suffix (`wei`, `gwei`, or `eth`)
+ * @returns Threshold in wei
+ */
+export function parseAndValidateFeeOverpaymentThreshold(value: string): bigint {
+  return parseAndValidateFeeAmountInWei(
+    value,
+    logging.INVALID_FEE_OVERPAYMENT_THRESHOLD_FORMAT_ERROR
+  );
+}
+
+/**
+ * Parse a fee amount given as bare wei integer or with unit suffix, exiting on invalid input.
+ *
+ * @param value - Fee amount as bare wei integer or with `wei`, `gwei`, or `eth` suffix
+ * @param formatError - Error message for an invalid format
+ * @returns Fee amount in wei
+ */
+function parseAndValidateFeeAmountInWei(value: string, formatError: string): bigint {
+  if (application.DIGITS_PATTERN.test(value)) {
+    return BigInt(value);
+  }
+
+  try {
+    return parseRequestFeeAmount(value, formatError);
+  } catch (error) {
+    exitWithValidationError(error instanceof Error ? error.message : formatError);
+  }
+}
+
+/**
  * Parse a request fee amount with an explicit unit into wei.
  *
  * @param value - Request fee amount using wei, gwei, or eth suffix
+ * @param formatError - Error message for an invalid format
  * @returns Request fee amount in wei
  */
-function parseRequestFeeAmount(value: string): bigint {
+function parseRequestFeeAmount(value: string, formatError: string): bigint {
   const match = application.REQUEST_FEE_AMOUNT_PATTERN.exec(value);
   if (!match) {
-    throw new Error(logging.INVALID_MAX_REQUEST_FEE_FORMAT_ERROR);
+    throw new Error(formatError);
   }
 
   const amount = match[1]!;

@@ -103,7 +103,8 @@ function printValidationDetails(validations: TransactionFeeValidation[], total: 
               hash,
               v.proposedFee,
               v.currentFee,
-              v.overpaymentAmount
+              v.overpaymentAmount,
+              v.overpaymentThreshold
             )
           )
         );

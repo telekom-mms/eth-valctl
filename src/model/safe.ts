@@ -59,6 +59,8 @@ export type TransactionFeeValidation =
       status: FeeStatus.OVERPAID;
       currentFee: bigint;
       overpaymentAmount: bigint;
+      /** Threshold (`--fee-overpayment-threshold`) the overpayment was judged against */
+      overpaymentThreshold: bigint;
     })
   | (TransactionFeeValidationBase & {
       status: FeeStatus.UNVALIDATED;

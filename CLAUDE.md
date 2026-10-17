@@ -84,7 +84,7 @@ src/
         safe-sign-service.ts         Pending transaction signing
         safe-execute-service.ts      On-chain execution of fully-signed transactions
         safe-fee-validator.ts        Fee validation (stale/sufficient/overpaid detection)
-        safe-fee-extractor.ts        Extract per-operation fees from MultiSend tx data
+        safe-fee-extractor.ts        Extract per-operation fees and summed ETH value from Safe tx data
         safe-fee-prompt.ts           Interactive fee validation prompts and stale fee handling
         safe-transaction-filter.ts   Filter transactions by origin/contract
         safe-api-retry.ts            Safe API retry with exponential backoff
@@ -146,7 +146,7 @@ src/
 | `-m, --max-requests-per-block` | Max execution layer requests per block | `10` |
 | `-l, --ledger` | Use Ledger hardware wallet for signing | `false` |
 | `-s, --safe <address>` | Safe multisig address for proposal/sign/execute | - |
-| `-f, --safe-fee-tip <wei>` | Tip in wei added to system contract fee per Safe proposal operation | `100` |
+| `-f, --safe-fee-tip <amount>` | Tip added to system contract fee per Safe proposal operation. Bare number = wei, or unit `wei`/`gwei`/`eth` | `100` |
 | `-x, --max-request-fee <amount>` | Max request fee per EL request before waiting/prompting. Unit is mandatory (`wei`, `gwei`, `eth`) | `10wei` |
 | `-w, --max-request-fee-wait-blocks <blocks>` | Max blocks to wait for the request fee to drop (`0` aborts immediately) | `50` |
 | `-y, --yes` | Skip confirmation prompts using default actions | `false` |
@@ -166,7 +166,7 @@ fails with an unknown-option error.
 
 | Option | Description | Default |
 | --- | --- | --- |
-| `-o, --fee-overpayment-threshold <wei>` | Wei threshold above which fee overpayment is flagged | `100` |
+| `-o, --fee-overpayment-threshold <amount>` | Threshold above which fee overpayment is flagged. Bare number = wei, or unit `wei`/`gwei`/`eth` | `100` |
 | `-a, --stale-fee-action <action>` | Non-interactive stale fee action: `wait` (poll) or `reject` (propose rejection) | - |
 
 ## Commit Message Style
@@ -194,7 +194,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/) as defined i
 - Planned work lives in `tickets/<topic>/<PREFIX>-NN-<slug>.md` (gitignored, never committed)
 - Follow the section order in `tickets/ticket-structure-improvements.md`
 
-## Repo Conventions
+## Repo and Code Conventions
 
 ### Constants
 
@@ -202,6 +202,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/) as defined i
 - **User-facing messages** (error messages, log messages, warnings, info) go to `src/constants/logging.ts`
 - Never use inline string literals for error messages or magic values in source files
 - Import the whole module (`import * as application from '../constants/application'`) when importing more than 3 constants from it
+- `bun run scripts/lint/scan-string-literals.ts` - flags inline string literals in `src/` outside `constants/`
 
 ### Interfaces and Types
 
@@ -210,6 +211,13 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/) as defined i
 - Create a new module in `src/model` when a type fits none of the existing ones; check for a reusable or extendable type first
 - Test-only fixture types may stay in the `*.test.ts` file
 - Known exceptions, to be refactored later: local types in `execution-layer-request-pipeline.ts` and other pre-existing service modules
+
+### General Code Quality
+
+- Load the `clean-code` and `ponytail` skills for every implementation task
+- Check every change for consistency, logical/algorithmic correctness, dead code, and duplication
+- Reuse existing helpers before writing new code
+- If an existing function or class already has the needed logic but is too specific to reuse, generalize it instead of duplicating it. Outside the task's scope, propose the refactor first
 
 ## Key Constraints
 
@@ -225,7 +233,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/) as defined i
 10. **Request fee cap is active by default** (`--max-request-fee` defaults to `10wei`, tolerating a consolidation queue of ~40 excess before tripping — the curve is near-flat below that and steepens sharply after). On breach: prompt wait/continue/abort, or wait automatically with `--yes`. Choosing continue approves that fee *and anything lower* for the rest of the run; a further increase re-prompts
 11. **Cap check granularity depends on the path** — once per batch (wallet/parallel), once per transaction (Ledger/sequential), once per replacement group or transaction, once per Safe proposal. The Safe cap applies to the raw contract fee *before* `--safe-fee-tip` is added
 12. **Cap aborts throw, they do not fail a single request** — `RequestFeeCapExceededError` (exit 1) and `RequestFeeOperationCancelledError` (exit 0) propagate past per-transaction error handling via `isRequestFeePolicyStopError`, stopping the whole run. Before rethrowing, the orchestrator logs completed-batch failures plus the unfinished requests as *unknown status* (broadcast started) or *not sent*
-13. **Balance pre-check** (`checkSignerBalance`) requires per request `max(contractFee, cap)` + `TRANSACTION_GAS_LIMIT × maxFeePerGas × 1.12` (headroom for one replacement). Don't use `estimateGas`: it throws a raw RPC error exactly when the signer is underfunded. The Safe balance is only checked at proposal time; the execute-time check is deferred (`tickets/safe-fee-validation/SFV-01`)
+13. **Balance pre-check** (`checkSignerBalance`) requires per request `max(contractFee, cap)` + `TRANSACTION_GAS_LIMIT × maxFeePerGas × 1.12` (headroom for one replacement). Don't use `estimateGas`: it throws a raw RPC error exactly when the signer is underfunded. The Safe balance only warns at proposal time (`SAFE_BALANCE_LOW_AT_PROPOSAL_WARNING`); `safe execute` hard-checks the exact ETH of all executable transactions (`sumSafeTransactionValue`) before sending anything
 
 ## Testing
 

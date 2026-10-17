@@ -114,4 +114,7 @@ UNKNOWN_VALIDATOR_PUBKEY="0x93247f2209abcacf57b75a51dafae777f9dd38bc7053d1af526f
 # requests x max(current fee, cap), so balance-check failures stay deterministic even though
 # the Safe and owner 0 keep receiving withdrawals: total devnet supply is orders of magnitude lower.
 UNPAYABLE_MAX_REQUEST_FEE="1000000000000000000000000000000eth"
+# Safe fee tip in wei no Safe can ever pay (1e30 ETH). The proposal only warns, and the
+# execute-time balance check must abort before any transaction is sent.
+UNPAYABLE_SAFE_FEE_TIP_WEI="1000000000000000000000000000000000000000000000000"
 UNREACHABLE_RPC_URL="http://127.0.0.1:1"
