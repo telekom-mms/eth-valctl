@@ -46,7 +46,7 @@
     "prettier": "^3.9.10",
     "semantic-release": "^25.0.9",
     "sort-package-json": "^4.0.0",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.0"
   },
   "license": "MIT",
   "name": "eth-valctl",
