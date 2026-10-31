@@ -1,13 +1,16 @@
 import type { SafeInfoResponse } from '@safe-global/api-kit';
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import { formatEther, type JsonRpcProvider } from 'ethers';
+import prompts from 'prompts';
 
 import * as application from '../../constants/application';
-import { SAFE_BALANCE_LOW_AT_PROPOSAL_WARNING, SAFE_FEE_TIP_INFO } from '../../constants/logging';
+import * as logging from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
+import type { DepositData } from '../../model/ethereum';
 import type { ISigner } from '../../ports/signer.interface';
+import { encodeDepositCalldata } from './deposit-contract';
 import * as ethereumModule from './ethereum';
-import { executeRequestPipeline } from './execution-layer-request-pipeline';
+import { executeDepositPipeline, executeRequestPipeline } from './execution-layer-request-pipeline';
 import * as ethereumStateServiceModule from './request/ethereum-state-service';
 import * as sendRequestModule from './request/send-request';
 import * as safeInitModule from './safe/safe-init';
@@ -275,7 +278,7 @@ describe('executeRequestPipeline', () => {
         maxRequestFee: CONTRACT_FEE * 10n,
         maxRequestFeeWaitBlocks: 0n
       });
-      const lowBalanceWarning = SAFE_BALANCE_LOW_AT_PROPOSAL_WARNING(
+      const lowBalanceWarning = logging.SAFE_BALANCE_LOW_AT_PROPOSAL_WARNING(
         SAFE_ADDRESS,
         formatEther(requiredWei - 1n),
         formatEther(requiredWei)
@@ -362,7 +365,7 @@ describe('executeRequestPipeline', () => {
 
       await executeRequestPipeline(buildPipelineConfig({ globalOptions: options }));
 
-      const expectedMessage = SAFE_FEE_TIP_INFO(CONTRACT_FEE, 250n, CONTRACT_FEE + 250n);
+      const expectedMessage = logging.SAFE_FEE_TIP_INFO(CONTRACT_FEE, 250n, CONTRACT_FEE + 250n);
       const allStderr = stderrSpy.mock.calls.flat().join('\n');
       expect(allStderr).toContain(expectedMessage);
     });
@@ -372,7 +375,7 @@ describe('executeRequestPipeline', () => {
 
       await executeRequestPipeline(buildPipelineConfig({ globalOptions: options }));
 
-      const zeroTipMessage = SAFE_FEE_TIP_INFO(CONTRACT_FEE, 0n, CONTRACT_FEE);
+      const zeroTipMessage = logging.SAFE_FEE_TIP_INFO(CONTRACT_FEE, 0n, CONTRACT_FEE);
       const allStderr = stderrSpy.mock.calls.flat().join('\n');
       expect(allStderr).not.toContain(zeroTipMessage);
     });
@@ -572,5 +575,101 @@ describe('executeRequestPipeline', () => {
         )
       ).rejects.toThrow(TypeError);
     });
+  });
+});
+
+describe('executeDepositPipeline', () => {
+  const DEPOSIT_GWEI = 32_000_000_000n;
+  const DEPOSIT_WEI = DEPOSIT_GWEI * application.WEI_PER_GWEI;
+  const deposits: DepositData[] = ['aa', 'bb'].map((byte) => ({
+    pubkey: `0x${byte.repeat(48)}`,
+    withdrawalCredentials: `0x02${'00'.repeat(11)}${'cd'.repeat(20)}`,
+    amountGwei: DEPOSIT_GWEI,
+    signature: `0x${byte.repeat(96)}`
+  }));
+  const requiredWei = 2n * (DEPOSIT_WEI + GAS_COST_PER_REQUEST);
+  const mockGetStorage = mock(() => Promise.resolve('0x1234'));
+  const depositProvider = {
+    getBalance: mockGetBalance,
+    getStorage: mockGetStorage,
+    getFeeData: () => Promise.resolve({ maxFeePerGas: MAX_FEE_PER_GAS, maxPriorityFeePerGas: 1n })
+  } as unknown as JsonRpcProvider;
+  let sendSpy: ReturnType<typeof spyOn>;
+  let exitSpy: ReturnType<typeof spyOn>;
+  let stdoutSpy: ReturnType<typeof spyOn>;
+
+  beforeEach(() => {
+    spyOn(console, 'error').mockImplementation(() => {});
+    stdoutSpy = spyOn(console, 'log').mockImplementation(() => {});
+    exitSpy = spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit');
+    }) as never);
+    (mockSigner.dispose as ReturnType<typeof mock>).mockClear();
+    mockGetStorage.mockClear();
+    mockGetBalance.mockReset();
+    mockGetBalance.mockImplementation(() => Promise.resolve(requiredWei));
+    spyOn(ethereumModule, 'createEthereumConnection').mockImplementation(() =>
+      Promise.resolve({ provider: depositProvider, signer: mockSigner })
+    );
+    sendSpy = spyOn(sendRequestModule, 'sendExecutionLayerRequests').mockImplementation(() =>
+      Promise.resolve()
+    );
+  });
+
+  afterEach(() => {
+    mock.restore();
+  });
+
+  it('sends deposit calldata to the deposit contract with the deposit amount as value', async () => {
+    await executeDepositPipeline(
+      buildGlobalOptions({ yes: true, maxRequestsPerBlock: 5 }),
+      deposits
+    );
+
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    const [contract, provider, signer, requestData, batchSize, , feeCapRuntime, stateService] =
+      sendSpy.mock.calls[0]!;
+    expect(contract).toBe(application.DEPOSIT_CONTRACT_ADDRESS);
+    expect(provider).toBe(depositProvider);
+    expect(signer).toBe(mockSigner);
+    expect(requestData).toEqual(deposits.map(encodeDepositCalldata));
+    expect(batchSize).toBe(5);
+    expect(feeCapRuntime).toBeUndefined();
+    expect(
+      await (stateService as ethereumStateServiceModule.EthereumStateService).fetchContractFee()
+    ).toBe(DEPOSIT_WEI);
+    expect(mockGetStorage).not.toHaveBeenCalled();
+  });
+
+  it('exits before sending when the signer cannot pay all deposits and gas', async () => {
+    mockGetBalance.mockImplementation(() => Promise.resolve(requiredWei - 1n));
+
+    await expect(
+      executeDepositPipeline(buildGlobalOptions({ yes: true }), deposits)
+    ).rejects.toThrow('process.exit');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(mockSigner.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends nothing and disposes the signer when the user declines', async () => {
+    prompts.inject([false]);
+
+    await executeDepositPipeline(buildGlobalOptions(), deposits);
+
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(mockSigner.dispose).toHaveBeenCalledTimes(1);
+    const stdout = stdoutSpy.mock.calls.flat().join('\n');
+    expect(stdout).toContain(logging.DEPOSIT_SUMMARY_DEPOSITS(2, '32.0', '64.0'));
+    expect(stdout).toContain(logging.DEPOSIT_DECLINED_INFO);
+  });
+
+  it('sends after the user confirms', async () => {
+    prompts.inject([true]);
+
+    await executeDepositPipeline(buildGlobalOptions(), deposits);
+
+    expect(sendSpy).toHaveBeenCalledTimes(1);
   });
 });

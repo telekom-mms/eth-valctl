@@ -1,14 +1,12 @@
 import chalk from 'chalk';
 import { formatEther, type JsonRpcProvider } from 'ethers';
+import prompts from 'prompts';
 
 import * as application from '../../constants/application';
-import {
-  INSUFFICIENT_BALANCE_ERROR,
-  SAFE_BALANCE_LOW_AT_PROPOSAL_WARNING,
-  SAFE_FEE_TIP_INFO
-} from '../../constants/logging';
+import * as logging from '../../constants/logging';
 import type { GlobalCliOptions } from '../../model/commander';
 import type {
+  DepositData,
   NetworkConfig,
   RequestBalanceCheck,
   RequestFeeCapCheckContext,
@@ -16,8 +14,14 @@ import type {
   RequestFeeCapRuntime
 } from '../../model/ethereum';
 import { networkConfig } from '../../network-config';
+import { encodeDepositCalldata } from './deposit-contract';
 import { createEthereumConnection } from './ethereum';
-import { EthereumStateService } from './request/ethereum-state-service';
+import { extractAddressFromCredentials, getCredentialsTypePrefix } from './pre-request-validation';
+import {
+  DepositContractStateService,
+  EthereumStateService,
+  fetchMaxNetworkFees
+} from './request/ethereum-state-service';
 import { RequestFeeCapService } from './request/request-fee-cap-service';
 import { createRequestFeeCapPolicy } from './request/request-fee-policy';
 import { sendExecutionLayerRequests } from './request/send-request';
@@ -80,6 +84,118 @@ export async function executeRequestPipeline(config: PipelineConfig): Promise<vo
   }
 
   await executeDirectPipeline(config.globalOptions, contractAddress, requestData, config.validate);
+}
+
+/**
+ * Execute the deposit pipeline (direct path only)
+ *
+ * Sends one deposit contract call per deposit with the deposit amount as transaction value.
+ * Unlike {@link executeRequestPipeline} there is no request fee and no request-fee cap: the
+ * per-request value comes from {@link DepositContractStateService}, so the deposit contract
+ * storage is never read as a fee.
+ *
+ * @param globalOptions - CLI options including network, RPC URL, ledger flag, batch size
+ * @param deposits - Validated deposits which share one amount
+ */
+export async function executeDepositPipeline(
+  globalOptions: GlobalCliOptions,
+  deposits: DepositData[]
+): Promise<void> {
+  const depositContractAddress = networkConfig[globalOptions.network]!.deposit!.contractAddress;
+  const depositWei = sharedDepositWei(deposits);
+  const signerType = globalOptions.ledger ? 'ledger' : 'wallet';
+  const ethereumConnection = await createEthereumConnection(globalOptions.jsonRpcUrl, signerType);
+  const signerAddress = ethereumConnection.signer.address;
+
+  try {
+    const { maxFeePerGas } = await fetchMaxNetworkFees(ethereumConnection.provider);
+    await exitOnInsufficientSignerBalance(
+      ethereumConnection.provider,
+      signerAddress,
+      BigInt(deposits.length) * (depositWei + gasCostPerRequest(maxFeePerGas))
+    );
+    if (!(await confirmDeposits(globalOptions, signerAddress, deposits))) {
+      console.log(logging.DEPOSIT_DECLINED_INFO);
+      await ethereumConnection.signer.dispose();
+      return;
+    }
+  } catch (error) {
+    await ethereumConnection.signer.dispose();
+    throw error;
+  }
+
+  await sendExecutionLayerRequests(
+    depositContractAddress,
+    ethereumConnection.provider,
+    ethereumConnection.signer,
+    deposits.map(encodeDepositCalldata),
+    globalOptions.maxRequestsPerBlock,
+    globalOptions.beaconApiUrl,
+    undefined,
+    new DepositContractStateService(ethereumConnection.provider, depositContractAddress, depositWei)
+  );
+}
+
+/**
+ * Print the deposit summary and ask for confirmation
+ *
+ * @param globalOptions - CLI options with network and `--yes` flag
+ * @param signerAddress - Address paying the deposits
+ * @param deposits - Deposits to send (one shared amount)
+ * @returns True if the deposits should be sent
+ */
+async function confirmDeposits(
+  globalOptions: GlobalCliOptions,
+  signerAddress: string,
+  deposits: DepositData[]
+): Promise<boolean> {
+  const depositWei = sharedDepositWei(deposits);
+  const amountEth = formatEther(depositWei);
+  const totalEth = formatEther(BigInt(deposits.length) * depositWei);
+  const withdrawalCounts = new Map<string, number>();
+  for (const { withdrawalCredentials } of deposits) {
+    withdrawalCounts.set(
+      withdrawalCredentials,
+      (withdrawalCounts.get(withdrawalCredentials) ?? 0) + 1
+    );
+  }
+
+  console.log(chalk.bold(logging.DEPOSIT_SUMMARY_HEADER(globalOptions.network)));
+  console.log(
+    logging.DEPOSIT_SUMMARY_CONTRACT(networkConfig[globalOptions.network]!.deposit!.contractAddress)
+  );
+  console.log(logging.DEPOSIT_SUMMARY_SIGNER(signerAddress));
+  console.log(logging.DEPOSIT_SUMMARY_DEPOSITS(deposits.length, amountEth, totalEth));
+  for (const [credentials, count] of withdrawalCounts) {
+    console.log(
+      logging.DEPOSIT_SUMMARY_WITHDRAWAL(
+        getCredentialsTypePrefix(credentials),
+        extractAddressFromCredentials(credentials),
+        count
+      )
+    );
+  }
+
+  if (globalOptions.yes) {
+    return true;
+  }
+  const { confirmed } = await prompts({
+    type: 'confirm',
+    name: 'confirmed',
+    message: logging.DEPOSIT_CONFIRM_PROMPT(deposits.length, totalEth),
+    initial: false
+  });
+  return confirmed === true;
+}
+
+/**
+ * Deposit amount in wei shared by all deposits of a run
+ *
+ * @param deposits - Deposits with one shared amount
+ * @returns Deposit amount in wei
+ */
+function sharedDepositWei(deposits: DepositData[]): bigint {
+  return deposits[0]!.amountGwei * application.WEI_PER_GWEI;
 }
 
 /**
@@ -183,7 +299,7 @@ async function executeSafePipeline(
     const proposalFee = contractFee + safeFeeTip;
 
     if (safeFeeTip > 0n) {
-      console.error(chalk.blue(SAFE_FEE_TIP_INFO(contractFee, safeFeeTip, proposalFee)));
+      console.error(chalk.blue(logging.SAFE_FEE_TIP_INFO(contractFee, safeFeeTip, proposalFee)));
     }
 
     await warnOnLowSafeBalance(
@@ -252,19 +368,49 @@ async function checkSignerBalance(
     stateService.fetchContractFee(),
     stateService.getMaxNetworkFees()
   ]);
-  const gasCostPerRequest =
-    (networkFees.maxFeePerGas *
+  const costPerRequest =
+    feeUpperBound(contractFee, check.maxRequestFee) + gasCostPerRequest(networkFees.maxFeePerGas);
+
+  await exitOnInsufficientSignerBalance(
+    provider,
+    signerAddress,
+    BigInt(check.requestCount) * costPerRequest
+  );
+}
+
+/**
+ * Gas cost of one request at the fixed transaction gas limit, including the fee bump of one
+ * replacement transaction
+ *
+ * @param maxFeePerGas - Current max fee per gas in wei
+ * @returns Gas cost in wei
+ */
+function gasCostPerRequest(maxFeePerGas: bigint): bigint {
+  return (
+    (maxFeePerGas *
       application.TRANSACTION_GAS_LIMIT *
       application.TRANSACTION_FEE_INCREASE_PERCENTAGE) /
-    application.PERCENTAGE_DENOMINATOR;
-  const costPerRequest = feeUpperBound(contractFee, check.maxRequestFee) + gasCostPerRequest;
+    application.PERCENTAGE_DENOMINATOR
+  );
+}
 
-  const requiredWei = BigInt(check.requestCount) * costPerRequest;
+/**
+ * Terminate the process if the signer cannot pay the required amount
+ *
+ * @param provider - JSON-RPC provider
+ * @param signerAddress - Address of the signer
+ * @param requiredWei - Total wei required for all requests
+ */
+async function exitOnInsufficientSignerBalance(
+  provider: JsonRpcProvider,
+  signerAddress: string,
+  requiredWei: bigint
+): Promise<void> {
   const balance = await provider.getBalance(signerAddress);
   if (balance < requiredWei) {
     console.error(
       chalk.red(
-        INSUFFICIENT_BALANCE_ERROR(
+        logging.INSUFFICIENT_BALANCE_ERROR(
           application.OWNER_LABEL_SIGNER,
           signerAddress,
           formatEther(balance),
@@ -295,7 +441,7 @@ async function warnOnLowSafeBalance(
   if (balance < requiredWei) {
     console.error(
       chalk.yellow(
-        SAFE_BALANCE_LOW_AT_PROPOSAL_WARNING(
+        logging.SAFE_BALANCE_LOW_AT_PROPOSAL_WARNING(
           safeAddress,
           formatEther(balance),
           formatEther(requiredWei)

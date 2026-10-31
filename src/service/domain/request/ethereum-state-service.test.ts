@@ -2,9 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:te
 import type { FeeData, JsonRpcProvider } from 'ethers';
 import { toBeHex } from 'ethers';
 
-import { CONSOLIDATION_CONTRACT_ADDRESS, EXCESS_INHIBITOR } from '../../../constants/application';
+import {
+  CONSOLIDATION_CONTRACT_ADDRESS,
+  DEPOSIT_CONTRACT_ADDRESS,
+  EXCESS_INHIBITOR
+} from '../../../constants/application';
 import { BlockchainStateError } from '../../../model/ethereum';
-import { EthereumStateService } from './ethereum-state-service';
+import { DepositContractStateService, EthereumStateService } from './ethereum-state-service';
 
 const createMockProvider = (overrides?: {
   getStorage?: ReturnType<typeof mock>;
@@ -229,5 +233,23 @@ describe('EthereumStateService', () => {
 
       expect(service.getMaxNetworkFees()).rejects.toThrow(BlockchainStateError);
     });
+  });
+});
+
+describe('DepositContractStateService', () => {
+  it('returns the deposit amount from every fee read without reading contract storage', async () => {
+    const getStorage = mock(() => Promise.resolve(toBeHex(12345n, 32)));
+    const service = new DepositContractStateService(
+      createMockProvider({ getStorage }),
+      DEPOSIT_CONTRACT_ADDRESS,
+      32n * 10n ** 18n
+    );
+
+    expect(await service.fetchContractFee()).toBe(32n * 10n ** 18n);
+    expect(await service.fetchContractFeeWithExcess()).toEqual({
+      fee: 32n * 10n ** 18n,
+      excess: 0n
+    });
+    expect(getStorage).not.toHaveBeenCalled();
   });
 });

@@ -53,6 +53,64 @@ export interface NetworkConfig {
   safeTransactionServiceUrl?: string;
   safeRequiresApiKey?: boolean;
   safeContractAddresses?: SafeContractAddresses;
+  /** Deposit contract settings; networks without it do not support deposits */
+  deposit?: DepositNetworkConfig;
+}
+
+/**
+ * Network-specific deposit contract settings
+ */
+export interface DepositNetworkConfig {
+  contractAddress: string;
+  /** Genesis fork version the deposit signatures must be bound to */
+  genesisForkVersion: string;
+}
+
+/**
+ * Raw entry of a deposit_data-*.json file produced by ethstaker-deposit-cli
+ */
+export interface DepositDataFileEntry {
+  pubkey: string;
+  withdrawal_credentials: string;
+  amount: number;
+  signature: string;
+  deposit_message_root: string;
+  deposit_data_root: string;
+  fork_version: string;
+}
+
+/**
+ * Hex field of a deposit_data-*.json entry
+ */
+export type DepositDataHexField = keyof typeof application.DEPOSIT_DATA_HEX_FIELD_BYTES;
+
+/**
+ * Validated deposit; hex fields are lower-case with 0x prefix
+ */
+export interface DepositData {
+  pubkey: string;
+  withdrawalCredentials: string;
+  amountGwei: bigint;
+  signature: string;
+}
+
+/**
+ * Result of validating one deposit data file entry
+ */
+export interface ParsedDepositEntry {
+  /** Parsed deposit; undefined if the entry has failures */
+  data?: DepositData;
+  /** Error messages of all failed checks of the entry */
+  failures: string[];
+}
+
+/**
+ * Pending deposit entry of the beacon state
+ */
+export interface PendingDeposit {
+  pubkey: string;
+  withdrawal_credentials: string;
+  amount: string;
 }
 
 /**
@@ -156,6 +214,7 @@ export interface BeaconSpecResponse {
 export interface DepositContractResponse {
   data: {
     chain_id: string;
+    address: string;
   };
 }
 

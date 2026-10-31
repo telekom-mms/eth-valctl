@@ -20,6 +20,14 @@ Manual test scenarios for Safe fee validation — all wait/abort/reject paths at
   ```
 
 - Safe validators 1000-1099 (0x01 for Safe), EOA validators 1100-1500 (0x01 for EOA) — see **Initial 0x01 Setup** below
+- Owner EOAs need ETH for gas and request fees. `scripts/integration-test/run.sh` funds them automatically; for
+  manual runs only, fund each owner from the ethereum-package prefunded account:
+
+  ```bash
+  cast send <OWNER_ADDRESS> --value 10ether \
+    --private-key 0xbcdf20249abf0ed6d944c0288fad489e33f66b3960d9e6229c1cd214ed3bbe31 \
+    --rpc-url http://127.0.0.1:8545
+  ```
 
 ## Shell Helpers
 

@@ -12,6 +12,7 @@ const EXCLUDE_PATTERNS: RegExp[] = [/\.test\.ts$/, /\.integration\.test\.ts$/, /
 
 const INTENTIONAL_EXCLUDES: ReadonlySet<string> = new Set([
   'src/cli/consolidate.ts',
+  'src/cli/deposit.ts',
   'src/cli/exit.ts',
   'src/cli/main.ts',
   'src/cli/safe.ts',

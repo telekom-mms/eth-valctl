@@ -41,9 +41,9 @@ export class EthereumStateService {
   }
 
   /**
-   * Fetch contract fee from system contract storage
+   * Fetch the wei the target contract requires per request (the transaction value)
    *
-   * Reads queue length from contract storage and calculates contract fee
+   * Reads queue length from system contract storage and calculates contract fee
    * based on current network congestion.
    *
    * @returns Contract fee amount in wei
@@ -101,6 +101,40 @@ export class EthereumStateService {
    */
   async getMaxNetworkFees(): Promise<MaxNetworkFees> {
     return fetchMaxNetworkFees(this.provider);
+  }
+}
+
+/**
+ * State service for the deposit contract whose per-request value is the fixed deposit amount
+ *
+ * The deposit contract has no request fee. Its storage slot 0 is a merkle branch hash, so every
+ * fee read returns the deposit amount instead of reading contract storage.
+ */
+export class DepositContractStateService extends EthereumStateService {
+  /**
+   * Creates a deposit contract state service
+   *
+   * @param provider - JSON-RPC provider for blockchain interaction
+   * @param depositContractAddress - Deposit contract address
+   * @param depositWei - Deposit amount in wei sent with every deposit transaction
+   */
+  constructor(
+    provider: JsonRpcProvider,
+    depositContractAddress: string,
+    private readonly depositWei: bigint
+  ) {
+    super(provider, depositContractAddress);
+  }
+
+  /**
+   * Return the deposit amount as fee without reading contract storage
+   *
+   * {@link EthereumStateService.fetchContractFee} delegates here, so both fee reads return it.
+   *
+   * @returns Deposit amount in wei as fee and zero excess
+   */
+  override async fetchContractFeeWithExcess(): Promise<ContractFeeState> {
+    return { fee: this.depositWei, excess: 0n };
   }
 }
 

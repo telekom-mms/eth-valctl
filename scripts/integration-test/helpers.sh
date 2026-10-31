@@ -199,6 +199,23 @@ EOF
 	log_info "Validator state report written to ${VALIDATOR_REPORT_FILE}"
 }
 
+# --- Funding ---
+
+# Top up a wallet from the funder account if it holds less than MIN_WALLET_BALANCE_ETH
+ensure_wallet_funded() {
+	local address=$1
+	local balance
+	balance=$(cast balance --ether "${address}" --rpc-url "${RPC_URL}")
+	# Whole ETH fits into bash integers, wei does not
+	if ((${balance%%.*} >= MIN_WALLET_BALANCE_ETH)); then
+		log_info "${address} holds ${balance} ETH"
+		return
+	fi
+	log_info "Funding ${address} (${balance} ETH) with ${MIN_WALLET_BALANCE_ETH} ETH..."
+	cast send "${address}" --value "${MIN_WALLET_BALANCE_ETH}ether" \
+		--private-key "${FUNDER_PRIVATE_KEY}" --rpc-url "${RPC_URL}" >/dev/null
+}
+
 # --- Logging functions ---
 
 log_phase() {
@@ -750,4 +767,72 @@ wait_for_mock_tx_service() {
 	done
 	log_info "ERROR: Mock TX Service did not start within ${max_attempts}s"
 	return 1
+}
+
+# --- Deposit helpers ---
+
+generate_deposit_mnemonic() {
+	local mnemonic_file=$1
+	rm -f "${mnemonic_file}"
+	deposit --language English generate-mnemonic --mnemonic_language english \
+		--output_file "${mnemonic_file}" >/dev/null
+}
+
+# Generate deposit data with ethstaker-deposit-cli and print the path of the deposit data file.
+# Extra arguments are passed to `existing-mnemonic` (e.g. --compounding --amount 33, --chain hoodi).
+generate_deposit_data() {
+	local mnemonic_file=$1
+	local folder=$2
+	local withdrawal_address=$3
+	shift 3
+
+	local -a chain_args=(--devnet_chain_setting "${KURTOSIS_DEVNET_CHAIN_SETTING}")
+	if [[ " $* " == *" --chain "* ]]; then
+		chain_args=()
+	fi
+	# deposit-cli prompts for the credential type, and for the amount of compounding validators, unless
+	# they are passed explicitly, even with --non_interactive
+	if [[ " $* " != *" --compounding "* ]]; then
+		chain_args+=(--regular-withdrawal)
+	elif [[ " $* " != *" --amount "* ]]; then
+		chain_args+=(--amount 32)
+	fi
+
+	rm -rf "${folder}"
+	mkdir -p "${folder}"
+	deposit --language English --non_interactive existing-mnemonic \
+		--mnemonic "$(cat "${mnemonic_file}")" --mnemonic_language english \
+		--validator_start_index 0 --num_validators 2 --folder "${folder}" \
+		--keystore_password "${DEPOSIT_KEYSTORE_PASSWORD}" --pbkdf2 \
+		--withdrawal_address "${withdrawal_address}" "${chain_args[@]}" "$@" \
+		</dev/null >"${folder}/deposit-cli.log" 2>&1 || {
+		echo "ERROR: deposit-cli failed, see ${folder}/deposit-cli.log" >&2
+		return 1
+	}
+	ls "${folder}"/validator_keys/deposit_data-*.json
+}
+
+# Assert that every pubkey of a deposit data file is pending (or already a validator) with the
+# expected amount (pending only) and withdrawal credentials
+assert_deposits_on_chain() {
+	local deposit_file=$1
+	local expected_amount=$2
+	local description=$3
+	local pending
+	pending=$(curl -s "${BEACON_URL}/eth/v1/beacon/states/head/pending_deposits")
+
+	local pubkey credentials found
+	while IFS=' ' read -r pubkey credentials; do
+		found=$(echo "${pending}" | jq -r --arg pk "0x${pubkey}" --arg wc "0x${credentials}" --arg amount "${expected_amount}" \
+			'[.data[] | select(.pubkey == $pk and .withdrawal_credentials == $wc and .amount == $amount)] | length')
+		if [[ "${found}" -eq 0 ]]; then
+			found=$(curl -s "${BEACON_URL}/eth/v1/beacon/states/head/validators/0x${pubkey}" |
+				jq -r --arg wc "0x${credentials}" '[.data.validator.withdrawal_credentials // empty | select(. == $wc)] | length')
+		fi
+		if [[ "${found}" -eq 0 ]]; then
+			log_fail "${description} (0x${pubkey} not pending or active with expected credentials)"
+			return 1
+		fi
+	done < <(jq -r '.[] | "\(.pubkey) \(.withdrawal_credentials)"' "${deposit_file}")
+	log_pass "${description}"
 }

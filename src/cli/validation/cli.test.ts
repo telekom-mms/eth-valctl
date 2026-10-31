@@ -20,6 +20,7 @@ import {
   parseAndValidateValidatorPubKey,
   parseAndValidateValidatorPubKeys,
   parseAndValidateWithdrawAmount,
+  validateDepositSupport,
   validateNetwork,
   validateSafeAddress,
   validateSafeNetworkSupport
@@ -396,6 +397,55 @@ describe('CLI Validation', () => {
       expect(() =>
         validateSafeNetworkSupport('kurtosis_devnet', '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045')
       ).not.toThrow();
+    });
+  });
+
+  describe('validateDepositSupport', () => {
+    let stderrSpy: ReturnType<typeof spyOn>;
+    let exitSpy: ReturnType<typeof spyOn>;
+    const baseOptions: GlobalCliOptions = {
+      network: 'hoodi',
+      jsonRpcUrl: 'http://localhost:8545',
+      beaconApiUrl: 'http://localhost:5052',
+      maxRequestsPerBlock: 10,
+      ledger: false
+    };
+
+    beforeEach(() => {
+      stderrSpy = spyOn(console, 'error').mockImplementation(() => {});
+      exitSpy = spyOn(process, 'exit').mockImplementation(() => {
+        throw new Error('process.exit');
+      });
+    });
+
+    afterEach(() => {
+      stderrSpy.mockRestore();
+      exitSpy.mockRestore();
+    });
+
+    it.each(['mainnet', 'hoodi', 'kurtosis_devnet'])('passes for %s without --safe', (network) => {
+      expect(() => validateDepositSupport({ ...baseOptions, network })).not.toThrow();
+    });
+
+    it('rejects --safe', () => {
+      expect(() =>
+        validateDepositSupport({
+          ...baseOptions,
+          safe: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
+        })
+      ).toThrow('process.exit');
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(
+        logging.DEPOSIT_SAFE_NOT_SUPPORTED_ERROR
+      );
+    });
+
+    it('rejects sepolia (token-gated deposit contract)', () => {
+      expect(() => validateDepositSupport({ ...baseOptions, network: 'sepolia' })).toThrow(
+        'process.exit'
+      );
+      expect(stderrSpy.mock.calls.flat().join('\n')).toContain(
+        logging.DEPOSIT_NOT_SUPPORTED_ON_NETWORK_ERROR('sepolia')
+      );
     });
   });
 
