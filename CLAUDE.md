@@ -1,6 +1,6 @@
 # eth-valctl
 
-Ethereum validator CLI tool (Bun/TypeScript). Manages consolidation, withdrawal credentials switch, partial withdrawals, and exits via EIP-7002/EIP-7251 execution layer requests. Scales to hundreds of validators with dual signing support (private key + Ledger hardware wallet).
+Ethereum validator CLI tool (Bun/TypeScript). Manages consolidation, withdrawal credentials switch, partial withdrawals, and exits via EIP-7002/EIP-7251 execution layer requests, and deposits new validators via the beacon deposit contract. Scales to hundreds of validators with dual signing support (private key + Ledger hardware wallet).
 
 ## Skill Activation (MANDATORY)
 
@@ -44,6 +44,7 @@ src/
     switch.ts                        Switch withdrawal credentials command
     withdraw.ts                      Partial withdrawal command
     exit.ts                          Full exit command
+    deposit.ts                       Deposit command (deposit-cli deposit_data-*.json)
     safe.ts                          Safe multisig sign/execute commands
     fees.ts                          Read-only request fee estimate/projection command
     error-handler.ts                 Top-level CLI error handling and exit codes
@@ -69,8 +70,10 @@ src/
       switch.ts                      Credential switch business logic
       withdraw.ts                    Partial withdrawal business logic
       exit.ts                        Full exit business logic
+      deposit.ts                     Deposit business logic (file load + local checks -> beacon filter -> pipeline)
+      deposit-contract.ts            Deposit SSZ roots, BLS signature check, calldata
       ethereum.ts                    Ethereum connection factory
-      pre-request-validation.ts      Beacon API sanity checks (existence, credentials, ownership, status, age, pending withdrawals, balance, queues, chain id)
+      pre-request-validation.ts      Beacon API sanity checks (existence, credentials, ownership, status, age, pending withdrawals, balance, queues, chain id) and deposit filter (existing/pending pubkeys)
       execution-layer-request-pipeline.ts  Orchestrates validation -> signing -> broadcast
       batch-utils.ts                 Splits arrays into sized batches (shared utility)
       error-utils.ts                 Error classification (INSUFFICIENT_FUNDS, etc.)
@@ -104,7 +107,7 @@ src/
         transaction-monitor.ts       Waits for confirmations, detects failures
         transaction-replacer.ts      Fee-bump replacement (12% increase per retry)
         transaction-progress-logger.ts  Real-time batch progress output
-        ethereum-state-service.ts    Block, gas price, nonce, and system contract fee queries
+        ethereum-state-service.ts    Block, gas price, nonce, and system contract fee queries; DepositContractStateService returns the fixed deposit value
         request-fee-policy.ts        Builds cap policy from CLI options; classifies cap stop errors
         request-fee-cap-service.ts   Enforces the fee cap (wait / continue / abort) before sending
         request-fee-estimation-service.ts  EIP fee curve math and per-batch fee projection
@@ -130,11 +133,12 @@ src/
 - **Resource Disposal:** `Disposable` interface + `TransactionPipeline` collects and disposes resources (BeaconService, broadcast strategies)
 - **Ports & Adapters:** `src/ports/` defines abstractions; `src/service/domain/` provides implementations
 - **Adapter:** `LedgerEip1193Provider` bridges Ledger hardware wallet to EIP-1193 for Safe Protocol Kit
+- **Per-request value injection:** `createTransactionPipeline` / `sendExecutionLayerRequests` take an optional trailing `EthereumStateService`. Deposits pass `DepositContractStateService`, whose `fetchContractFee()` returns the deposit amount, so the deposit contract's storage slot 0 (a merkle branch hash) is never read as a fee. `executeDepositPipeline` is a sibling of `executeRequestPipeline` without fee cap
 - **Optional Runtime Threading:** `RequestFeeCapRuntime` (policy + resolver) is passed as a trailing optional parameter through pipeline -> factory -> orchestrator/replacer/strategy. Omitting it restores the pre-cap behaviour exactly, so every fee read falls back to a plain `fetchContractFee()`
 
 ## CLI Commands and Global Options
 
-**Commands:** `consolidate`, `switch`, `withdraw`, `exit`, `fees`, `safe sign`, `safe execute`
+**Commands:** `consolidate`, `switch`, `withdraw`, `exit`, `deposit`, `fees`, `safe sign`, `safe execute`
 
 **Global options:**
 
@@ -161,6 +165,12 @@ fails with an unknown-option error.
 | --- | --- | --- |
 | `<operation>` | Positional argument: `consolidate`, `switch`, `withdraw`, or `exit` | required |
 | `-c, --total-request-count <count>` | Total EL requests to project fees for | `1` |
+
+**`deposit` options** (direct path only, `--safe` rejected; mainnet, hoodi, kurtosis_devnet — sepolia's deposit contract is token-gated; `-x`/`-w`/`-f` do not apply):
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `-d, --deposit-data <path>` | `deposit_data-*.json` from ethstaker-deposit-cli | required |
 
 **`safe execute` options:**
 
@@ -258,3 +268,4 @@ Integration tests in `scripts/integration-test/` and `scripts/integration-test/m
 | `scripts/integration-test/change-threshold.ts` | Safe threshold modification utility |
 | `scripts/integration-test/propose-foreign-tx.ts` | Foreign transaction proposal utility |
 | `scripts/integration-test/manual/manual-fee-testing-playbook.md` | Manual fee validation test procedures |
+| `scripts/integration-test/manual/manual-deposit-ledger-playbook.md` | Manual Ledger deposit procedures (hoodi) |

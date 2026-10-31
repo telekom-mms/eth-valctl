@@ -15,7 +15,7 @@ source "${SCRIPT_DIR}/helpers.sh"
 check_dependencies() {
 	local missing_deps=()
 
-	for cmd in curl jq bun deposit; do
+	for cmd in curl jq bun cast deposit; do
 		if ! command -v "${cmd}" &>/dev/null; then
 			missing_deps+=("${cmd}")
 		fi
@@ -53,6 +53,16 @@ preflight_checks() {
 		exit 1
 	fi
 	log_info "Beacon endpoint is healthy"
+
+	log_info "Checking wallet funding..."
+	for address in "${OWNER_0_ADDRESS}" "${OWNER_1_ADDRESS}" "${OWNER_2_ADDRESS}"; do
+		ensure_wallet_funded "${address}"
+	done
+
+	if [[ "${1:-1}" -gt 9 ]]; then
+		log_info "All pre-flight checks passed (Mock TX Service not needed)"
+		return
+	fi
 
 	log_info "Checking Mock TX Service..."
 	local tx_service_name
@@ -726,6 +736,80 @@ phase_i_rate_limit() {
 	mock_admin_reset_fail_after
 }
 
+phase_j_deposit() {
+	log_phase "J — Deposit"
+
+	mkdir -p "${DEPOSIT_DIR}"
+	local mnemonic_file="${DEPOSIT_DIR}/mnemonic.txt"
+	generate_deposit_mnemonic "${mnemonic_file}"
+
+	local deposit_file
+	deposit_file=$(generate_deposit_data "${mnemonic_file}" "${DEPOSIT_DIR}/regular" "${OWNER_0_ADDRESS}")
+
+	log_test "Deposit two new 0x01 validators (32 ETH each)"
+	run_ethvalctl "${OWNER_0_KEY}" --yes deposit -d "${deposit_file}"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 0 "Deposit succeeded"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "Mined execution layer request" "Deposit transactions mined"
+	assert_deposits_on_chain "${deposit_file}" "${MIN_ACTIVATION_BALANCE_GWEI}" "Deposits pending with 32 ETH and 0x01 credentials"
+
+	log_test "Re-run of the same file skips already deposited validators"
+	run_ethvalctl "${OWNER_0_KEY}" --yes deposit -d "${deposit_file}"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 0 "Re-run exits successfully"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "pending deposit with the same withdrawal address" "Skip warning present"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "already deposited. No transaction was sent" "Nothing sent on re-run"
+
+	log_test "Same keys with another withdrawal address are rejected"
+	local foreign_file
+	foreign_file=$(generate_deposit_data "${mnemonic_file}" "${DEPOSIT_DIR}/foreign" "${OWNER_1_ADDRESS}")
+	run_ethvalctl "${OWNER_0_KEY}" --yes deposit -d "${foreign_file}"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Different withdrawal address rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "different withdrawal address" "Different withdrawal address error present"
+
+	log_test "Same keys and address as 0x02 are skipped while 0x01 deposits are pending"
+	local compounding_file
+	compounding_file=$(generate_deposit_data "${mnemonic_file}" "${DEPOSIT_DIR}/compounding" "${OWNER_0_ADDRESS}" --compounding)
+	run_ethvalctl "${OWNER_0_KEY}" --yes deposit -d "${compounding_file}"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 0 "0x02 re-run with same address exits successfully"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "already deposited. No transaction was sent" "Nothing sent for 0x02 re-run"
+
+	log_test "Tampered withdrawal credentials are rejected locally"
+	local fresh_mnemonic_file="${DEPOSIT_DIR}/fresh-mnemonic.txt"
+	generate_deposit_mnemonic "${fresh_mnemonic_file}"
+	local fresh_file tampered_file="${DEPOSIT_DIR}/tampered.json"
+	fresh_file=$(generate_deposit_data "${fresh_mnemonic_file}" "${DEPOSIT_DIR}/fresh" "${OWNER_0_ADDRESS}")
+	jq --arg address "${OWNER_1_ADDRESS,,}" \
+		'map(.withdrawal_credentials = .withdrawal_credentials[0:24] + $address[2:])' \
+		"${fresh_file}" >"${tampered_file}"
+	run_ethvalctl "${OWNER_0_KEY}" --yes deposit -d "${tampered_file}"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Tampered file rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "deposit_data_root does not match" "Root mismatch reported"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "signature is not valid" "Signature failure reported"
+	assert_output_not_contains "${LAST_CMD_OUTPUT}" "Mined execution layer request" "No deposit sent for tampered file"
+
+	log_test "Deposit data for another network with patched fork version is rejected"
+	local hoodi_file patched_file="${DEPOSIT_DIR}/patched-fork.json"
+	hoodi_file=$(generate_deposit_data "${fresh_mnemonic_file}" "${DEPOSIT_DIR}/hoodi" "${OWNER_0_ADDRESS}" --chain hoodi)
+	jq --arg hoodi "${HOODI_GENESIS_FORK_VERSION_HEX}" --arg kurtosis "${KURTOSIS_GENESIS_FORK_VERSION_HEX}" \
+		'map(if .fork_version == $hoodi then .fork_version = $kurtosis else . end)' \
+		"${hoodi_file}" >"${patched_file}"
+	run_ethvalctl "${OWNER_0_KEY}" --yes deposit -d "${patched_file}"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Patched fork version rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "2 pre-request sanity check(s) failed" "Only the two signatures fail"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "signature is not valid for network kurtosis_devnet" "Signature failure reported"
+
+	log_test "Deposit via Safe is not supported"
+	capture_cmd bash -c "${DIRECT_BASE_CMD} --safe ${OWNER_2_ADDRESS} deposit -d ${fresh_file}"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 1 "Deposit with --safe rejected"
+	assert_output_contains "${LAST_CMD_OUTPUT}" "not supported yet" "Safe not supported error present"
+
+	log_test "Deposit two new 0x02 validators with 33 ETH each"
+	local compounding_33_file
+	compounding_33_file=$(generate_deposit_data "${fresh_mnemonic_file}" "${DEPOSIT_DIR}/compounding-33" "${OWNER_0_ADDRESS}" --compounding --amount 33)
+	run_ethvalctl "${OWNER_0_KEY}" --yes deposit -d "${compounding_33_file}"
+	assert_exit_code "${LAST_CMD_EXIT_CODE}" 0 "0x02 deposit succeeded"
+	assert_deposits_on_chain "${compounding_33_file}" "33000000000" "Deposits pending with 33 ETH and 0x02 credentials"
+}
+
 cleanup() {
 	log_info "Cleaning up temporary files..."
 	rm -rf "${TMP_DIR}"
@@ -745,8 +829,9 @@ parse_start_from() {
 	G) echo 7 ;;
 	H) echo 8 ;;
 	I) echo 9 ;;
+	J) echo 10 ;;
 	*)
-		echo "ERROR: Invalid phase '${1}'. Valid values: a, b, c, d, e, f, g, h, i" >&2
+		echo "ERROR: Invalid phase '${1}'. Valid values: a, b, c, d, e, f, g, h, i, j" >&2
 		exit 2
 		;;
 	esac
@@ -775,16 +860,25 @@ Phases:
   h    Safe edge cases (duplicate, already signed, no pending/executable,
        not deployed, unreachable, nonce gap, filtering, single validator)
   i    Rate limiting & partial failure (unauth retries, exhausted, partial fail)
+  j    Deposit (fresh keys; re-run skip, withdrawal address mismatch, tampered
+       file, wrong network, --safe rejected). Needs no Safe: with
+       --start-from j the mock TX Service check and setup phase are skipped
 
 Examples:
   run.sh                     Run all phases
   run.sh --start-from c      Skip phases A and B, start from C
-  run.sh --start-from g      Only run phase G (fee validation)
+  run.sh --start-from g      Start from phase G (fee validation)
+  BEACON_URL=http://host:5052 RPC_URL=http://host:8545 run.sh --start-from j
+                             Only run phase J (deposit) against a remote devnet
 
 Prerequisites:
+  - curl, jq, bun, cast (Foundry) and ethstaker-deposit-cli (deposit) on PATH
   - Kurtosis devnet running (1800 validators)
   - Safe infrastructure deployed (deploy-safe-infra.sh)
   - Mock TX Service running (mock-tx-service/server.ts)
+
+Owner wallets below MIN_WALLET_BALANCE_ETH (constants.sh) are funded automatically from
+FUNDER_PRIVATE_KEY (default: ethereum-package prefunded account).
 EOF
 	exit 0
 }
@@ -811,8 +905,10 @@ main() {
 	done
 
 	init_log_report
-	preflight_checks
-	setup_phase
+	preflight_checks "${start_from}"
+	if [[ "${start_from}" -le 9 ]]; then
+		setup_phase
+	fi
 
 	if [[ "${start_from}" -le 1 ]]; then
 		phase_a_switch
@@ -867,6 +963,8 @@ main() {
 	else
 		log_skip "Phase I — Rate Limiting & Partial Failure (skipped via --start-from ${start_from_label})"
 	fi
+
+	phase_j_deposit
 
 	cleanup
 	print_summary

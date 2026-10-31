@@ -2,10 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:te
 import type { JsonRpcProvider } from 'ethers';
 import * as undici from 'undici';
 
+import { DEPOSIT_CONTRACT_ADDRESS } from '../../../constants/application';
 import { BeaconService } from '../../infrastructure/beacon-service';
 import type { ISigner, SignerCapabilities } from '../signer';
 import { ParallelBroadcastStrategy } from './broadcast-strategy/parallel-broadcast-strategy';
 import { SequentialBroadcastStrategy } from './broadcast-strategy/sequential-broadcast-strategy';
+import { DepositContractStateService } from './ethereum-state-service';
+import * as factoryModule from './execution-layer-request-factory';
+import { sendExecutionLayerRequests } from './send-request';
+import type { TransactionPipeline } from './transaction-pipeline';
 import { TransactionProgressLogger } from './transaction-progress-logger';
 
 const MOCK_GENESIS_TIME = 1606824023;
@@ -139,5 +144,36 @@ describe('Strategy Selection Logic', () => {
       expect(walletSigner.capabilities.supportsParallelSigning).toBe(true);
       expect(ledgerSigner.capabilities.supportsParallelSigning).toBe(false);
     });
+  });
+});
+
+describe('sendExecutionLayerRequests', () => {
+  afterEach(() => {
+    mock.restore();
+  });
+
+  it('passes an injected state service to the pipeline factory', async () => {
+    const pipeline = {
+      sendExecutionLayerRequests: mock(() => Promise.resolve()),
+      dispose: mock(() => Promise.resolve())
+    } as unknown as TransactionPipeline;
+    const factorySpy = spyOn(factoryModule, 'createTransactionPipeline').mockImplementation(() =>
+      Promise.resolve(pipeline)
+    );
+    const provider = createMockProvider();
+    const stateService = new DepositContractStateService(provider, DEPOSIT_CONTRACT_ADDRESS, 1n);
+
+    await sendExecutionLayerRequests(
+      DEPOSIT_CONTRACT_ADDRESS,
+      provider,
+      createMockSigner({ supportsParallelSigning: true }),
+      ['0x00'],
+      1,
+      'http://localhost:5052',
+      undefined,
+      stateService
+    );
+
+    expect(factorySpy.mock.calls[0]![5]).toBe(stateService);
   });
 });

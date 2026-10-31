@@ -1,7 +1,4 @@
-import {
-  TRANSACTION_GAS_LIMIT,
-  VALIDATOR_PUBKEY_HEX_LENGTH
-} from '../../../../constants/application';
+import * as application from '../../../../constants/application';
 import type {
   BroadcastResult,
   ExecutionLayerRequestTransaction,
@@ -12,13 +9,26 @@ import { BroadcastStatusType } from '../../../../model/ethereum';
 /**
  * Extract source validator pubkey from encoded request data
  *
- * Request data starts with the validator pubkey (48 bytes = 96 hex chars + 0x prefix).
+ * EIP-7002/EIP-7251 request data starts with the validator pubkey (48 bytes = 96 hex chars + 0x
+ * prefix). Deposit calldata starts with the function selector and holds the pubkey at a fixed
+ * ABI offset. No collision: the first byte of a compressed BLS pubkey always has bit 0x80 set.
  *
- * @param encodedRequestData - Encoded request data starting with validator pubkey
+ * @param encodedRequestData - Encoded request data or deposit calldata
  * @returns 48-byte validator pubkey as hex string (with 0x prefix)
  */
 export function extractValidatorPubkey(encodedRequestData: string): string {
-  return encodedRequestData.slice(0, VALIDATOR_PUBKEY_HEX_LENGTH);
+  if (encodedRequestData.startsWith(application.DEPOSIT_FUNCTION_SELECTOR)) {
+    return (
+      application.PREFIX_0x +
+      encodedRequestData.slice(
+        application.DEPOSIT_CALLDATA_PUBKEY_OFFSET,
+        application.DEPOSIT_CALLDATA_PUBKEY_OFFSET +
+          application.VALIDATOR_PUBKEY_HEX_LENGTH -
+          application.PREFIX_0x.length
+      )
+    );
+  }
+  return encodedRequestData.slice(0, application.VALIDATOR_PUBKEY_HEX_LENGTH);
 }
 
 /**
@@ -115,7 +125,7 @@ export function createElTransaction(
     to: systemContractAddress,
     data: encodedRequestData,
     value: fee,
-    gasLimit: TRANSACTION_GAS_LIMIT,
+    gasLimit: application.TRANSACTION_GAS_LIMIT,
     ...(maxFeePerGas && { maxFeePerGas }),
     ...(maxPriorityFeePerGas && { maxPriorityFeePerGas })
   };

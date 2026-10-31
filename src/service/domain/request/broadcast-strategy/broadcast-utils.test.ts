@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
+  DEPOSIT_FUNCTION_SELECTOR,
   TRANSACTION_GAS_LIMIT,
   VALIDATOR_PUBKEY_HEX_LENGTH
 } from '../../../../constants/application';
@@ -44,6 +45,14 @@ describe('extractValidatorPubkey', () => {
 
   it('returns empty string for empty input without throwing', () => {
     expect(extractValidatorPubkey('')).toBe('');
+  });
+
+  it('reads the pubkey at its ABI offset from deposit calldata', () => {
+    const headAndLength = '00'.repeat(32 * 5);
+    const calldata =
+      DEPOSIT_FUNCTION_SELECTOR + headAndLength + PUBKEY_HEX.slice(2) + '00'.repeat(16);
+
+    expect(extractValidatorPubkey(calldata)).toBe(PUBKEY_HEX);
   });
 });
 

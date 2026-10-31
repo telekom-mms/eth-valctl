@@ -130,7 +130,7 @@ export const BATCH_PROGRESS_PENDING = (pending: number): string =>
 export const TRANSACTION_REPLACED_INFO = (oldHash: string, newHash: string): string =>
   `Replaced pending execution layer request ${oldHash.slice(0, 6)}...${oldHash.slice(-5)} with ${newHash}`;
 export const FAILED_VALIDATORS_FOR_RETRY_HEADER =
-  '📋 Failed validator pubkeys to retry in next eth-valctl call:';
+  '📋 Failed validator pubkeys to retry in a next eth-valctl call once their last transaction is confirmed or dropped:';
 export const REJECTED_VALIDATORS_HEADER =
   '⚠️ Rejected validator pubkeys (skipped by user on Ledger device):';
 export const ABORTED_UNKNOWN_STATUS_VALIDATORS_HEADER =
@@ -555,3 +555,91 @@ export const SAFE_BALANCE_LOW_AT_PROPOSAL_WARNING = (
   requiredEth: string
 ): string =>
   `The Safe ${address} has a balance of ${balanceEth} ETH but ${requiredEth} ETH is required to execute these requests. Fund the Safe before running 'safe execute'.`;
+
+/** Deposit messages */
+export const DEPOSIT_NOT_SUPPORTED_ON_NETWORK_ERROR = (network: string): string =>
+  `Deposits are not supported on ${network}.`;
+export const DEPOSIT_SAFE_NOT_SUPPORTED_ERROR =
+  'Deposits via Safe (--safe) are not supported yet. Remove --safe to deposit with a private key or Ledger.';
+export const DEPOSIT_FILE_READ_ERROR = (path: string, reason: string): string =>
+  `Cannot read deposit data file ${path}: ${reason}`;
+export const DEPOSIT_FILE_NOT_JSON_ERROR = (path: string): string =>
+  `Deposit data file ${path} is not valid JSON.`;
+export const DEPOSIT_FILE_EMPTY_ERROR = (path: string): string =>
+  `Deposit data file ${path} must contain a non-empty JSON array of deposits.`;
+export const DEPOSIT_ENTRY_SUBJECT = (entryNumber: number): string =>
+  `Deposit data entry ${entryNumber}`;
+export const DEPOSIT_FIELD_INVALID_ERROR = (subject: string, field: string): string =>
+  `${subject}: field "${field}" is missing or has the wrong type.`;
+export const DEPOSIT_FIELD_HEX_ERROR = (subject: string, field: string, bytes: number): string =>
+  `${subject}: field "${field}" must be ${bytes} bytes of hex.`;
+export const DEPOSIT_INVALID_PUBKEY_ERROR = (subject: string): string =>
+  `${subject}: pubkey is not a valid BLS public key.`;
+export const DEPOSIT_0x00_CREDENTIALS_ERROR = (subject: string): string =>
+  `${subject}: 0x00 (BLS) withdrawal credentials are not supported. Generate the deposit data with an execution withdrawal address (0x01 or 0x02).`;
+export const DEPOSIT_INVALID_CREDENTIALS_ERROR = (subject: string, credentials: string): string =>
+  `${subject}: withdrawal credentials ${credentials} are invalid. Expected 0x01 or 0x02, 11 zero bytes and a 20-byte address.`;
+export const DEPOSIT_AMOUNT_TOO_LOW_ERROR = (subject: string, minEth: string): string =>
+  `${subject}: amount is below the minimum deposit of ${minEth} ETH.`;
+export const DEPOSIT_AMOUNT_TOO_HIGH_ERROR = (
+  subject: string,
+  credentialsType: string,
+  maxEth: string
+): string =>
+  `${subject}: amount exceeds the maximum of ${maxEth} ETH for ${credentialsType} withdrawal credentials.`;
+export const DEPOSIT_FORK_VERSION_MISMATCH_ERROR = (
+  subject: string,
+  forkVersion: string,
+  network: string,
+  expectedForkVersion: string
+): string =>
+  `${subject}: fork version ${forkVersion} does not match network ${network} (${expectedForkVersion}). The deposit data was generated for another network.`;
+export const DEPOSIT_MESSAGE_ROOT_MISMATCH_ERROR = (subject: string): string =>
+  `${subject}: deposit_message_root does not match the deposit data. The file was modified or is corrupt.`;
+export const DEPOSIT_DATA_ROOT_MISMATCH_ERROR = (subject: string): string =>
+  `${subject}: deposit_data_root does not match the deposit data. The file was modified or is corrupt.`;
+export const DEPOSIT_SIGNATURE_INVALID_ERROR = (subject: string, network: string): string =>
+  `${subject}: signature is not valid for network ${network}. The consensus layer would drop this deposit and the ETH would be lost.`;
+export const DEPOSIT_DUPLICATE_PUBKEY_ERROR = (pubkey: string): string =>
+  `Validator ${pubkey} appears more than once in the deposit data file.`;
+export const DEPOSIT_MIXED_AMOUNTS_ERROR =
+  'All deposits in the file must have the same amount. Split the file by amount and run deposit once per file.';
+export const DEPOSIT_AMOUNT_BELOW_ACTIVATION_WARNING = (
+  amountEth: string,
+  minEth: string
+): string =>
+  `Deposit amount ${amountEth} ETH is below ${minEth} ETH. The validators will not be activated until their balance reaches ${minEth} ETH.`;
+export const BEACON_DEPOSIT_CONTRACT_MISMATCH_ERROR = (
+  beaconAddress: string,
+  expectedAddress: string
+): string =>
+  `Beacon node reports deposit contract ${beaconAddress} but eth-valctl would send to ${expectedAddress}. Please check --beacon-api-url and --network.`;
+export const DEPOSIT_VALIDATOR_EXISTS_WARNING = (pubkey: string): string =>
+  `Validator ${pubkey} already exists with the same withdrawal address — skipping.`;
+export const DEPOSIT_PENDING_EXISTS_WARNING = (pubkey: string): string =>
+  `Validator ${pubkey} already has a pending deposit with the same withdrawal address — skipping.`;
+export const DEPOSIT_DIFFERENT_WITHDRAWAL_ADDRESS_ERROR = (
+  pubkey: string,
+  onChainCredentials: string
+): string =>
+  `Validator ${pubkey} already exists or has a pending deposit with a different withdrawal address (${onChainCredentials}). Depositing would send ETH to a validator you do not control.`;
+export const DEPOSIT_NOTHING_TO_SEND_INFO =
+  'All validators of the deposit data file are already deposited. No transaction was sent.';
+export const DEPOSIT_SUMMARY_HEADER = (network: string): string => `Deposit summary (${network})`;
+export const DEPOSIT_SUMMARY_CONTRACT = (address: string): string =>
+  `  Deposit contract:      ${address}`;
+export const DEPOSIT_SUMMARY_SIGNER = (address: string): string =>
+  `  Signer:                ${address}`;
+export const DEPOSIT_SUMMARY_DEPOSITS = (
+  count: number,
+  amountEth: string,
+  totalEth: string
+): string => `  Deposits:              ${count} × ${amountEth} ETH = ${totalEth} ETH`;
+export const DEPOSIT_SUMMARY_WITHDRAWAL = (
+  credentialsType: string,
+  address: string,
+  count: number
+): string => `  Withdrawal address:    ${credentialsType} → ${address} (${count})`;
+export const DEPOSIT_CONFIRM_PROMPT = (count: number, totalEth: string): string =>
+  `Send ${count} deposit transaction${count === 1 ? '' : 's'} (${totalEth} ETH)?`;
+export const DEPOSIT_DECLINED_INFO = 'Deposit cancelled. No transaction was sent.';

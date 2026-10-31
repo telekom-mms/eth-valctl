@@ -56,6 +56,7 @@
   },
   "packageManager": "bun@1.4.3",
   "scripts": {
+    "audit": "bun audit --prod",
     "clean": "rm -rf bin dist",
     "format": "bunx prettier --write .",
     "format:check": "bunx prettier --check .",

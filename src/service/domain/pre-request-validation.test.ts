@@ -5,11 +5,14 @@ import * as application from '../../constants/application';
 import * as logging from '../../constants/logging';
 import type {
   BeaconValidator,
+  DepositData,
+  PendingDeposit,
   PendingPartialWithdrawal,
   ValidatorCheckRequest
 } from '../../model/ethereum';
 import { networkConfig } from '../../network-config';
 import {
+  filterDepositRequests,
   filterSwitchableValidators,
   validateConsolidationRequests,
   validateSwitchRequests,
@@ -53,6 +56,8 @@ interface BeaconStateFixture {
   pendingWithdrawals?: PendingPartialWithdrawal[];
   pendingConsolidationCount?: number;
   chainId?: string;
+  depositContractAddress?: string;
+  pendingDeposits?: PendingDeposit[];
   failingEndpoint?: string;
 }
 
@@ -150,9 +155,15 @@ function serveBeaconState(state: BeaconStateFixture): void {
       case application.DEPOSIT_CONTRACT_BEACON_API_ENDPOINT:
         return Promise.resolve(
           jsonResponse({
-            data: { chain_id: state.chainId ?? networkConfig[NETWORK]!.chainId.toString() }
+            data: {
+              chain_id: state.chainId ?? networkConfig[NETWORK]!.chainId.toString(),
+              address:
+                state.depositContractAddress ?? application.DEPOSIT_CONTRACT_ADDRESS.toLowerCase()
+            }
           })
         );
+      case application.PENDING_DEPOSITS_BEACON_API_ENDPOINT:
+        return Promise.resolve(jsonResponse({ data: state.pendingDeposits ?? [] }));
       case application.GENESIS_BEACON_API_ENDPOINT:
         return Promise.resolve(jsonResponse({ data: { genesis_time: GENESIS_TIME.toString() } }));
       case application.SPEC_BEACON_API_ENDPOINT:
@@ -843,6 +854,193 @@ describe('pre-request-validation', () => {
       );
 
       expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(collectOutput(stderrSpy)).toContain(logging.UNEXPECTED_BEACON_API_ERROR(BEACON_URL));
+    });
+  });
+
+  describe('filterDepositRequests', () => {
+    /**
+     * Build a locally validated deposit paying out to the given address
+     *
+     * @param pubkey - Validator pubkey
+     * @param withdrawalAddress - Withdrawal address of the deposit
+     * @param prefix - Credentials type prefix
+     * @returns Deposit data
+     */
+    function buildDeposit(
+      pubkey: string,
+      withdrawalAddress = OWNER_ADDRESS,
+      prefix = application.WITHDRAWAL_CREDENTIALS_0x01
+    ): DepositData {
+      return {
+        pubkey,
+        withdrawalCredentials: buildCredentials(prefix, withdrawalAddress),
+        amountGwei: MIN_ACTIVATION_BALANCE,
+        signature: `0x${'0'.repeat(192)}`
+      };
+    }
+
+    /**
+     * Build a pending deposit entry of the beacon state
+     *
+     * @param pubkey - Validator pubkey
+     * @param withdrawalCredentials - Withdrawal credentials of the pending deposit
+     * @returns Pending deposit
+     */
+    function pendingDeposit(pubkey: string, withdrawalCredentials: string): PendingDeposit {
+      return { pubkey, withdrawal_credentials: withdrawalCredentials, amount: '32000000000' };
+    }
+
+    it('returns deposits for unknown pubkeys', async () => {
+      serveBeaconState({ validators: [] });
+      const deposits = [buildDeposit(PUBKEY_A), buildDeposit(PUBKEY_B)];
+
+      expect(await filterDepositRequests(BEACON_URL, NETWORK, deposits)).toEqual(deposits);
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it('skips existing validators with the same withdrawal address regardless of 0x01/0x02', async () => {
+      const mixedCaseCredentialsValidator = buildValidator({
+        pubkey: PUBKEY_B,
+        credentialsPrefix: application.WITHDRAWAL_CREDENTIALS_0x01
+      });
+      mixedCaseCredentialsValidator.validator.withdrawal_credentials = `0x01${'00'.repeat(11)}${OWNER_ADDRESS_MIXED_CASE.slice(2)}`;
+      serveBeaconState({
+        validators: [
+          buildValidator({
+            pubkey: PUBKEY_A,
+            credentialsPrefix: application.WITHDRAWAL_CREDENTIALS_0x02
+          }),
+          mixedCaseCredentialsValidator
+        ]
+      });
+
+      const result = await filterDepositRequests(BEACON_URL, NETWORK, [
+        buildDeposit(PUBKEY_A),
+        buildDeposit(PUBKEY_B, OWNER_ADDRESS, application.WITHDRAWAL_CREDENTIALS_0x02),
+        buildDeposit(PUBKEY_C)
+      ]);
+
+      expect(result.map((deposit) => deposit.pubkey)).toEqual([PUBKEY_C]);
+      expect(exitSpy).not.toHaveBeenCalled();
+      const stdout = collectOutput(stdoutSpy);
+      expect(stdout).toContain(logging.DEPOSIT_VALIDATOR_EXISTS_WARNING(PUBKEY_A));
+      expect(stdout).toContain(logging.DEPOSIT_VALIDATOR_EXISTS_WARNING(PUBKEY_B));
+    });
+
+    it('exits once reporting validators with another withdrawal address or 0x00 credentials', async () => {
+      serveBeaconState({
+        validators: [
+          buildValidator({ pubkey: PUBKEY_A, withdrawalAddress: OTHER_ADDRESS }),
+          buildValidator({
+            pubkey: PUBKEY_B,
+            credentialsPrefix: application.WITHDRAWAL_CREDENTIALS_0x00
+          })
+        ]
+      });
+
+      await filterDepositRequests(BEACON_URL, NETWORK, [
+        buildDeposit(PUBKEY_A),
+        buildDeposit(PUBKEY_B)
+      ]);
+
+      expect(exitSpy).toHaveBeenCalledTimes(1);
+      const stderr = collectOutput(stderrSpy);
+      expect(stderr).toContain(logging.SANITY_CHECK_FAILED_HEADER(2));
+      expect(stderr).toContain(
+        logging.DEPOSIT_DIFFERENT_WITHDRAWAL_ADDRESS_ERROR(
+          PUBKEY_A,
+          buildCredentials(application.WITHDRAWAL_CREDENTIALS_0x02, OTHER_ADDRESS)
+        )
+      );
+      expect(stderr).toContain(PUBKEY_B);
+    });
+
+    it('skips pubkeys with pending deposits to the same withdrawal address', async () => {
+      serveBeaconState({
+        validators: [],
+        pendingDeposits: [
+          pendingDeposit(
+            PUBKEY_A.toUpperCase().replace('0X', '0x'),
+            buildCredentials(application.WITHDRAWAL_CREDENTIALS_0x01, OWNER_ADDRESS)
+          )
+        ]
+      });
+
+      const result = await filterDepositRequests(BEACON_URL, NETWORK, [
+        buildDeposit(PUBKEY_A, OWNER_ADDRESS, application.WITHDRAWAL_CREDENTIALS_0x02)
+      ]);
+
+      expect(result).toEqual([]);
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(collectOutput(stdoutSpy)).toContain(logging.DEPOSIT_PENDING_EXISTS_WARNING(PUBKEY_A));
+    });
+
+    it('exits when any pending deposit of a new pubkey has another withdrawal address', async () => {
+      const foreign = buildCredentials(application.WITHDRAWAL_CREDENTIALS_0x01, OTHER_ADDRESS);
+      serveBeaconState({
+        validators: [],
+        pendingDeposits: [
+          pendingDeposit(
+            PUBKEY_A,
+            buildCredentials(application.WITHDRAWAL_CREDENTIALS_0x01, OWNER_ADDRESS)
+          ),
+          pendingDeposit(PUBKEY_A, foreign)
+        ]
+      });
+
+      await filterDepositRequests(BEACON_URL, NETWORK, [buildDeposit(PUBKEY_A)]);
+
+      expect(exitSpy).toHaveBeenCalledTimes(1);
+      expect(collectOutput(stderrSpy)).toContain(
+        logging.DEPOSIT_DIFFERENT_WITHDRAWAL_ADDRESS_ERROR(PUBKEY_A, foreign)
+      );
+    });
+
+    it('ignores pending top-ups with zero credentials of an existing validator', async () => {
+      serveBeaconState({
+        validators: [buildValidator({ pubkey: PUBKEY_A })],
+        pendingDeposits: [pendingDeposit(PUBKEY_A, `0x${'00'.repeat(32)}`)]
+      });
+
+      const result = await filterDepositRequests(BEACON_URL, NETWORK, [buildDeposit(PUBKEY_A)]);
+
+      expect(result).toEqual([]);
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it('exits when the beacon node is on another chain or reports another deposit contract', async () => {
+      serveBeaconState({ validators: [], chainId: '1', depositContractAddress: OTHER_ADDRESS });
+
+      await filterDepositRequests(BEACON_URL, NETWORK, [buildDeposit(PUBKEY_A)]);
+
+      expect(exitSpy).toHaveBeenCalledTimes(1);
+      const stderr = collectOutput(stderrSpy);
+      expect(stderr).toContain(logging.SANITY_CHECK_FAILED_HEADER(2));
+      expect(stderr).toContain(
+        logging.BEACON_NETWORK_MISMATCH_ERROR(NETWORK, networkConfig[NETWORK]!.chainId, '1')
+      );
+      expect(stderr).toContain(
+        logging.BEACON_DEPOSIT_CONTRACT_MISMATCH_ERROR(
+          OTHER_ADDRESS,
+          application.DEPOSIT_CONTRACT_ADDRESS
+        )
+      );
+    });
+
+    it('exits with a beacon error when the pending deposits endpoint fails', async () => {
+      serveBeaconState({
+        validators: [],
+        failingEndpoint: application.PENDING_DEPOSITS_BEACON_API_ENDPOINT
+      });
+      exitSpy.mockImplementation((() => {
+        throw new Error('process.exit');
+      }) as never);
+
+      await expect(
+        filterDepositRequests(BEACON_URL, NETWORK, [buildDeposit(PUBKEY_A)])
+      ).rejects.toThrow('process.exit');
+
       expect(collectOutput(stderrSpy)).toContain(logging.UNEXPECTED_BEACON_API_ERROR(BEACON_URL));
     });
   });

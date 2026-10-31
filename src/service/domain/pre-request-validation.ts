@@ -9,6 +9,8 @@ import type {
   BeaconListResponse,
   BeaconValidator,
   DepositContractResponse,
+  DepositData,
+  PendingDeposit,
   PendingPartialWithdrawal,
   RequestCheck,
   ValidationContext,
@@ -164,6 +166,98 @@ export async function filterSwitchableValidators(
   }
 
   return switchable;
+}
+
+/**
+ * Filter deposits against the beacon head state
+ *
+ * A pubkey which is already known on-chain must keep its withdrawal address, otherwise the deposit
+ * would top up a validator controlled by someone else (e.g. a front-run deposit).
+ * - unknown pubkey: included in returned list
+ * - existing validator with the same withdrawal address (0x01/0x02 prefix ignored): skipped with warning
+ * - no validator yet but pending deposits, all with the same withdrawal address: skipped with warning
+ * - different withdrawal address or 0x00 credentials on-chain: hard error
+ *
+ * Pending deposits of an existing validator are ignored because the consensus layer ignores
+ * their credentials.
+ *
+ * @param beaconApiUrl - The beacon api url
+ * @param network - The user provided network
+ * @param deposits - Locally validated deposits
+ * @returns Deposits which still need to be sent
+ */
+export async function filterDepositRequests(
+  beaconApiUrl: string,
+  network: string,
+  deposits: DepositData[]
+): Promise<DepositData[]> {
+  const fetchSpinner = ora(logging.SANITY_CHECK_FETCH_INFO).start();
+  const [validators, pendingDeposits, depositContract] = await Promise.all([
+    fetchValidators(
+      beaconApiUrl,
+      deposits.map((deposit) => deposit.pubkey)
+    ),
+    fetchBeaconJson<BeaconListResponse<PendingDeposit>>(
+      `${beaconApiUrl}${application.PENDING_DEPOSITS_BEACON_API_ENDPOINT}`
+    ),
+    fetchBeaconJson<DepositContractResponse>(
+      `${beaconApiUrl}${application.DEPOSIT_CONTRACT_BEACON_API_ENDPOINT}`
+    )
+  ]).catch((error) => {
+    fetchSpinner.fail();
+    return exitWithBeaconError(beaconApiUrl, error);
+  });
+  fetchSpinner.succeed();
+
+  const expectedContractAddress = networkConfig[network]!.deposit!.contractAddress;
+  const failures = [
+    isSameNetwork(network)({ beaconChainId: depositContract.data.chain_id }),
+    depositContract.data.address.toLowerCase() === expectedContractAddress.toLowerCase()
+      ? undefined
+      : logging.BEACON_DEPOSIT_CONTRACT_MISMATCH_ERROR(
+          depositContract.data.address,
+          expectedContractAddress
+        )
+  ].filter((failure): failure is string => failure !== undefined);
+
+  const pendingCredentials = new Map<string, string[]>();
+  for (const { pubkey, withdrawal_credentials } of pendingDeposits.data) {
+    const key = pubkey.toLowerCase();
+    pendingCredentials.set(key, [...(pendingCredentials.get(key) ?? []), withdrawal_credentials]);
+  }
+
+  const toSend: DepositData[] = [];
+  for (const deposit of deposits) {
+    const validator = validators.get(deposit.pubkey);
+    const onChainCredentials = validator
+      ? [validator.validator.withdrawal_credentials]
+      : (pendingCredentials.get(deposit.pubkey) ?? []);
+    const foreignCredentials = onChainCredentials.find(
+      (credentials) => !hasSameWithdrawalAddress(credentials, deposit.withdrawalCredentials)
+    );
+
+    if (onChainCredentials.length === 0) {
+      toSend.push(deposit);
+    } else if (foreignCredentials) {
+      failures.push(
+        logging.DEPOSIT_DIFFERENT_WITHDRAWAL_ADDRESS_ERROR(deposit.pubkey, foreignCredentials)
+      );
+    } else {
+      console.log(
+        chalk.yellow(
+          validator
+            ? logging.DEPOSIT_VALIDATOR_EXISTS_WARNING(deposit.pubkey)
+            : logging.DEPOSIT_PENDING_EXISTS_WARNING(deposit.pubkey)
+        )
+      );
+    }
+  }
+
+  if (failures.length > 0) {
+    reportFailures(failures);
+  }
+
+  return toSend;
 }
 
 /**
@@ -342,7 +436,7 @@ function exitWithBeaconError(beaconApiUrl: string, error: unknown): never {
  *
  * @param failures - Error messages of all failed checks
  */
-function reportFailures(failures: string[]): never {
+export function reportFailures(failures: string[]): never {
   console.error(chalk.red(logging.SANITY_CHECK_FAILED_HEADER(failures.length)));
   for (const failure of failures) {
     console.error(chalk.red(logging.SANITY_CHECK_FAILURE_ITEM(failure)));
@@ -399,10 +493,17 @@ function getWithdrawableBalance(validator: BeaconValidator, context: ValidationC
  * @returns The credentials type prefix (e.g. '0x00', '0x01', '0x02')
  */
 function getCredentialsType(validator: BeaconValidator): string {
-  return validator.validator.withdrawal_credentials.substring(
-    0,
-    application.WITHDRAWAL_CREDENTIALS_PREFIX_LENGTH
-  );
+  return getCredentialsTypePrefix(validator.validator.withdrawal_credentials);
+}
+
+/**
+ * Get the type prefix of withdrawal credentials
+ *
+ * @param credentials - The full withdrawal credentials hex string
+ * @returns The credentials type prefix (e.g. '0x00', '0x01', '0x02')
+ */
+export function getCredentialsTypePrefix(credentials: string): string {
+  return credentials.substring(0, application.WITHDRAWAL_CREDENTIALS_PREFIX_LENGTH);
 }
 
 /**
@@ -411,9 +512,27 @@ function getCredentialsType(validator: BeaconValidator): string {
  * @param credentials - The full withdrawal credentials hex string
  * @returns The embedded Ethereum address (last 20 bytes)
  */
-function extractAddressFromCredentials(credentials: string): string {
+export function extractAddressFromCredentials(credentials: string): string {
   return (
     application.PREFIX_0x + credentials.substring(application.WITHDRAWAL_CREDENTIALS_ADDRESS_OFFSET)
+  );
+}
+
+/**
+ * Check that on-chain withdrawal credentials pay out to the same execution address
+ *
+ * @param onChainCredentials - Withdrawal credentials found on the beacon chain
+ * @param expectedCredentials - Withdrawal credentials of the deposit
+ * @returns True for 0x01/0x02 credentials with the same address, false for 0x00 or another address
+ */
+function hasSameWithdrawalAddress(
+  onChainCredentials: string,
+  expectedCredentials: string
+): boolean {
+  return (
+    !onChainCredentials.startsWith(application.WITHDRAWAL_CREDENTIALS_0x00) &&
+    extractAddressFromCredentials(onChainCredentials).toLowerCase() ===
+      extractAddressFromCredentials(expectedCredentials).toLowerCase()
   );
 }
 
@@ -421,9 +540,11 @@ function extractAddressFromCredentials(credentials: string): string {
  * Check that the beacon node is connected to the chosen network
  *
  * @param network - The user provided network
- * @returns The request check
+ * @returns Check of the beacon chain id against the chain id of the network
  */
-function isSameNetwork(network: string): RequestCheck {
+function isSameNetwork(
+  network: string
+): (context: Pick<ValidationContext, 'beaconChainId'>) => string | undefined {
   return (context) => {
     const expectedChainId = networkConfig[network]!.chainId;
     return BigInt(context.beaconChainId) === expectedChainId

@@ -59,6 +59,7 @@ export const PENDING_CONSOLIDATIONS_BEACON_API_ENDPOINT =
 export const GENESIS_BEACON_API_ENDPOINT = '/eth/v1/beacon/genesis';
 export const SPEC_BEACON_API_ENDPOINT = '/eth/v1/config/spec';
 export const DEPOSIT_CONTRACT_BEACON_API_ENDPOINT = '/eth/v1/config/deposit_contract';
+export const PENDING_DEPOSITS_BEACON_API_ENDPOINT = '/eth/v1/beacon/states/head/pending_deposits';
 
 /** Max. number of validator ids per bulk validators request */
 export const VALIDATORS_REQUEST_CHUNK_SIZE = 500;
@@ -104,6 +105,42 @@ export const MS_PER_SECOND = 1000;
 /** System contract addresses */
 export const CONSOLIDATION_CONTRACT_ADDRESS = '0x0000BBdDc7CE488642fb579F8B00f3a590007251';
 export const WITHDRAWAL_CONTRACT_ADDRESS = '0x00000961Ef480Eb55e80D19ad83579A64c007002';
+
+/** Beacon chain deposit contract (same address on mainnet, hoodi and kurtosis devnets) */
+export const DEPOSIT_CONTRACT_ADDRESS = '0x00000000219ab540356cBB839Cbe05303d7705Fa';
+export const DEPOSIT_CONTRACT_ABI = [
+  'function deposit(bytes pubkey, bytes withdrawal_credentials, bytes signature, bytes32 deposit_data_root) payable'
+];
+export const DEPOSIT_FUNCTION_NAME = 'deposit';
+export const DEPOSIT_FUNCTION_SELECTOR = '0x22895118';
+/** Hex offset of the pubkey in ABI encoded deposit calldata ('0x' + selector + 4 head words + length word) */
+export const DEPOSIT_CALLDATA_PUBKEY_OFFSET = 330;
+
+/** Genesis fork versions which bind deposit signatures to a network */
+export const MAINNET_GENESIS_FORK_VERSION = '0x00000000';
+export const HOODI_GENESIS_FORK_VERSION = '0x10000910';
+export const KURTOSIS_GENESIS_FORK_VERSION = '0x10000038';
+
+/** Deposit signature domain type (consensus specs DOMAIN_DEPOSIT) */
+export const DOMAIN_DEPOSIT = '0x03000000';
+
+/** Deposit amounts in gwei (consensus specs, Electra) */
+export const MIN_DEPOSIT_AMOUNT_GWEI = 1_000_000_000n;
+export const MIN_ACTIVATION_BALANCE_GWEI = 32_000_000_000n;
+export const MAX_EFFECTIVE_BALANCE_ELECTRA_GWEI = 2_048_000_000_000n;
+
+/** Byte length of every hex field of a deposit_data-*.json entry */
+export const DEPOSIT_DATA_HEX_FIELD_BYTES = {
+  pubkey: 48,
+  withdrawal_credentials: 32,
+  signature: 96,
+  deposit_message_root: 32,
+  deposit_data_root: 32,
+  fork_version: 4
+} as const;
+export const HEX_PATTERN = /^(0x)?[0-9a-fA-F]*$/;
+/** 0x01 or 0x02 prefix, 11 zero bytes, 20-byte address */
+export const EXECUTION_WITHDRAWAL_CREDENTIALS_PATTERN = /^0x0[12]0{22}[0-9a-f]{40}$/;
 
 /** Target requests per block by contract type (EIP-7251 / EIP-7002) */
 export const CONSOLIDATION_TARGET_PER_BLOCK = 1n;

@@ -12,6 +12,11 @@ OWNER_1_ADDRESS="0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
 OWNER_2_KEY="0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a"
 OWNER_2_ADDRESS="0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
 
+# ethereum-package prefunded account (same key as scripts/safe/deploy-safe-infra.sh); funds owners below the minimum
+FUNDER_PRIVATE_KEY="${FUNDER_PRIVATE_KEY:-0xbcdf20249abf0ed6d944c0288fad489e33f66b3960d9e6229c1cd214ed3bbe31}"
+# Phase J deposits 2 × 32 ETH and 2 × 33 ETH from OWNER_0; all other phases only pay gas and request fees
+MIN_WALLET_BALANCE_ETH=200
+
 SAFE_API_KEY="${SAFE_API_KEY:-test-api-key}"
 
 SAFE_BASE_CMD="SAFE_API_KEY=${SAFE_API_KEY} bun run start -n kurtosis_devnet -r ${RPC_URL} -b ${BEACON_URL} --safe ${SAFE_ADDRESS} -m 3"
@@ -118,3 +123,10 @@ UNPAYABLE_MAX_REQUEST_FEE="1000000000000000000000000000000eth"
 # execute-time balance check must abort before any transaction is sent.
 UNPAYABLE_SAFE_FEE_TIP_WEI="1000000000000000000000000000000000000000000000000"
 UNREACHABLE_RPC_URL="http://127.0.0.1:1"
+
+# Phase J (deposit): fresh keys from a new mnemonic per run, signed for the kurtosis genesis fork version
+DEPOSIT_DIR="${TMP_DIR}/deposit"
+DEPOSIT_KEYSTORE_PASSWORD="integration-test"
+KURTOSIS_DEVNET_CHAIN_SETTING='{"network_name":"kurtosis","genesis_fork_version":"0x10000038","exit_fork_version":"0x60000038","genesis_validator_root":"0x0000000000000000000000000000000000000000000000000000000000000000","multiplier":1,"min_activation_amount":32,"min_deposit_amount":1}'
+HOODI_GENESIS_FORK_VERSION_HEX="10000910"
+KURTOSIS_GENESIS_FORK_VERSION_HEX="10000038"

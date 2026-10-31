@@ -17,15 +17,17 @@ import { TransactionReplacer } from './transaction-replacer';
 /**
  * Create a fully-wired TransactionPipeline with all dependencies
  *
- * Constructs the dependency graph: EthereumStateService, broadcast strategy selection,
- * TransactionBroadcaster, TransactionMonitor, TransactionReplacer, and orchestrator.
+ * Constructs the dependency graph: broadcast strategy selection, TransactionBroadcaster,
+ * TransactionMonitor, TransactionReplacer, and orchestrator. The state service is injectable and
+ * defaults to an EthereumStateService reading the system contract fee.
  * Returns a pipeline that owns both the orchestrator and all disposable resources.
  *
- * @param systemContractAddress - System contract address for execution layer requests
+ * @param systemContractAddress - Target contract address (system contract or deposit contract)
  * @param jsonRpcProvider - JSON-RPC provider for blockchain interaction
  * @param signer - Signer for transaction signing (wallet or Ledger)
  * @param beaconApiUrl - Beacon API URL for slot-aware broadcasting (required for Ledger)
  * @param requestFeeCapRuntime - Optional request-fee cap runtime dependencies
+ * @param ethereumStateService - State service providing the per-request value (defaults to the system contract fee)
  * @returns Pipeline ready to send execution layer requests and dispose resources
  */
 export async function createTransactionPipeline(
@@ -33,9 +35,9 @@ export async function createTransactionPipeline(
   jsonRpcProvider: JsonRpcProvider,
   signer: ISigner,
   beaconApiUrl: string,
-  requestFeeCapRuntime?: RequestFeeCapRuntime
+  requestFeeCapRuntime?: RequestFeeCapRuntime,
+  ethereumStateService = new EthereumStateService(jsonRpcProvider, systemContractAddress)
 ): Promise<TransactionPipeline> {
-  const ethereumStateService = new EthereumStateService(jsonRpcProvider, systemContractAddress);
   const logger = new TransactionProgressLogger();
   const disposables: Disposable[] = [];
 

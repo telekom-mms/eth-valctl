@@ -310,6 +310,20 @@ export function validateSafeNetworkSupport(network: string, safeAddress?: string
 }
 
 /**
+ * Validate that deposits are supported for the selected network and signing path
+ *
+ * @param globalOptions - Global CLI options with network and safe address
+ */
+export function validateDepositSupport(globalOptions: GlobalCliOptions): void {
+  if (globalOptions.safe) {
+    exitWithValidationError(logging.DEPOSIT_SAFE_NOT_SUPPORTED_ERROR);
+  }
+  if (!networkConfig[globalOptions.network]?.deposit) {
+    exitWithValidationError(logging.DEPOSIT_NOT_SUPPORTED_ON_NETWORK_ERROR(globalOptions.network));
+  }
+}
+
+/**
  * Validate that the --safe CLI option is present and return the address
  *
  * @param globalOptions - Global CLI options including safe address

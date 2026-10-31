@@ -24,6 +24,13 @@ export interface WithdrawOptions extends ValidatorOption {
 }
 
 /**
+ * CLI options for the deposit command
+ */
+export interface DepositOptions {
+  depositData: string;
+}
+
+/**
  * Global CLI options available across all commands
  */
 export interface GlobalCliOptions {

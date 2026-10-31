@@ -345,3 +345,14 @@ The chain ID isn't in `@safe-global/safe-deployments`. The `create-safe.ts` scri
 ### `deploy-safe-infra.sh` exits after 10 HH501 retries
 
 `deploy-safe-infra.sh` automatically downloads missing solc binaries (from `binaries.soliditylang.org`, falling back to GitHub releases) and retries compilation up to 10 times. If it still fails, the network path to both sources is likely blocked (corporate VPN, strict proxy). Fetch the solc binary listed in the error from a machine with working connectivity, copy it into the Hardhat cache on the build host (Linux: `~/.cache/hardhat-nodejs/compilers-v2/linux-amd64/`, macOS: `~/Library/Caches/hardhat-nodejs/compilers-v2/macosx-amd64/`), `chmod +x` it, then rerun the script.
+
+### Reproduce a deployment from a clean state
+
+To reproduce a `deploy-safe-infra.sh` failure as on a fresh machine, delete:
+
+1. `node_modules/` in the safe-smart-account clone
+1. The solc cache the script populates (Linux: `~/.cache/hardhat-nodejs/compilers-v2/`)
+1. `deployments/custom/` in the safe-smart-account clone. The contract deployment step finds `deployments/custom/Safe.json` from a prior run and skips deployment if that contract is still live
+1. `.env` in the safe-smart-account clone. The script regenerates it, but stale content can hide the bug
+
+Keep `package-lock.json`/`bun.lock` if the failing machine relies on lockfile-pinned versions. Deleting the lockfile changes what `npm install` resolves and can mask the original bug or introduce a different one.

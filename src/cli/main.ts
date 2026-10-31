@@ -7,6 +7,7 @@
  * - switch: Switch withdrawal credentials from 0x01 to 0x02
  * - withdraw: Partial withdrawal from validators
  * - exit: Full validator exit
+ * - deposit: Deposit new validators from a deposit-cli deposit data file
  */
 import chalk from 'chalk';
 import { Command, Option } from 'commander';
@@ -16,6 +17,7 @@ import * as application from '../constants/application';
 import { UNHANDLED_PROMISE_REJECTION_PREFIX } from '../constants/logging';
 import type { GlobalCliOptions } from '../model/commander';
 import { consolidateCommand } from './consolidate';
+import { depositCommand } from './deposit';
 import { handleCliError } from './error-handler';
 import { exitCommand } from './exit';
 import { feesCommand } from './fees';
@@ -118,6 +120,7 @@ program
   .addCommand(switchWithdrawalCredentialTypeCommand)
   .addCommand(withdrawCommand)
   .addCommand(exitCommand)
+  .addCommand(depositCommand)
   .addCommand(feesCommand)
   .addCommand(safeCommand);
 
