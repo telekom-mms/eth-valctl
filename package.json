@@ -51,10 +51,10 @@
   "license": "MIT",
   "name": "eth-valctl",
   "overrides": {
-    "axios": "1.20.0",
+    "axios": "1.21.0",
     "node-hid": "3.4.0"
   },
-  "packageManager": "bun@1.4.3",
+  "packageManager": "bun@1.4.4",
   "scripts": {
     "clean": "rm -rf bin dist",
     "format": "bunx prettier --write .",
