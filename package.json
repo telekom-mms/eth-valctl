@@ -44,7 +44,7 @@
     "eslint-plugin-tsdoc": "^0.5.4",
     "lint-staged": "^17.6.0",
     "prettier": "^3.9.10",
-    "semantic-release": "^25.0.9",
+    "semantic-release": "^26.0.0",
     "sort-package-json": "^4.0.0",
     "typescript": "^6.0.3"
   },
